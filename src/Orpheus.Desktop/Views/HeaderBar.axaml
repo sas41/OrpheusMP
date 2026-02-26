@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Orpheus.Desktop"
+             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="80"
+             x:Class="Orpheus.Desktop.Views.HeaderBar"
+             x:DataType="local:MainWindowViewModel">
+  <Border Classes="panel card tight reveal-1">
+    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+      <StackPanel>
+        <TextBlock Text="OrpheusMP" Classes="heading" />
+        <TextBlock Text="Library, queue, and playback workspace" Classes="muted small" />
+      </StackPanel>
+      <Border Grid.Column="1" Classes="accent-bar" Padding="8" HorizontalAlignment="Stretch" MinWidth="260">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+          <TextBlock Text="Search" Classes="muted" VerticalAlignment="Center" />
+          <TextBox Grid.Column="1" Watermark="Find tracks, artists, or playlists" Text="{Binding SearchQuery}" />
+        </Grid>
+      </Border>
+      <StackPanel Grid.Column="2" HorizontalAlignment="Right" Spacing="6">
+        <TextBlock Text="Session" Classes="muted small" />
+        <TextBlock Text="Offline Library" Classes="subheading" />
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

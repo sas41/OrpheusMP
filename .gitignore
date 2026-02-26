@@ -23,6 +23,11 @@ mono_crash.*
 [Rr]elease/
 [Rr]eleases/
 
+# .NET build artifacts (local)
+**/[Bb]in/
+**/[Oo]bj/
+artifacts/
+
 [Dd]ebug/x64/
 [Dd]ebugPublic/x64/
 [Rr]elease/x64/
@@ -434,4 +439,3 @@ FodyWeavers.xsd
 # ── macOS ─────────────────────────────────────────────────────────────
 .DS_Store
 ._*
-

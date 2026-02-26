@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Orpheus.Desktop"
+             mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="80"
+             x:Class="Orpheus.Desktop.Views.TransportBar"
+             x:DataType="local:MainWindowViewModel">
+  <Border Classes="panel tight reveal-3">
+    <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="12" RowDefinitions="Auto,Auto">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Button Content="Prev" Click="OnPrevClick" />
+        <Button Content="Play/Pause" Classes="primary" Click="OnPlayClick" />
+        <Button Content="Next" Click="OnNextClick" />
+        <Button Content="Stop" Click="OnStopClick" />
+      </StackPanel>
+
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Button Content="Shuffle" Click="OnShuffleClick" />
+        <Button Content="Repeat" Click="OnRepeatClick" />
+      </StackPanel>
+
+      <Grid Grid.Column="2" RowDefinitions="Auto,Auto" RowSpacing="6">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="{Binding NowPlayingTitle}" Classes="subheading" />
+          <TextBlock Text="-" Classes="muted" VerticalAlignment="Center" />
+          <TextBlock Text="{Binding NowPlayingArtist}" Classes="muted" VerticalAlignment="Center" />
+        </StackPanel>
+        <Slider Grid.Row="1" Minimum="0" Maximum="{Binding PlaybackDuration}" Value="{Binding PlaybackPosition, Mode=TwoWay}" />
+      </Grid>
+
+      <StackPanel Grid.Column="3" HorizontalAlignment="Right" Spacing="6">
+        <TextBlock Text="{Binding NowPlayingTime}" Classes="muted small" HorizontalAlignment="Right" />
+        <Slider Minimum="0" Maximum="100" Value="{Binding Volume, Mode=TwoWay}" Width="120" />
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

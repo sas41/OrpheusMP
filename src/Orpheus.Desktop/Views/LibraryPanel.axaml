@@ -1,0 +1,36 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Orpheus.Desktop"
+             mc:Ignorable="d" d:DesignWidth="240" d:DesignHeight="520"
+             x:Class="Orpheus.Desktop.Views.LibraryPanel"
+             x:DataType="local:MainWindowViewModel">
+  <Border Classes="panel tight reveal-2">
+    <Grid RowDefinitions="Auto,*" RowSpacing="8">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <StackPanel>
+          <TextBlock Text="Library" Classes="subheading" />
+          <TextBlock Text="{Binding LibrarySummary}" Classes="muted small" />
+        </StackPanel>
+        <Button Grid.Column="1" Content="+" Width="28" Height="28" Click="OnAddLibraryFolderClick" />
+      </Grid>
+      <TreeView Grid.Row="1"
+                ItemsSource="{Binding LibraryRoots}"
+                SelectionChanged="OnTreeSelectionChanged"
+                DoubleTapped="OnTreeDoubleTapped">
+        <TreeView.ItemTemplate>
+          <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="local:LibraryNode">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+              <Border Width="8" Height="8" CornerRadius="4" Background="{DynamicResource AccentColor}" VerticalAlignment="Center" />
+              <StackPanel Grid.Column="1">
+                <TextBlock Text="{Binding Name}" />
+                <TextBlock Text="{Binding Meta}" Classes="muted small" />
+              </StackPanel>
+            </Grid>
+          </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+      </TreeView>
+    </Grid>
+  </Border>
+</UserControl>

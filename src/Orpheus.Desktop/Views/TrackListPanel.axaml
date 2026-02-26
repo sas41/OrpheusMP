@@ -1,0 +1,49 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Orpheus.Desktop"
+             mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="520"
+             x:Class="Orpheus.Desktop.Views.TrackListPanel"
+             x:DataType="local:MainWindowViewModel">
+  <Border Classes="panel tight reveal-2">
+    <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+        <StackPanel>
+          <TextBlock Text="Track List" Classes="subheading" />
+          <TextBlock Text="Curated from playlists and folders" Classes="muted small" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Button Content="Sort" />
+          <Button Content="Filter" />
+        </StackPanel>
+      </Grid>
+      <Border Classes="table-header">
+        <Grid ColumnDefinitions="3*,2*,2*,Auto,Auto" ColumnSpacing="12">
+          <TextBlock Text="Title" Classes="muted" />
+          <TextBlock Grid.Column="1" Text="Artist" Classes="muted" />
+          <TextBlock Grid.Column="2" Text="Album" Classes="muted" />
+          <TextBlock Grid.Column="3" Text="Time" Classes="muted" />
+          <TextBlock Grid.Column="4" Text="Format" Classes="muted" />
+        </Grid>
+      </Border>
+      <ListBox Grid.Row="2"
+               ItemsSource="{Binding Tracks}"
+               SelectedIndex="{Binding SelectedTrackIndex}"
+               VerticalAlignment="Stretch"
+               DoubleTapped="OnTrackDoubleTapped">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="local:TrackRow">
+            <Grid ColumnDefinitions="3*,2*,2*,Auto,Auto" ColumnSpacing="12">
+              <TextBlock Text="{Binding Title}" />
+              <TextBlock Grid.Column="1" Text="{Binding Artist}" Classes="muted" />
+              <TextBlock Grid.Column="2" Text="{Binding Album}" Classes="muted" />
+              <TextBlock Grid.Column="3" Text="{Binding Length}" />
+              <TextBlock Grid.Column="4" Text="{Binding Format}" Classes="muted" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Grid>
+  </Border>
+</UserControl>

@@ -1,0 +1,30 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Orpheus.Desktop"
+             mc:Ignorable="d" d:DesignWidth="260" d:DesignHeight="520"
+             x:Class="Orpheus.Desktop.Views.QueuePanel"
+             x:DataType="local:MainWindowViewModel">
+  <Border Classes="panel tight reveal-2">
+    <Grid RowDefinitions="Auto,*" RowSpacing="10">
+      <StackPanel>
+        <TextBlock Text="Play Queue" Classes="subheading" />
+        <TextBlock Text="{Binding QueueSummary}" Classes="muted small" />
+      </StackPanel>
+      <ListBox Grid.Row="1" ItemsSource="{Binding Queue}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="local:QueueItem">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+              <StackPanel>
+                <TextBlock Text="{Binding Title}" />
+                <TextBlock Text="{Binding Artist}" Classes="muted small" />
+              </StackPanel>
+              <TextBlock Grid.Column="1" Text="{Binding Length}" Classes="muted" VerticalAlignment="Center" />
+            </Grid>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Grid>
+  </Border>
+</UserControl>
