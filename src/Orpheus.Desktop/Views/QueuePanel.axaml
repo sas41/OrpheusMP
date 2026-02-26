@@ -12,7 +12,10 @@
         <TextBlock Text="Play Queue" Classes="subheading" />
         <TextBlock Text="{Binding QueueSummary}" Classes="muted small" />
       </StackPanel>
-      <ListBox Grid.Row="1" ItemsSource="{Binding Queue}">
+      <ListBox Grid.Row="1"
+               x:Name="QueueList"
+               ItemsSource="{Binding Queue}"
+               SelectedIndex="{Binding CurrentQueueIndex}">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="local:QueueItem">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">

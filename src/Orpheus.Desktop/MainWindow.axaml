@@ -82,6 +82,24 @@
             <Setter Property="BorderBrush" Value="{DynamicResource AccentColor}" />
         </Style>
 
+        <Style Selector="ToggleButton">
+            <Setter Property="Background" Value="{DynamicResource ButtonFill}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PanelStroke}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="10,6" />
+        </Style>
+
+        <Style Selector="ToggleButton:pointerover">
+            <Setter Property="Background" Value="{DynamicResource ButtonHover}" />
+        </Style>
+
+        <Style Selector="ToggleButton:checked">
+            <Setter Property="Background" Value="{DynamicResource AccentSoft}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentColor}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentText}" />
+        </Style>
+
         <Style Selector="Border.accent-bar">
             <Setter Property="Background" Value="{DynamicResource AccentSoft}" />
             <Setter Property="BorderBrush" Value="{DynamicResource AccentColor}" />
@@ -89,8 +107,14 @@
             <Setter Property="CornerRadius" Value="10" />
         </Style>
 
+        <Style Selector="ListBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
         <Style Selector="ListBoxItem">
             <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Background" Value="Transparent" />
         </Style>
 
         <Style Selector="ListBoxItem:pointerover">
@@ -99,6 +123,45 @@
 
         <Style Selector="ListBoxItem:selected">
             <Setter Property="Background" Value="{DynamicResource RowSelected}" />
+        </Style>
+
+        <Style Selector="DataGrid">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style Selector="DataGridRow">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+
+        <Style Selector="DataGridRow:pointerover">
+            <Setter Property="Background" Value="{DynamicResource RowHover}" />
+        </Style>
+
+        <Style Selector="DataGridRow:selected">
+            <Setter Property="Background" Value="{DynamicResource RowSelected}" />
+        </Style>
+
+        <Style Selector="DataGridCell">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="TextBlock.TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <Style Selector="DataGridCell TextBlock.muted">
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+        </Style>
+
+        <Style Selector="DataGridColumnHeader">
+            <Setter Property="Background" Value="{DynamicResource AccentSoft}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PanelStroke}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}" />
+        </Style>
+
+        <Style Selector="DataGridColumnHeader:pointerover">
+            <Setter Property="Background" Value="{DynamicResource RowHover}" />
         </Style>
 
         <Style Selector="TreeViewItem">

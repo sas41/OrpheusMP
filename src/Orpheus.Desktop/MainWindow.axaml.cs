@@ -84,6 +84,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private readonly ObservableCollection<QueueItem> _queue = new();
     private IReadOnlyList<LibraryTrack> _allTracks = Array.Empty<LibraryTrack>();
     private IReadOnlyList<LibraryTrack> _currentTracks = Array.Empty<LibraryTrack>();
+    private IReadOnlyList<LibraryTrack> _viewTracks = Array.Empty<LibraryTrack>();
     private readonly string _databasePath;
     private readonly string _musicFolder;
 
@@ -98,6 +99,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private double _volume = 72;
     private string _searchQuery = string.Empty;
     private int _selectedTrackIndex = -1;
+    private int _currentQueueIndex = -1;
+    private TrackSortField _sortField = TrackSortField.Title;
+    private bool _sortAscending = true;
+    private bool _hideMissingTitle;
+    private bool _hideMissingArtist;
+    private bool _hideMissingAlbum;
+    private bool _hideMissingGenre;
+    private bool _hideMissingTrackNumber;
+    private bool _isShuffleEnabled;
+    private RepeatMode _repeatMode = RepeatMode.Off;
+    private bool _showTitle = true;
+    private bool _showArtist = true;
+    private bool _showAlbum = true;
+    private bool _showFileName = false;
+    private bool _showLength = true;
+    private bool _showFormat = true;
+    private bool _showTrackNumber = false;
+    private bool _showDiscNumber = false;
+    private bool _showYear = false;
+    private bool _showGenre = false;
+    private bool _showBitrate = false;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -179,6 +201,168 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         set => SetField(ref _selectedTrackIndex, value);
     }
 
+    public int CurrentQueueIndex
+    {
+        get => _currentQueueIndex;
+        private set => SetField(ref _currentQueueIndex, value);
+    }
+
+    public TrackSortField SortField
+    {
+        get => _sortField;
+        private set => SetField(ref _sortField, value);
+    }
+
+    public bool SortAscending
+    {
+        get => _sortAscending;
+        private set => SetField(ref _sortAscending, value);
+    }
+
+    public bool HideMissingTitle
+    {
+        get => _hideMissingTitle;
+        set
+        {
+            if (SetField(ref _hideMissingTitle, value))
+                _ = RefreshTrackViewAsync();
+        }
+    }
+
+    public bool HideMissingArtist
+    {
+        get => _hideMissingArtist;
+        set
+        {
+            if (SetField(ref _hideMissingArtist, value))
+                _ = RefreshTrackViewAsync();
+        }
+    }
+
+    public bool HideMissingAlbum
+    {
+        get => _hideMissingAlbum;
+        set
+        {
+            if (SetField(ref _hideMissingAlbum, value))
+                _ = RefreshTrackViewAsync();
+        }
+    }
+
+    public bool HideMissingGenre
+    {
+        get => _hideMissingGenre;
+        set
+        {
+            if (SetField(ref _hideMissingGenre, value))
+                _ = RefreshTrackViewAsync();
+        }
+    }
+
+    public bool HideMissingTrackNumber
+    {
+        get => _hideMissingTrackNumber;
+        set
+        {
+            if (SetField(ref _hideMissingTrackNumber, value))
+                _ = RefreshTrackViewAsync();
+        }
+    }
+
+    public bool IsShuffleEnabled
+    {
+        get => _isShuffleEnabled;
+        private set => SetField(ref _isShuffleEnabled, value);
+    }
+
+    public RepeatMode RepeatMode
+    {
+        get => _repeatMode;
+        private set
+        {
+            if (SetField(ref _repeatMode, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRepeatEnabled)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RepeatLabel)));
+            }
+        }
+    }
+
+    public bool IsRepeatEnabled => _repeatMode != RepeatMode.Off;
+
+    public string RepeatLabel => _repeatMode switch
+    {
+        RepeatMode.All => "Repeat All",
+        RepeatMode.One => "Repeat One",
+        _ => "Repeat"
+    };
+
+    public bool ShowTitle
+    {
+        get => _showTitle;
+        set => SetField(ref _showTitle, value);
+    }
+
+    public bool ShowArtist
+    {
+        get => _showArtist;
+        set => SetField(ref _showArtist, value);
+    }
+
+    public bool ShowAlbum
+    {
+        get => _showAlbum;
+        set => SetField(ref _showAlbum, value);
+    }
+
+    public bool ShowFileName
+    {
+        get => _showFileName;
+        set => SetField(ref _showFileName, value);
+    }
+
+    public bool ShowLength
+    {
+        get => _showLength;
+        set => SetField(ref _showLength, value);
+    }
+
+    public bool ShowFormat
+    {
+        get => _showFormat;
+        set => SetField(ref _showFormat, value);
+    }
+
+    public bool ShowTrackNumber
+    {
+        get => _showTrackNumber;
+        set => SetField(ref _showTrackNumber, value);
+    }
+
+    public bool ShowDiscNumber
+    {
+        get => _showDiscNumber;
+        set => SetField(ref _showDiscNumber, value);
+    }
+
+    public bool ShowYear
+    {
+        get => _showYear;
+        set => SetField(ref _showYear, value);
+    }
+
+    public bool ShowGenre
+    {
+        get => _showGenre;
+        set => SetField(ref _showGenre, value);
+    }
+
+    public bool ShowBitrate
+    {
+        get => _showBitrate;
+        set => SetField(ref _showBitrate, value);
+    }
+
     public ObservableCollection<LibraryNode> LibraryRoots => _libraryRoots;
     public ObservableCollection<TrackRow> Tracks => _tracks;
     public ObservableCollection<QueueItem> Queue => _queue;
@@ -200,6 +384,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _controller = new PlayerController(_player);
         _controller.Playlist.Changed += OnPlaylistChanged;
         _controller.Playlist.CurrentIndexChanged += OnPlaylistIndexChanged;
+        _controller.ShufflePlayChanged += OnShufflePlayChanged;
+        _controller.RepeatModeChanged += OnRepeatModeChanged;
 
         _player.PositionChanged += OnPositionChanged;
         _player.StateChanged += OnStateChanged;
@@ -252,8 +438,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             ? await _library.GetAllTracksAsync()
             : tracks;
 
-        var trackRows = await Task.Run(() => tracks.Select(ToTrackRow).ToList());
-        var totalTracks = trackRows.Count;
+        var totalTracks = tracks.Count;
         var treeNodes = await Task.Run(() => BuildFolderTree(folders, treeTracks));
 
         _allTracks = treeTracks;
@@ -261,16 +446,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            _tracks.Clear();
-            foreach (var row in trackRows)
-                _tracks.Add(row);
-
             _libraryRoots.Clear();
             foreach (var node in treeNodes)
                 _libraryRoots.Add(node);
 
             LibrarySummary = $"{folders.Count} folders - {totalTracks} tracks";
         });
+
+        await RefreshTrackViewAsync(resetSelection: true);
     }
 
     private async Task LoadPlaylistAsync()
@@ -324,6 +507,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     private void OnPlaylistIndexChanged(object? sender, int index)
     {
+        CurrentQueueIndex = index;
         var item = _controller.Playlist.CurrentItem;
         if (item is null)
             return;
@@ -374,6 +558,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             track.Title ?? Path.GetFileNameWithoutExtension(track.FilePath),
             track.Artist ?? "",
             track.Album ?? "",
+            Path.GetFileName(track.FilePath),
+            track.TrackNumber?.ToString() ?? "",
+            track.DiscNumber?.ToString() ?? "",
+            track.Year?.ToString() ?? "",
+            track.Genre ?? "",
+            track.Bitrate is null ? "" : $"{track.Bitrate} kbps",
             FormatTime(track.Duration ?? TimeSpan.Zero),
             track.Codec ?? "");
     }
@@ -471,12 +661,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     public void ToggleShuffle()
     {
-        _controller.ToggleShufflePlay();
+        IsShuffleEnabled = _controller.ToggleShufflePlay();
     }
 
     public void CycleRepeat()
     {
-        _controller.CycleRepeatMode();
+        RepeatMode = _controller.CycleRepeatMode();
     }
 
     public async Task PlaySelectedAsync()
@@ -484,12 +674,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (_selectedTrackIndex < 0)
             return;
 
-        if (_selectedTrackIndex >= _currentTracks.Count)
+        var viewTracks = _viewTracks.Count > 0 ? _viewTracks : _currentTracks;
+
+        if (_selectedTrackIndex >= viewTracks.Count)
             return;
 
-        var selected = _currentTracks[_selectedTrackIndex];
+        var selected = viewTracks[_selectedTrackIndex];
         var (items, selectedIndex) = await Task.Run(() =>
-            BuildPlaylistItems(_currentTracks, selected.FilePath));
+            BuildPlaylistItems(viewTracks, selected.FilePath));
 
         if (items.Count == 0)
             return;
@@ -512,16 +704,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         var filteredTracks = await Task.Run(() =>
             _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).ToList());
 
-        var rows = await Task.Run(() => filteredTracks.Select(ToTrackRow).ToList());
         _currentTracks = filteredTracks;
-
-        await Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            _tracks.Clear();
-            foreach (var row in rows)
-                _tracks.Add(row);
-            SelectedTrackIndex = -1;
-        });
+        await RefreshTrackViewAsync(resetSelection: true);
     }
 
     public async Task PlayFolderAsync(string folderPath)
@@ -603,15 +787,149 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _scanner.Progress -= OnScanProgress;
         _controller.Playlist.Changed -= OnPlaylistChanged;
         _controller.Playlist.CurrentIndexChanged -= OnPlaylistIndexChanged;
+        _controller.ShufflePlayChanged -= OnShufflePlayChanged;
+        _controller.RepeatModeChanged -= OnRepeatModeChanged;
         _player.PositionChanged -= OnPositionChanged;
         _player.StateChanged -= OnStateChanged;
         await _controller.DisposeAsync().ConfigureAwait(false);
         _library.Dispose();
     }
+
+    private async Task RefreshTrackViewAsync(bool resetSelection = false)
+    {
+        var view = await Task.Run(() => BuildTrackView(_currentTracks));
+        _viewTracks = view.Tracks;
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _tracks.Clear();
+            foreach (var row in view.Rows)
+                _tracks.Add(row);
+
+            if (resetSelection || SelectedTrackIndex >= _tracks.Count)
+                SelectedTrackIndex = -1;
+        });
+    }
+
+    private TrackView BuildTrackView(IReadOnlyList<LibraryTrack> source)
+    {
+        IEnumerable<LibraryTrack> query = source;
+
+        if (HideMissingTitle)
+            query = query.Where(t => !string.IsNullOrWhiteSpace(t.Title));
+        if (HideMissingArtist)
+            query = query.Where(t => !string.IsNullOrWhiteSpace(t.Artist));
+        if (HideMissingAlbum)
+            query = query.Where(t => !string.IsNullOrWhiteSpace(t.Album));
+        if (HideMissingGenre)
+            query = query.Where(t => !string.IsNullOrWhiteSpace(t.Genre));
+        if (HideMissingTrackNumber)
+            query = query.Where(t => t.TrackNumber.HasValue && t.TrackNumber.Value > 0);
+
+        query = ApplySort(query);
+
+        var list = query.ToList();
+        var rows = list.Select(ToTrackRow).ToList();
+        return new TrackView(list, rows);
+    }
+
+    private IEnumerable<LibraryTrack> ApplySort(IEnumerable<LibraryTrack> tracks)
+    {
+        return SortField switch
+        {
+            TrackSortField.Title => OrderByString(tracks, t => t.Title ?? Path.GetFileNameWithoutExtension(t.FilePath), SortAscending),
+            TrackSortField.Artist => OrderByString(tracks, t => t.Artist, SortAscending),
+            TrackSortField.Album => OrderByString(tracks, t => t.Album, SortAscending),
+            TrackSortField.FileName => OrderByString(tracks, t => Path.GetFileName(t.FilePath), SortAscending),
+            TrackSortField.TrackNumber => OrderByNumber(tracks, t => t.TrackNumber ?? uint.MaxValue, SortAscending),
+            TrackSortField.Year => OrderByNumber(tracks, t => t.Year ?? uint.MaxValue, SortAscending),
+            TrackSortField.Duration => OrderByNumber(tracks, t => t.DurationMs ?? long.MaxValue, SortAscending),
+            TrackSortField.DateAdded => OrderByNumber(tracks, t => t.DateAddedTicks, SortAscending),
+            TrackSortField.Bitrate => OrderByNumber(tracks, t => t.Bitrate ?? int.MaxValue, SortAscending),
+            _ => OrderByString(tracks, t => t.Title ?? Path.GetFileNameWithoutExtension(t.FilePath), SortAscending)
+        };
+    }
+
+    private static IEnumerable<LibraryTrack> OrderByString(
+        IEnumerable<LibraryTrack> tracks,
+        Func<LibraryTrack, string?> selector,
+        bool ascending)
+    {
+        return ascending
+            ? tracks.OrderBy(t => selector(t) ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            : tracks.OrderByDescending(t => selector(t) ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IEnumerable<LibraryTrack> OrderByNumber<T>(
+        IEnumerable<LibraryTrack> tracks,
+        Func<LibraryTrack, T> selector,
+        bool ascending) where T : IComparable<T>
+    {
+        return ascending
+            ? tracks.OrderBy(selector)
+            : tracks.OrderByDescending(selector);
+    }
+
+    private void OnShufflePlayChanged(object? sender, bool enabled)
+    {
+        Dispatcher.UIThread.Post(() => IsShuffleEnabled = enabled);
+    }
+
+    private void OnRepeatModeChanged(object? sender, RepeatMode mode)
+    {
+        Dispatcher.UIThread.Post(() => RepeatMode = mode);
+    }
+
+    public void SetSortField(TrackSortField field)
+    {
+        if (SortField == field)
+        {
+            SortAscending = !SortAscending;
+        }
+        else
+        {
+            SortField = field;
+            SortAscending = true;
+        }
+
+        _ = RefreshTrackViewAsync();
+    }
+
+    public void ToggleSortDirection()
+    {
+        SortAscending = !SortAscending;
+        _ = RefreshTrackViewAsync();
+    }
 }
 
 public sealed record LibraryNode(string Name, string Meta, string Path, IReadOnlyList<LibraryNode>? Children = null);
 
-public sealed record TrackRow(string Title, string Artist, string Album, string Length, string Format);
+public sealed record TrackRow(
+    string Title,
+    string Artist,
+    string Album,
+    string FileName,
+    string TrackNumber,
+    string DiscNumber,
+    string Year,
+    string Genre,
+    string Bitrate,
+    string Length,
+    string Format);
 
 public sealed record QueueItem(string Title, string Artist, string Length);
+
+public readonly record struct TrackView(IReadOnlyList<LibraryTrack> Tracks, IReadOnlyList<TrackRow> Rows);
+
+public enum TrackSortField
+{
+    Title,
+    Artist,
+    Album,
+    FileName,
+    TrackNumber,
+    Year,
+    Duration,
+    DateAdded,
+    Bitrate
+}

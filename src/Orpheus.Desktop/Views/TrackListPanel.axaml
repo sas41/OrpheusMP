@@ -5,45 +5,152 @@
              xmlns:local="clr-namespace:Orpheus.Desktop"
              mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="520"
              x:Class="Orpheus.Desktop.Views.TrackListPanel"
-             x:DataType="local:MainWindowViewModel">
+             x:DataType="local:MainWindowViewModel"
+             x:CompileBindings="False">
+  <UserControl.Resources>
+    <ContextMenu x:Key="TrackColumnsMenu" Opened="OnTrackColumnsMenuOpened">
+      <MenuItem Header="Title" Tag="Title" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="Artist" Tag="Artist" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="Album" Tag="Album" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="Filename" Tag="Filename" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="Track #" Tag="TrackNumber" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="Disc #" Tag="DiscNumber" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="Year" Tag="Year" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="Genre" Tag="Genre" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="Bitrate" Tag="Bitrate" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="Time" Tag="Time" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="Format" Tag="Format" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+    </ContextMenu>
+    <ContextMenu x:Key="TrackSortMenu" Opened="OnTrackSortMenuOpened">
+      <MenuItem Header="Title" Tag="Title" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="Artist" Tag="Artist" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="Album" Tag="Album" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="File name" Tag="FileName" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="Track #" Tag="TrackNumber" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="Year" Tag="Year" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="Duration" Tag="Duration" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="Date added" Tag="DateAdded" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="Bitrate" Tag="Bitrate" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <Separator />
+      <MenuItem Header="Ascending" Tag="Ascending" ToggleType="CheckBox" Click="OnSortDirectionClicked" />
+    </ContextMenu>
+    <ContextMenu x:Key="TrackFilterMenu" Opened="OnTrackFilterMenuOpened">
+      <MenuItem Header="Hide missing title" Tag="HideMissingTitle" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
+      <MenuItem Header="Hide missing artist" Tag="HideMissingArtist" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
+      <MenuItem Header="Hide missing album" Tag="HideMissingAlbum" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
+      <MenuItem Header="Hide missing genre" Tag="HideMissingGenre" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
+      <MenuItem Header="Hide missing track #" Tag="HideMissingTrackNumber" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
+    </ContextMenu>
+  </UserControl.Resources>
   <Border Classes="panel tight reveal-2">
-    <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
+    <Grid RowDefinitions="Auto,*" RowSpacing="10">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
         <StackPanel>
           <TextBlock Text="Track List" Classes="subheading" />
           <TextBlock Text="Curated from playlists and folders" Classes="muted small" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Button Content="Sort" />
-          <Button Content="Filter" />
+          <Button Content="Sort" Click="OnSortButtonClick" ContextMenu="{StaticResource TrackSortMenu}" />
+          <Button Content="Filter" Click="OnFilterButtonClick" ContextMenu="{StaticResource TrackFilterMenu}" />
         </StackPanel>
       </Grid>
-      <Border Classes="table-header">
-        <Grid ColumnDefinitions="3*,2*,2*,Auto,Auto" ColumnSpacing="12">
-          <TextBlock Text="Title" Classes="muted" />
-          <TextBlock Grid.Column="1" Text="Artist" Classes="muted" />
-          <TextBlock Grid.Column="2" Text="Album" Classes="muted" />
-          <TextBlock Grid.Column="3" Text="Time" Classes="muted" />
-          <TextBlock Grid.Column="4" Text="Format" Classes="muted" />
-        </Grid>
-      </Border>
-      <ListBox Grid.Row="2"
-               ItemsSource="{Binding Tracks}"
-               SelectedIndex="{Binding SelectedTrackIndex}"
-               VerticalAlignment="Stretch"
-               DoubleTapped="OnTrackDoubleTapped">
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="local:TrackRow">
-            <Grid ColumnDefinitions="3*,2*,2*,Auto,Auto" ColumnSpacing="12">
-              <TextBlock Text="{Binding Title}" />
-              <TextBlock Grid.Column="1" Text="{Binding Artist}" Classes="muted" />
-              <TextBlock Grid.Column="2" Text="{Binding Album}" Classes="muted" />
-              <TextBlock Grid.Column="3" Text="{Binding Length}" />
-              <TextBlock Grid.Column="4" Text="{Binding Format}" Classes="muted" />
-            </Grid>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
+      <DataGrid Grid.Row="1"
+                x:Name="TracksGrid"
+                ItemsSource="{Binding Tracks}"
+                SelectedIndex="{Binding SelectedTrackIndex}"
+                VerticalAlignment="Stretch"
+                DoubleTapped="OnTrackDoubleTapped"
+                ContextMenu="{StaticResource TrackColumnsMenu}"
+                AutoGenerateColumns="False"
+                IsReadOnly="True"
+                CanUserResizeColumns="True"
+                CanUserReorderColumns="True"
+                GridLinesVisibility="None"
+                HeadersVisibility="Column"
+                SelectionMode="Single"
+                RowHeight="34"
+                ColumnHeaderHeight="34"
+                Loaded="OnTracksGridLoaded">
+        <DataGrid.Columns>
+          <DataGridTemplateColumn Header="Title" Width="Auto" MinWidth="140" MaxWidth="360">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Artist" Width="Auto" MinWidth="110" MaxWidth="220">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Artist}" Classes="muted" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Album" Width="Auto" MinWidth="120" MaxWidth="240">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Album}" Classes="muted" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="File" Width="Auto" MinWidth="150" MaxWidth="260">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding FileName}" Classes="muted" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="#" Width="70">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding TrackNumber}" Classes="muted" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Disc" Width="70">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding DiscNumber}" Classes="muted" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Year" Width="70">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Year}" Classes="muted" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Genre" Width="Auto" MinWidth="100" MaxWidth="200">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Genre}" Classes="muted" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Bitrate" Width="90">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Bitrate}" Classes="muted" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Time" Width="80">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Length}" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+          <DataGridTemplateColumn Header="Format" Width="90">
+            <DataGridTemplateColumn.CellTemplate>
+              <DataTemplate>
+                <TextBlock Text="{Binding Format}" Classes="muted" />
+              </DataTemplate>
+            </DataGridTemplateColumn.CellTemplate>
+          </DataGridTemplateColumn>
+        </DataGrid.Columns>
+      </DataGrid>
     </Grid>
   </Border>
 </UserControl>
