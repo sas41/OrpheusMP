@@ -1,16 +1,16 @@
 namespace Orpheus.Core.Playlist;
 
 /// <summary>
-/// Defines how a playlist repeats after reaching the end.
+/// Defines repeat behavior during playback.
 /// </summary>
 public enum RepeatMode
 {
-    /// <summary>Stop after the last track.</summary>
-    None,
+    /// <summary>Repeat Off — stop after the last track.</summary>
+    Off,
 
-    /// <summary>Repeat the entire playlist.</summary>
-    All,
+    /// <summary>Repeat One — repeat the current track indefinitely.</summary>
+    One,
 
-    /// <summary>Repeat the current track.</summary>
-    One
+    /// <summary>Repeat Playlist — loop back to the start after the last track.</summary>
+    All
 }

@@ -2,4 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Orpheus.Core/Orpheus.Core.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Orpheus.Core.Tests/Orpheus.Core.Tests.csproj" />
+  </Folder>
 </Solution>
