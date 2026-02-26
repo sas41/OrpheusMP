@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "dgSpecHash": "3Ex2O60PLJE=",
+  "success": true,
+  "projectFilePath": "/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/Orpheus.Core.csproj",
+  "expectedPackageFiles": [
+    "/home/sas/.nuget/packages/libvlcsharp/3.9.6/libvlcsharp.3.9.6.nupkg.sha512",
+    "/home/sas/.nuget/packages/taglibsharp/2.3.0/taglibsharp.2.3.0.nupkg.sha512",
+    "/home/sas/.nuget/packages/microsoft.aspnetcore.app.ref/10.0.3/microsoft.aspnetcore.app.ref.10.0.3.nupkg.sha512"
+  ],
+  "logs": []
+}

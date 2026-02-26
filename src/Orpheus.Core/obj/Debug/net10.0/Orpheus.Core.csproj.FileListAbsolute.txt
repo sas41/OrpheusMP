@@ -1,0 +1,12 @@
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/bin/Debug/net10.0/Orpheus.Core.deps.json
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/bin/Debug/net10.0/Orpheus.Core.dll
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/bin/Debug/net10.0/Orpheus.Core.pdb
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/obj/Debug/net10.0/Orpheus.Core.csproj.AssemblyReference.cache
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/obj/Debug/net10.0/Orpheus.Core.GeneratedMSBuildEditorConfig.editorconfig
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/obj/Debug/net10.0/Orpheus.Core.AssemblyInfoInputs.cache
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/obj/Debug/net10.0/Orpheus.Core.AssemblyInfo.cs
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/obj/Debug/net10.0/Orpheus.Core.csproj.CoreCompileInputs.cache
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/obj/Debug/net10.0/Orpheus.Core.dll
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/obj/Debug/net10.0/refint/Orpheus.Core.dll
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/obj/Debug/net10.0/Orpheus.Core.pdb
+/mnt/data/Projects/Software/OrpheusMP/src/Orpheus.Core/obj/Debug/net10.0/ref/Orpheus.Core.dll
