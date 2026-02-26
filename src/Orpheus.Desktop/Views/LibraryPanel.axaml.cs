@@ -1,5 +1,6 @@
 using Avalonia.Controls;
-using Avalonia.VisualTree;
+using Avalonia.Platform.Storage;
+using System.Linq;
 
 namespace Orpheus.Desktop.Views;
 
@@ -17,16 +18,19 @@ public partial class LibraryPanel : UserControl
         if (ViewModel is null)
             return;
 
-        var dialog = new OpenFolderDialog
-        {
-            Title = "Add music folder"
-        };
-
-        var window = this.GetVisualRoot() as Window;
-        if (window is null)
+        var topLevel = TopLevel.GetTopLevel(this);
+        var storage = topLevel?.StorageProvider;
+        if (storage is null)
             return;
 
-        var folder = await dialog.ShowAsync(window);
+        var result = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "Add music folder",
+            AllowMultiple = false
+        });
+
+        var picked = result.FirstOrDefault();
+        var folder = picked?.Path?.LocalPath ?? picked?.Path?.ToString();
         if (!string.IsNullOrWhiteSpace(folder))
         {
             await ViewModel.AddLibraryFolderAsync(folder);
