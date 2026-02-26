@@ -12,9 +12,10 @@ namespace Orpheus.Core.Playback;
 /// - Shuffle Playlist: physically reorders the playlist items. Use
 ///   <see cref="Playlist.Playlist.ShuffleItems"/> for that.
 /// </summary>
-public sealed class PlayerController : IDisposable
+public sealed class PlayerController : IAsyncDisposable
 {
     private readonly IPlayer _player;
+    private readonly SemaphoreSlim _navigationLock = new(1, 1);
     private readonly Random _rng = new();
     private readonly List<int> _shuffleOrder = [];
     private bool _shufflePlay;
@@ -160,18 +161,27 @@ public sealed class PlayerController : IDisposable
 
     /// <summary>
     /// Advance to and play the next track, respecting shuffle play and repeat mode.
+    /// Uses a lock to prevent concurrent navigation (e.g. user click + auto-advance race).
     /// </summary>
     public async Task NextAsync(CancellationToken cancellationToken = default)
     {
-        var nextIndex = GetNextIndex();
-        if (nextIndex is not null)
+        await _navigationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            Playlist.CurrentIndex = nextIndex.Value;
-            await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken).ConfigureAwait(false);
+            var nextIndex = GetNextIndex();
+            if (nextIndex is not null)
+            {
+                Playlist.CurrentIndex = nextIndex.Value;
+                await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await _player.StopAsync().ConfigureAwait(false);
+            }
         }
-        else
+        finally
         {
-            _player.Stop();
+            _navigationLock.Release();
         }
     }
 
@@ -181,28 +191,36 @@ public sealed class PlayerController : IDisposable
     /// </summary>
     public async Task PreviousAsync(CancellationToken cancellationToken = default)
     {
-        // If we're more than 3 seconds in, restart the current track.
-        if (_player.Position > TimeSpan.FromSeconds(3))
+        await _navigationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            _player.Seek(TimeSpan.Zero);
-            return;
-        }
+            // If we're more than 3 seconds in, restart the current track.
+            if (_player.Position > TimeSpan.FromSeconds(3))
+            {
+                await _player.SeekAsync(TimeSpan.Zero).ConfigureAwait(false);
+                return;
+            }
 
-        var prevIndex = GetPreviousIndex();
-        if (prevIndex is not null)
-        {
-            Playlist.CurrentIndex = prevIndex.Value;
-            await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken).ConfigureAwait(false);
+            var prevIndex = GetPreviousIndex();
+            if (prevIndex is not null)
+            {
+                Playlist.CurrentIndex = prevIndex.Value;
+                await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await _player.SeekAsync(TimeSpan.Zero).ConfigureAwait(false);
+            }
         }
-        else
+        finally
         {
-            _player.Seek(TimeSpan.Zero);
+            _navigationLock.Release();
         }
     }
 
-    public void Pause() => _player.Pause();
-    public void Resume() => _player.Resume();
-    public void Stop() => _player.Stop();
+    public Task PauseAsync() => _player.PauseAsync();
+    public Task ResumeAsync() => _player.ResumeAsync();
+    public Task StopAsync() => _player.StopAsync();
 
     /// <summary>
     /// Toggle between play and pause.
@@ -212,10 +230,10 @@ public sealed class PlayerController : IDisposable
         switch (_player.State)
         {
             case PlaybackState.Playing:
-                _player.Pause();
+                await _player.PauseAsync().ConfigureAwait(false);
                 break;
             case PlaybackState.Paused:
-                _player.Resume();
+                await _player.ResumeAsync().ConfigureAwait(false);
                 break;
             case PlaybackState.Stopped:
                 await PlayAsync(cancellationToken).ConfigureAwait(false);
@@ -389,12 +407,13 @@ public sealed class PlayerController : IDisposable
         }
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
 
         _player.MediaEnded -= OnMediaEnded;
-        _player.Dispose();
+        await _player.DisposeAsync().ConfigureAwait(false);
+        _navigationLock.Dispose();
     }
 }

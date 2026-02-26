@@ -5,7 +5,7 @@ using Orpheus.Core.Playlist;
 
 namespace Orpheus.Core.Tests.Playback;
 
-public class PlayerControllerTests : IDisposable
+public class PlayerControllerTests : IAsyncLifetime
 {
     private readonly IPlayer _mockPlayer;
     private readonly PlayerController _controller;
@@ -17,9 +17,11 @@ public class PlayerControllerTests : IDisposable
         _controller = new PlayerController(_mockPlayer);
     }
 
-    public void Dispose()
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync()
     {
-        _controller.Dispose();
+        await _controller.DisposeAsync();
     }
 
     private static PlaylistItem MakeItem(string name) =>
@@ -78,24 +80,24 @@ public class PlayerControllerTests : IDisposable
     }
 
     [Fact]
-    public void Pause_DelegatesToPlayer()
+    public async Task PauseAsync_DelegatesToPlayer()
     {
-        _controller.Pause();
-        _mockPlayer.Received(1).Pause();
+        await _controller.PauseAsync();
+        await _mockPlayer.Received(1).PauseAsync();
     }
 
     [Fact]
-    public void Resume_DelegatesToPlayer()
+    public async Task ResumeAsync_DelegatesToPlayer()
     {
-        _controller.Resume();
-        _mockPlayer.Received(1).Resume();
+        await _controller.ResumeAsync();
+        await _mockPlayer.Received(1).ResumeAsync();
     }
 
     [Fact]
-    public void Stop_DelegatesToPlayer()
+    public async Task StopAsync_DelegatesToPlayer()
     {
-        _controller.Stop();
-        _mockPlayer.Received(1).Stop();
+        await _controller.StopAsync();
+        await _mockPlayer.Received(1).StopAsync();
     }
 
     [Fact]
@@ -103,7 +105,7 @@ public class PlayerControllerTests : IDisposable
     {
         _mockPlayer.State.Returns(PlaybackState.Playing);
         await _controller.TogglePlayPauseAsync();
-        _mockPlayer.Received(1).Pause();
+        await _mockPlayer.Received(1).PauseAsync();
     }
 
     [Fact]
@@ -111,7 +113,7 @@ public class PlayerControllerTests : IDisposable
     {
         _mockPlayer.State.Returns(PlaybackState.Paused);
         await _controller.TogglePlayPauseAsync();
-        _mockPlayer.Received(1).Resume();
+        await _mockPlayer.Received(1).ResumeAsync();
     }
 
     [Fact]
@@ -133,10 +135,10 @@ public class PlayerControllerTests : IDisposable
     }
 
     [Fact]
-    public void Dispose_UnsubscribesFromPlayerEvents()
+    public async Task DisposeAsync_UnsubscribesFromPlayerEvents()
     {
-        _controller.Dispose();
-        _mockPlayer.Received(1).Dispose();
+        await _controller.DisposeAsync();
+        await _mockPlayer.Received(1).DisposeAsync();
     }
 
     // ── Repeat Off ────────────────────────────────────────────────────
@@ -163,7 +165,7 @@ public class PlayerControllerTests : IDisposable
 
         await _controller.NextAsync();
 
-        _mockPlayer.Received().Stop();
+        await _mockPlayer.Received().StopAsync();
     }
 
     [Fact]
@@ -175,7 +177,7 @@ public class PlayerControllerTests : IDisposable
 
         await _controller.PreviousAsync();
 
-        _mockPlayer.Received(1).Seek(TimeSpan.Zero);
+        await _mockPlayer.Received(1).SeekAsync(TimeSpan.Zero);
         Assert.Equal(1, _controller.Playlist.CurrentIndex);
     }
 
@@ -200,7 +202,7 @@ public class PlayerControllerTests : IDisposable
 
         await _controller.PreviousAsync();
 
-        _mockPlayer.Received().Seek(TimeSpan.Zero);
+        await _mockPlayer.Received().SeekAsync(TimeSpan.Zero);
     }
 
     // ── Repeat One ────────────────────────────────────────────────────
@@ -360,7 +362,7 @@ public class PlayerControllerTests : IDisposable
         await _controller.NextAsync();
         await _controller.NextAsync(); // Should stop.
 
-        _mockPlayer.Received().Stop();
+        await _mockPlayer.Received().StopAsync();
     }
 
     [Fact]
@@ -377,7 +379,7 @@ public class PlayerControllerTests : IDisposable
         // Should reshuffle and continue, not stop.
         await _controller.NextAsync();
 
-        _mockPlayer.DidNotReceive().Stop();
+        await _mockPlayer.DidNotReceive().StopAsync();
     }
 
     [Fact]

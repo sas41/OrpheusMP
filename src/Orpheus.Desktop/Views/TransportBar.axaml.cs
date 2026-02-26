@@ -35,12 +35,12 @@ public partial class TransportBar : UserControl
         await ViewModel.PlayNextAsync();
     }
 
-    public void OnStopClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    public async void OnStopClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         if (ViewModel is null)
             return;
 
-        _ = ViewModel.StopAsync();
+        await ViewModel.StopAsync();
     }
 
     public void OnShuffleClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

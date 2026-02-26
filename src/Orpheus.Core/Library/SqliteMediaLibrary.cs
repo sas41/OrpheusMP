@@ -303,6 +303,64 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         return track;
     }
 
+    public async Task BatchUpsertTracksAsync(
+        IReadOnlyList<LibraryTrack> tracks, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(tracks);
+        if (tracks.Count == 0) return;
+
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(cancellationToken);
+
+        await using var transaction = await conn.BeginTransactionAsync(cancellationToken);
+
+        foreach (var track in tracks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await using var cmd = conn.CreateCommand();
+            cmd.Transaction = (SqliteTransaction)transaction;
+            cmd.CommandText = """
+                INSERT INTO tracks (
+                    file_path, file_size, last_modified_ticks, date_added_ticks,
+                    title, artist, album, album_artist,
+                    track_number, track_count, disc_number, year, genre,
+                    duration_ms, bitrate, sample_rate, channels, codec
+                ) VALUES (
+                    @file_path, @file_size, @last_modified_ticks, @date_added_ticks,
+                    @title, @artist, @album, @album_artist,
+                    @track_number, @track_count, @disc_number, @year, @genre,
+                    @duration_ms, @bitrate, @sample_rate, @channels, @codec
+                )
+                ON CONFLICT(file_path) DO UPDATE SET
+                    file_size = excluded.file_size,
+                    last_modified_ticks = excluded.last_modified_ticks,
+                    title = excluded.title,
+                    artist = excluded.artist,
+                    album = excluded.album,
+                    album_artist = excluded.album_artist,
+                    track_number = excluded.track_number,
+                    track_count = excluded.track_count,
+                    disc_number = excluded.disc_number,
+                    year = excluded.year,
+                    genre = excluded.genre,
+                    duration_ms = excluded.duration_ms,
+                    bitrate = excluded.bitrate,
+                    sample_rate = excluded.sample_rate,
+                    channels = excluded.channels,
+                    codec = excluded.codec
+                RETURNING id
+                """;
+
+            AddTrackParameters(cmd, track);
+
+            var id = await cmd.ExecuteScalarAsync(cancellationToken);
+            track.Id = Convert.ToInt64(id);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
     public async Task RemoveTrackAsync(long id, CancellationToken cancellationToken = default)
     {
         await using var conn = OpenConnection();
@@ -317,10 +375,17 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
     public async Task<int> RemoveMissingTracksAsync(CancellationToken cancellationToken = default)
     {
         var allTracks = await GetAllTracksAsync(cancellationToken: cancellationToken);
-        var missingIds = allTracks
-            .Where(t => !File.Exists(t.FilePath))
-            .Select(t => t.Id)
-            .ToList();
+
+        // Check file existence in parallel to avoid serial I/O stalls
+        // (especially on network drives where each File.Exists can block).
+        var missingIds = await Task.Run(() =>
+            allTracks
+                .AsParallel()
+                .WithCancellation(cancellationToken)
+                .Where(t => !File.Exists(t.FilePath))
+                .Select(t => t.Id)
+                .ToList(),
+            cancellationToken);
 
         if (missingIds.Count == 0) return 0;
 

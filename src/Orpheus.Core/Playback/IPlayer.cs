@@ -6,7 +6,7 @@ namespace Orpheus.Core.Playback;
 /// Core audio player abstraction. Backend-agnostic interface for media playback.
 /// Implementations wrap specific engines (LibVLC, FFmpeg, etc.).
 /// </summary>
-public interface IPlayer : IDisposable
+public interface IPlayer : IAsyncDisposable
 {
     /// <summary>
     /// Current playback state.
@@ -46,22 +46,22 @@ public interface IPlayer : IDisposable
     /// <summary>
     /// Pause playback.
     /// </summary>
-    void Pause();
+    Task PauseAsync();
 
     /// <summary>
     /// Resume playback from a paused state.
     /// </summary>
-    void Resume();
+    Task ResumeAsync();
 
     /// <summary>
     /// Stop playback and unload the current media.
     /// </summary>
-    void Stop();
+    Task StopAsync();
 
     /// <summary>
     /// Seek to a specific position in the media.
     /// </summary>
-    void Seek(TimeSpan position);
+    Task SeekAsync(TimeSpan position);
 
     /// <summary>
     /// Fired when playback state changes.

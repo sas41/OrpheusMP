@@ -44,6 +44,18 @@ public sealed class FolderScanner
     }
 
     /// <summary>
+    /// Maximum number of concurrent metadata reads.
+    /// Bounded to avoid overwhelming disk I/O or starving other work.
+    /// </summary>
+    private const int MaxParallelReads = 4;
+
+    /// <summary>
+    /// Number of tracks to accumulate before flushing to the database
+    /// in a single batched transaction.
+    /// </summary>
+    private const int BatchSize = 50;
+
+    /// <summary>
     /// Scan specific folders.
     /// </summary>
     public async Task ScanFoldersAsync(
@@ -70,85 +82,122 @@ public sealed class FolderScanner
         var updatedTracks = 0;
         var errors = 0;
 
-        // Phase 2: Process each file.
-        foreach (var filePath in audioFiles)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
+        // Phase 2: Process files with parallel metadata reads and batched DB writes.
+        var pendingUpserts = new List<LibraryTrack>();
 
-            try
+        await Parallel.ForEachAsync(
+            audioFiles,
+            new ParallelOptions
             {
-                var fileInfo = new FileInfo(filePath);
-                if (!fileInfo.Exists) continue;
+                MaxDegreeOfParallelism = MaxParallelReads,
+                CancellationToken = cancellationToken
+            },
+            async (filePath, ct) =>
+            {
+                LibraryTrack? track = null;
+                var isNew = false;
 
-                var existing = await _library.GetTrackByPathAsync(filePath, cancellationToken);
-
-                // Skip if file hasn't changed.
-                if (existing is not null &&
-                    existing.FileSize == fileInfo.Length &&
-                    existing.LastModifiedTicks == fileInfo.LastWriteTimeUtc.Ticks)
+                try
                 {
-                    processed++;
-                    continue;
+                    var fileInfo = new FileInfo(filePath);
+                    if (!fileInfo.Exists) return;
+
+                    var existing = await _library.GetTrackByPathAsync(filePath, ct);
+
+                    // Skip if file hasn't changed.
+                    if (existing is not null &&
+                        existing.FileSize == fileInfo.Length &&
+                        existing.LastModifiedTicks == fileInfo.LastWriteTimeUtc.Ticks)
+                    {
+                        Interlocked.Increment(ref processed);
+                        return;
+                    }
+
+                    var metadata = _metadataReader.ReadFromFile(filePath);
+
+                    track = existing ?? new LibraryTrack
+                    {
+                        FilePath = fileInfo.FullName,
+                        DateAddedTicks = DateTimeOffset.UtcNow.Ticks
+                    };
+
+                    isNew = existing is null;
+
+                    track.FilePath = fileInfo.FullName;
+                    track.FileSize = fileInfo.Length;
+                    track.LastModifiedTicks = fileInfo.LastWriteTimeUtc.Ticks;
+                    track.Title = metadata.Title;
+                    track.Artist = metadata.Artist;
+                    track.Album = metadata.Album;
+                    track.AlbumArtist = metadata.AlbumArtist;
+                    track.TrackNumber = metadata.TrackNumber;
+                    track.TrackCount = metadata.TrackCount;
+                    track.DiscNumber = metadata.DiscNumber;
+                    track.Year = metadata.Year;
+                    track.Genre = metadata.Genre;
+                    track.DurationMs = metadata.Duration.HasValue
+                        ? (long)metadata.Duration.Value.TotalMilliseconds
+                        : null;
+                    track.Bitrate = metadata.Bitrate;
+                    track.SampleRate = metadata.SampleRate;
+                    track.Channels = metadata.Channels;
+                    track.Codec = metadata.Codec;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    Interlocked.Increment(ref errors);
                 }
 
-                var metadata = _metadataReader.ReadFromFile(filePath);
+                Interlocked.Increment(ref processed);
 
-                var track = existing ?? new LibraryTrack
+                if (track is not null)
                 {
-                    FilePath = fileInfo.FullName,
-                    DateAddedTicks = DateTimeOffset.UtcNow.Ticks
-                };
+                    if (isNew) Interlocked.Increment(ref newTracks);
+                    else Interlocked.Increment(ref updatedTracks);
 
-                track.FilePath = fileInfo.FullName;
-                track.FileSize = fileInfo.Length;
-                track.LastModifiedTicks = fileInfo.LastWriteTimeUtc.Ticks;
-                track.Title = metadata.Title;
-                track.Artist = metadata.Artist;
-                track.Album = metadata.Album;
-                track.AlbumArtist = metadata.AlbumArtist;
-                track.TrackNumber = metadata.TrackNumber;
-                track.TrackCount = metadata.TrackCount;
-                track.DiscNumber = metadata.DiscNumber;
-                track.Year = metadata.Year;
-                track.Genre = metadata.Genre;
-                track.DurationMs = metadata.Duration.HasValue
-                    ? (long)metadata.Duration.Value.TotalMilliseconds
-                    : null;
-                track.Bitrate = metadata.Bitrate;
-                track.SampleRate = metadata.SampleRate;
-                track.Channels = metadata.Channels;
-                track.Codec = metadata.Codec;
+                    // Collect tracks for batch upsert. Flush when batch is full.
+                    List<LibraryTrack>? batchToFlush = null;
+                    lock (pendingUpserts)
+                    {
+                        pendingUpserts.Add(track);
+                        if (pendingUpserts.Count >= BatchSize)
+                        {
+                            batchToFlush = [.. pendingUpserts];
+                            pendingUpserts.Clear();
+                        }
+                    }
 
-                await _library.UpsertTrackAsync(track, cancellationToken);
+                    if (batchToFlush is not null)
+                    {
+                        await _library.BatchUpsertTracksAsync(batchToFlush, ct);
+                    }
+                }
 
-                if (existing is null) newTracks++;
-                else updatedTracks++;
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch
-            {
-                errors++;
-            }
-
-            processed++;
-
-            // Report progress every 10 files or on the last file.
-            if (processed % 10 == 0 || processed == totalFiles)
-            {
-                Progress?.Invoke(this, new LibraryScanProgress
+                // Report progress every 10 files or on the last file.
+                var currentProcessed = Volatile.Read(ref processed);
+                if (currentProcessed % 10 == 0 || currentProcessed == totalFiles)
                 {
-                    TotalFiles = totalFiles,
-                    ProcessedFiles = processed,
-                    NewTracks = newTracks,
-                    UpdatedTracks = updatedTracks,
-                    ErrorCount = errors,
-                    CurrentFile = filePath,
-                    IsComplete = processed == totalFiles
-                });
-            }
+                    Progress?.Invoke(this, new LibraryScanProgress
+                    {
+                        TotalFiles = totalFiles,
+                        ProcessedFiles = currentProcessed,
+                        NewTracks = Volatile.Read(ref newTracks),
+                        UpdatedTracks = Volatile.Read(ref updatedTracks),
+                        ErrorCount = Volatile.Read(ref errors),
+                        CurrentFile = filePath,
+                        IsComplete = currentProcessed == totalFiles
+                    });
+                }
+            });
+
+        // Flush any remaining tracks.
+        if (pendingUpserts.Count > 0)
+        {
+            await _library.BatchUpsertTracksAsync(pendingUpserts, cancellationToken);
         }
 
         // Phase 3: Remove tracks whose files no longer exist.

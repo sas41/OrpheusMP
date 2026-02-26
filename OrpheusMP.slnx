@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Orpheus.Core/Orpheus.Core.csproj" />
+    <Project Path="src/Orpheus.Desktop/Orpheus.Desktop.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Orpheus.Core.Tests/Orpheus.Core.Tests.csproj" />

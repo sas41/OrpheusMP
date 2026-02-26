@@ -80,6 +80,11 @@ public interface IMediaLibrary : IDisposable
     Task<LibraryTrack> UpsertTrackAsync(LibraryTrack track, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Add or update multiple tracks in a single transaction for bulk performance.
+    /// </summary>
+    Task BatchUpsertTracksAsync(IReadOnlyList<LibraryTrack> tracks, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Remove a track from the library by ID.
     /// </summary>
     Task RemoveTrackAsync(long id, CancellationToken cancellationToken = default);

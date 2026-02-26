@@ -73,7 +73,7 @@ public partial class MainWindow : Window
 
 }
 
-public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
+public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly IMediaLibrary _library;
     private readonly FolderScanner _scanner;
@@ -451,23 +451,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task TogglePlayPauseAsync()
     {
-        await _controller.TogglePlayPauseAsync();
+        await _controller.TogglePlayPauseAsync().ConfigureAwait(false);
     }
 
     public async Task PlayPreviousAsync()
     {
-        await _controller.PreviousAsync();
+        await _controller.PreviousAsync().ConfigureAwait(false);
     }
 
     public async Task PlayNextAsync()
     {
-        await _controller.NextAsync();
+        await _controller.NextAsync().ConfigureAwait(false);
     }
 
     public async Task StopAsync()
     {
-        _controller.Stop();
-        await Task.CompletedTask;
+        await _controller.StopAsync().ConfigureAwait(false);
     }
 
     public void ToggleShuffle()
@@ -502,7 +501,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (selectedIndex < 0)
             selectedIndex = 0;
 
-        await _controller.PlayAtIndexAsync(selectedIndex);
+        await _controller.PlayAtIndexAsync(selectedIndex).ConfigureAwait(false);
     }
 
     public async Task SelectFolderAsync(string folderPath)
@@ -540,7 +539,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _controller.Playlist.Clear();
         _controller.Playlist.AddRange(items);
         await Dispatcher.UIThread.InvokeAsync(UpdateQueueFromPlaylist);
-        await _controller.PlayAtIndexAsync(0);
+        await _controller.PlayAtIndexAsync(0).ConfigureAwait(false);
     }
 
     private static bool IsUnderFolder(string filePath, string folderPath)
@@ -599,14 +598,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         return true;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _scanner.Progress -= OnScanProgress;
         _controller.Playlist.Changed -= OnPlaylistChanged;
         _controller.Playlist.CurrentIndexChanged -= OnPlaylistIndexChanged;
         _player.PositionChanged -= OnPositionChanged;
         _player.StateChanged -= OnStateChanged;
-        _controller.Dispose();
+        await _controller.DisposeAsync().ConfigureAwait(false);
         _library.Dispose();
     }
 }
