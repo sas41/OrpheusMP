@@ -83,9 +83,11 @@
   <data name="Quit" xml:space="preserve"><value>退出</value></data>
   <data name="Session" xml:space="preserve"><value>会话</value></data>
   <data name="OfflineLibrary" xml:space="preserve"><value>离线音乐库</value></data>
+  <data name="SessionRadio" xml:space="preserve"><value>网络电台</value></data>
+  <data name="SessionStream" xml:space="preserve"><value>网络流</value></data>
   <data name="Equalizer" xml:space="preserve"><value>均衡器</value></data>
   <data name="Settings" xml:space="preserve"><value>设置</value></data>
-  <data name="SearchWatermark" xml:space="preserve"><value>搜索曲目、艺术家或播放列表</value></data>
+  <data name="SearchWatermark" xml:space="preserve"><value>搜索音乐库或粘贴流媒体URL</value></data>
   <data name="Stop" xml:space="preserve"><value>停止</value></data>
   <data name="Previous" xml:space="preserve"><value>上一首</value></data>
   <data name="PlayPause" xml:space="preserve"><value>播放 / 暂停</value></data>

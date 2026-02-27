@@ -345,6 +345,24 @@ namespace Orpheus.Desktop.Lang {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Internet Radio.
+        /// </summary>
+        public static string SessionRadio {
+            get {
+                return ResourceManager.GetString("SessionRadio", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Network Stream.
+        /// </summary>
+        public static string SessionStream {
+            get {
+                return ResourceManager.GetString("SessionStream", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Equalizer.
         /// </summary>
         public static string Equalizer {

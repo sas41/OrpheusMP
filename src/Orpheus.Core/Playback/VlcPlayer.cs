@@ -1,5 +1,7 @@
 using System.Diagnostics;
+using System.Threading.Channels;
 using LibVLCSharp.Shared;
+using LibVLCSharp.Shared.Structures;
 using Orpheus.Core.Effects;
 using Orpheus.Core.Media;
 
@@ -11,33 +13,37 @@ namespace Orpheus.Core.Playback;
 /// </summary>
 public sealed class VlcPlayer : IPlayer
 {
+    private int _auido_device_countdown = 0;
+    private readonly int _auido_device_countdown_reset = 1;
     private readonly LibVLC _libVlc;
     private readonly MediaPlayer _mediaPlayer;
     private readonly SemaphoreSlim _playbackLock = new(1, 1);
     private PlaybackState _state = PlaybackState.Stopped;
     private LoadState _loadState = LoadState.Complete;
     private MediaSource? _currentSource;
-    private bool _isMuted;
+    private bool targetMute = false;
+    private int targetVolume = 50;
+    private string? _targetAudioDevice;
     private bool _disposed;
-
-    public VlcPlayer()
-    {
-        LibVLCSharp.Shared.Core.Initialize();
-        _libVlc = new LibVLC(enableDebugLogs: false);
-        _mediaPlayer = new MediaPlayer(_libVlc);
-
-        AttachEvents();
-    }
+    private readonly Timer? _positionTimer;
+    private TimeSpan _latestPosition;
+    private readonly Channel<Action> _eventChannel;
+    private readonly CancellationTokenSource _eventCts;
 
     /// <summary>
     /// Create a VLC player with custom LibVLC arguments.
     /// Useful for passing options like --no-video, --network-caching, etc.
     /// </summary>
-    public VlcPlayer(params string[] libVlcArgs)
+    public VlcPlayer(string? initialAudioDevice, params string[] parameters)
     {
         LibVLCSharp.Shared.Core.Initialize();
-        _libVlc = new LibVLC(libVlcArgs);
+        _libVlc = new LibVLC(parameters);
         _mediaPlayer = new MediaPlayer(_libVlc);
+        SetAudioDevice(initialAudioDevice);
+        _positionTimer = new Timer(OnPositionTimerTick, null, Timeout.Infinite, Timeout.Infinite);
+        _eventChannel = Channel.CreateUnbounded<Action>(new UnboundedChannelOptions { SingleReader = true });
+        _eventCts = new CancellationTokenSource();
+        _ = Task.Run(() => ProcessEventsAsync(_eventCts.Token));
 
         AttachEvents();
     }
@@ -68,19 +74,26 @@ public sealed class VlcPlayer : IPlayer
     public int Volume
     {
         get => _mediaPlayer.Volume;
-        set => _mediaPlayer.Volume = Math.Clamp(value, 0, 100);
+        set
+        {
+            targetVolume = Math.Clamp(value, 0, 100);
+            _mediaPlayer.Volume = targetVolume;
+        }
     }
 
     public bool IsMuted
     {
-        get => _isMuted;
+        get => _mediaPlayer.AudioTrack < 0;
         set
         {
-            _isMuted = value;
+            targetMute = value;
             if (value)
                 _mediaPlayer.SetAudioTrack(-1);
             else
+            {
                 _mediaPlayer.SetAudioTrack(0);
+                _mediaPlayer.Volume = targetVolume;
+            }
         }
     }
 
@@ -88,25 +101,13 @@ public sealed class VlcPlayer : IPlayer
 
     public async Task PlayAsync(MediaSource source, CancellationToken cancellationToken = default)
     {
-        Debug.WriteLine($"[VlcPlayer.PlayAsync] Called — uri={source?.Uri}, state={_state}, thread={Environment.CurrentManagedThreadId}");
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(source);
 
-        Debug.WriteLine("[VlcPlayer.PlayAsync] Waiting for _playbackLock...");
         await _playbackLock.WaitAsync(cancellationToken).ConfigureAwait(false);
-        Debug.WriteLine("[VlcPlayer.PlayAsync] Acquired _playbackLock");
         try
         {
-            // Capture mute/volume state before stopping — LibVLC resets
-            // these when new media starts.  Use our own _isMuted backing
-            // field rather than _mediaPlayer.Mute, which LibVLC may have
-            // already cleared when the previous media ended.
-            var savedMute = _isMuted;
-            var savedVolume = _mediaPlayer.Volume;
-
-            Debug.WriteLine("[VlcPlayer.PlayAsync] Calling StopInternalAsync...");
             await StopInternalAsync().ConfigureAwait(false);
-            Debug.WriteLine($"[VlcPlayer.PlayAsync] StopInternalAsync completed, state={_state}");
 
             _currentSource = source;
 
@@ -116,14 +117,14 @@ public sealed class VlcPlayer : IPlayer
             if (source.Type != MediaSourceType.LocalFile)
             {
                 media.AddOption(":network-caching=3000");
-                Debug.WriteLine("[VlcPlayer.PlayAsync] Added network-caching option");
             }
 
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             void OnPlaying(object? sender, EventArgs e)
             {
-                Debug.WriteLine($"[VlcPlayer.PlayAsync] OnPlaying fired, thread={Environment.CurrentManagedThreadId}");
+                if (targetMute)
+                    _mediaPlayer.SetAudioTrack(-1);
                 _mediaPlayer.Playing -= OnPlaying;
                 _mediaPlayer.EncounteredError -= OnError;
                 tcs.TrySetResult(true);
@@ -131,30 +132,47 @@ public sealed class VlcPlayer : IPlayer
 
             void OnError(object? sender, EventArgs e)
             {
-                Debug.WriteLine($"[VlcPlayer.PlayAsync] OnError fired, thread={Environment.CurrentManagedThreadId}");
                 _mediaPlayer.Playing -= OnPlaying;
                 _mediaPlayer.EncounteredError -= OnError;
                 tcs.TrySetException(new InvalidOperationException(
                     $"Failed to play media: {source.Uri}"));
             }
 
+            void InitAudioDeviceChange(object? sender, EventArgs e)
+            {
+                // I have absolutely no clue, how you can make a media playback library
+                // And somehow make a play method and it's callback nearly useless,
+                // But nothing you do immedaitely after a play registers on a mediaplayer
+                // object, pause? no, Change output device? no, are you stupid?
+                // The only way, that's NOT having a timeout, that consistently and
+                // correctly sets the output device is to subscribe to PositionChanged
+                // and unsubscribe sometime afterwards.
+                // Why make something so broken???
+                _mediaPlayer.SetOutputDevice(_targetAudioDevice);
+                if(_auido_device_countdown == 0)
+                {
+                    _mediaPlayer.PositionChanged -= InitAudioDeviceChange;
+                    return;
+                }
+                _auido_device_countdown--;
+            }
+
             _mediaPlayer.Playing += OnPlaying;
             _mediaPlayer.EncounteredError += OnError;
+            _auido_device_countdown = _auido_device_countdown_reset;
+            _mediaPlayer.PositionChanged += InitAudioDeviceChange;
 
-            Debug.WriteLine($"[VlcPlayer.PlayAsync] Calling _mediaPlayer.Play — uri={source.Uri}");
             await Task.Run(() => {
+                    if (!string.IsNullOrEmpty(_targetAudioDevice))
+                    {
+                        media.AddOption($"--audio-device={_targetAudioDevice}");
+                    }
                     _mediaPlayer.Play(media);
                 });
-            Debug.WriteLine("[VlcPlayer.PlayAsync] _mediaPlayer.Play returned");
-
-            // Re-apply mute state after playback starts (LibVLC resets it).
-            if (savedMute)
-                _mediaPlayer.SetAudioTrack(-1);
 
             // Wait for playback to start or fail, with cancellation support.
             await using (cancellationToken.Register(() =>
             {
-                Debug.WriteLine("[VlcPlayer.PlayAsync] CancellationToken triggered — stopping player");
                 _mediaPlayer.Playing -= OnPlaying;
                 _mediaPlayer.EncounteredError -= OnError;
                 // Run Stop on thread pool to avoid deadlock from cancellation context.
@@ -162,81 +180,62 @@ public sealed class VlcPlayer : IPlayer
                 tcs.TrySetCanceled(cancellationToken);
             }))
             {
-                Debug.WriteLine("[VlcPlayer.PlayAsync] Awaiting TCS for Playing/Error...");
                 await tcs.Task.ConfigureAwait(false);
             }
 
-            Debug.WriteLine($"[VlcPlayer.PlayAsync] Playback started successfully, state={_state}, mute={savedMute}");
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[VlcPlayer.PlayAsync] Exception: {ex.GetType().Name}: {ex.Message}");
             throw;
         }
         finally
         {
             _playbackLock.Release();
-            Debug.WriteLine("[VlcPlayer.PlayAsync] Released _playbackLock");
         }
     }
 
     public Task PauseAsync()
     {
-        Debug.WriteLine($"[VlcPlayer.PauseAsync] Called — state={_state}, thread={Environment.CurrentManagedThreadId}");
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (_state == PlaybackState.Playing)
         {
-            Debug.WriteLine("[VlcPlayer.PauseAsync] State is Playing, dispatching _mediaPlayer.Pause to thread pool");
             return Task.Run(() =>
             {
-                Debug.WriteLine($"[VlcPlayer.PauseAsync] Executing _mediaPlayer.Pause on thread={Environment.CurrentManagedThreadId}");
                 _mediaPlayer.Pause();
-                Debug.WriteLine($"[VlcPlayer.PauseAsync] _mediaPlayer.Pause completed, state={_state}");
             });
         }
 
-        Debug.WriteLine($"[VlcPlayer.PauseAsync] Skipped — state is {_state}, not Playing");
         return Task.CompletedTask;
     }
 
     public Task ResumeAsync()
     {
-        Debug.WriteLine($"[VlcPlayer.ResumeAsync] Called — state={_state}, thread={Environment.CurrentManagedThreadId}");
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (_state == PlaybackState.Paused)
         {
-            Debug.WriteLine("[VlcPlayer.ResumeAsync] State is Paused, dispatching _mediaPlayer.Pause (toggle) to thread pool");
             return Task.Run(() =>
             {
-                Debug.WriteLine($"[VlcPlayer.ResumeAsync] Executing _mediaPlayer.Pause (toggle) on thread={Environment.CurrentManagedThreadId}");
                 _mediaPlayer.Pause(); // VLC toggles pause.
-                Debug.WriteLine($"[VlcPlayer.ResumeAsync] _mediaPlayer.Pause (toggle) completed, state={_state}");
             });
         }
 
-        Debug.WriteLine($"[VlcPlayer.ResumeAsync] Skipped — state is {_state}, not Paused");
         return Task.CompletedTask;
     }
 
     public async Task StopAsync()
     {
-        Debug.WriteLine($"[VlcPlayer.StopAsync] Called — state={_state}, thread={Environment.CurrentManagedThreadId}");
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        Debug.WriteLine("[VlcPlayer.StopAsync] Waiting for _playbackLock...");
         await _playbackLock.WaitAsync().ConfigureAwait(false);
-        Debug.WriteLine("[VlcPlayer.StopAsync] Acquired _playbackLock");
         try
         {
             await StopInternalAsync().ConfigureAwait(false);
-            Debug.WriteLine($"[VlcPlayer.StopAsync] StopInternalAsync completed, state={_state}");
         }
         finally
         {
             _playbackLock.Release();
-            Debug.WriteLine("[VlcPlayer.StopAsync] Released _playbackLock");
         }
     }
 
@@ -247,36 +246,28 @@ public sealed class VlcPlayer : IPlayer
     /// </summary>
     private Task StopInternalAsync()
     {
-        Debug.WriteLine($"[VlcPlayer.StopInternalAsync] Called — state={_state}, thread={Environment.CurrentManagedThreadId}");
 
         if (_state == PlaybackState.Stopped)
         {
-            Debug.WriteLine("[VlcPlayer.StopInternalAsync] Already stopped, returning");
             return Task.CompletedTask;
         }
 
-        Debug.WriteLine("[VlcPlayer.StopInternalAsync] Dispatching _mediaPlayer.Stop to thread pool");
         return Task.Run(() =>
         {
-            Debug.WriteLine($"[VlcPlayer.StopInternalAsync] Executing _mediaPlayer.Stop on thread={Environment.CurrentManagedThreadId}");
             _mediaPlayer.Stop();
             _currentSource = null;
-            Debug.WriteLine($"[VlcPlayer.StopInternalAsync] _mediaPlayer.Stop completed, state={_state}");
         });
     }
 
     public Task SeekAsync(TimeSpan position)
     {
-        Debug.WriteLine($"[VlcPlayer.SeekAsync] Called — position={position}, state={_state}, thread={Environment.CurrentManagedThreadId}");
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (_state == PlaybackState.Stopped)
         {
-            Debug.WriteLine($"[VlcPlayer.SeekAsync] Skipped — state is {_state}");
             return Task.CompletedTask;
         }
 
-        Debug.WriteLine($"[VlcPlayer.SeekAsync] Seeking to {position.TotalMilliseconds}ms");
         _mediaPlayer.SeekTo(position);
         return Task.CompletedTask;
     }
@@ -306,15 +297,14 @@ public sealed class VlcPlayer : IPlayer
     {
         var devices = new List<(string, string)> { ("", "System Default") };
 
-        // LibVLCSharp AudioOutputDevices needs an output module name.
-        // Enumerate the default output module's devices.
-        foreach (var output in _libVlc.AudioOutputs)
+        // Null for default module. Ex: Pulse in Linux
+        _mediaPlayer.SetOutputDevice(null);
+        var enumerated = _mediaPlayer.AudioOutputDeviceEnum;
+
+        foreach (var dev in enumerated)
         {
-            foreach (var dev in _libVlc.AudioOutputDevices(output.Name))
-            {
-                devices.Add((dev.DeviceIdentifier, $"{dev.Description} ({output.Name})"));
-            }
-            break; // Only enumerate the primary output module
+            if (!string.IsNullOrEmpty(dev.DeviceIdentifier))
+                devices.Add((dev.DeviceIdentifier, dev.Description));
         }
 
         return devices;
@@ -326,40 +316,8 @@ public sealed class VlcPlayer : IPlayer
     /// </summary>
     public void SetAudioDevice(string? deviceId)
     {
-        // Capture current volume/mute before switching — LibVLC resets
-        // volume when the audio output module changes.
-        var savedVolume = _mediaPlayer.Volume;
-        var savedMute = _isMuted;
-
-        if (string.IsNullOrEmpty(deviceId))
-        {
-            foreach (var output in _libVlc.AudioOutputs)
-            {
-                _mediaPlayer.SetAudioOutput(output.Name);
-                break;
-            }
-        }
-        else
-        {
-            foreach (var output in _libVlc.AudioOutputs)
-            {
-                foreach (var dev in _libVlc.AudioOutputDevices(output.Name))
-                {
-                    if (dev.DeviceIdentifier == deviceId)
-                    {
-                        _mediaPlayer.SetAudioOutput(output.Name);
-                        _mediaPlayer.SetOutputDevice(deviceId);
-                        goto done;
-                    }
-                }
-            }
-        }
-
-        done:
-        // Re-apply volume and mute after the output switch
-        _mediaPlayer.Volume = savedVolume;
-        if (savedMute)
-            _mediaPlayer.SetAudioTrack(-1);
+        _targetAudioDevice = string.IsNullOrEmpty(deviceId) ? null : deviceId;
+        _mediaPlayer.SetOutputDevice(_targetAudioDevice, null);
     }
 
     private void AttachEvents()
@@ -368,21 +326,27 @@ public sealed class VlcPlayer : IPlayer
         {
             SetLoadState(LoadState.Complete);
             SetState(PlaybackState.Playing);
+            _positionTimer?.Change(0, 100);
         };
-        _mediaPlayer.Paused += (_, _) => SetState(PlaybackState.Paused);
-        _mediaPlayer.Stopped += (_, _) => SetState(PlaybackState.Stopped);
+        _mediaPlayer.Paused += (_, _) =>
+        {
+            SetState(PlaybackState.Paused);
+            _positionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+        };
+        _mediaPlayer.Stopped += (_, _) =>
+        {
+            SetState(PlaybackState.Stopped);
+            _positionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+        };
         _mediaPlayer.Opening += (_, _) => SetLoadState(LoadState.Opening);
         _mediaPlayer.Buffering += (_, e) =>
         {
-            // LibVLC fires Buffering with 100% when buffering is complete.
             if (e.Cache < 100f)
                 SetLoadState(LoadState.Buffering);
         };
 
         _mediaPlayer.EndReached += (_, _) =>
         {
-            // EndReached fires from VLC's event thread. We must not call
-            // Stop() directly here (deadlock). Post to thread pool.
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 SetState(PlaybackState.Stopped);
@@ -402,12 +366,36 @@ public sealed class VlcPlayer : IPlayer
 
         _mediaPlayer.TimeChanged += (_, e) =>
         {
-            var position = TimeSpan.FromMilliseconds(e.Time);
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                PositionChanged?.Invoke(this, position);
-            });
+            _latestPosition = TimeSpan.FromMilliseconds(e.Time);
         };
+    }
+
+    private void OnPositionTimerTick(object? state)
+    {
+        var handler = PositionChanged;
+        if (handler is not null)
+        {
+            var position = _latestPosition;
+            _eventChannel.Writer.TryWrite(() =>
+            {
+                handler.Invoke(this, position);
+            });
+        }
+    }
+
+    private async Task ProcessEventsAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var action = await _eventChannel.Reader.ReadAsync(ct).ConfigureAwait(false);
+                action();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
     }
 
     private void SetState(PlaybackState newState)
@@ -415,21 +403,14 @@ public sealed class VlcPlayer : IPlayer
         var oldState = _state;
         if (oldState == newState) return;
 
-        Debug.WriteLine($"[VlcPlayer.SetState] {oldState} -> {newState}, thread={Environment.CurrentManagedThreadId}");
         _state = newState;
 
-        // Fire the event asynchronously on the thread pool. LibVLC often
-        // fires state-change callbacks synchronously from within Stop()/Play(),
-        // and subscribers (e.g. UI view-models) may try to marshal back to
-        // the UI thread or re-enter playback methods. Invoking inline would
-        // deadlock when _playbackLock is held by the caller.
         var handler = StateChanged;
         if (handler is not null)
         {
             var args = new PlaybackStateChangedEventArgs(oldState, newState);
-            ThreadPool.QueueUserWorkItem(_ =>
+            _eventChannel.Writer.TryWrite(() =>
             {
-                Debug.WriteLine($"[VlcPlayer.SetState] Firing StateChanged ({oldState} -> {newState}) on thread={Environment.CurrentManagedThreadId}");
                 handler.Invoke(this, args);
             });
         }
@@ -440,16 +421,14 @@ public sealed class VlcPlayer : IPlayer
         var oldState = _loadState;
         if (oldState == newState) return;
 
-        Debug.WriteLine($"[VlcPlayer.SetLoadState] {oldState} -> {newState}, thread={Environment.CurrentManagedThreadId}");
         _loadState = newState;
 
         var handler = LoadStateChanged;
         if (handler is not null)
         {
             var args = new LoadStateChangedEventArgs(oldState, newState);
-            ThreadPool.QueueUserWorkItem(_ =>
+            _eventChannel.Writer.TryWrite(() =>
             {
-                Debug.WriteLine($"[VlcPlayer.SetLoadState] Firing LoadStateChanged ({oldState} -> {newState}) on thread={Environment.CurrentManagedThreadId}");
                 handler.Invoke(this, args);
             });
         }
@@ -457,17 +436,17 @@ public sealed class VlcPlayer : IPlayer
 
     public async ValueTask DisposeAsync()
     {
-        Debug.WriteLine($"[VlcPlayer.DisposeAsync] Called — disposed={_disposed}, state={_state}, thread={Environment.CurrentManagedThreadId}");
         if (_disposed) return;
         _disposed = true;
 
-        Debug.WriteLine("[VlcPlayer.DisposeAsync] Stopping _mediaPlayer...");
+        _positionTimer?.Dispose();
+        _eventCts.Cancel();
+        _eventChannel.Writer.Complete();
         await Task.Run(() => _mediaPlayer.Stop()).ConfigureAwait(false);
-        Debug.WriteLine("[VlcPlayer.DisposeAsync] Disposing _mediaPlayer...");
         _mediaPlayer.Dispose();
         _libVlc.Dispose();
         _playbackLock.Dispose();
-        Debug.WriteLine("[VlcPlayer.DisposeAsync] DisposeAsync complete");
+        _eventCts.Dispose();
     }
 
     public Task UnmuteAsync()

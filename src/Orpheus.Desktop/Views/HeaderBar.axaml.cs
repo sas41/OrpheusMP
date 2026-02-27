@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 
 namespace Orpheus.Desktop.Views;
 
@@ -8,6 +9,19 @@ public partial class HeaderBar : UserControl
     public HeaderBar()
     {
         InitializeComponent();
+    }
+
+    public void OnSearchKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        if (DataContext is not MainWindowViewModel vm) return;
+
+        var query = vm.SearchQuery;
+        if (MainWindowViewModel.IsRadioUrl(query))
+        {
+            e.Handled = true;
+            _ = vm.PlayRadioUrlAsync(query);
+        }
     }
 
     public void OnEqualizerClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)

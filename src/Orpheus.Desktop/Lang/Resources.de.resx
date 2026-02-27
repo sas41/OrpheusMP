@@ -83,9 +83,11 @@ Möchten Sie sie als Playlist speichern, bevor sie ersetzt wird?</value></data>
   <data name="Quit" xml:space="preserve"><value>Beenden</value></data>
   <data name="Session" xml:space="preserve"><value>Sitzung</value></data>
   <data name="OfflineLibrary" xml:space="preserve"><value>Offline-Bibliothek</value></data>
+  <data name="SessionRadio" xml:space="preserve"><value>Internetradio</value></data>
+  <data name="SessionStream" xml:space="preserve"><value>Netzwerk-Stream</value></data>
   <data name="Equalizer" xml:space="preserve"><value>Equalizer</value></data>
   <data name="Settings" xml:space="preserve"><value>Einstellungen</value></data>
-  <data name="SearchWatermark" xml:space="preserve"><value>Titel, Künstler oder Playlists suchen</value></data>
+  <data name="SearchWatermark" xml:space="preserve"><value>Bibliothek durchsuchen oder Stream-URL einfügen</value></data>
   <data name="Stop" xml:space="preserve"><value>Stopp</value></data>
   <data name="Previous" xml:space="preserve"><value>Zurück</value></data>
   <data name="PlayPause" xml:space="preserve"><value>Wiedergabe / Pause</value></data>

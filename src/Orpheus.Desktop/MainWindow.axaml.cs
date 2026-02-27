@@ -18,6 +18,7 @@ using System.Linq;
 using System;
 using System.Threading.Tasks;
 using System.IO;
+using System.Net.Http;
 using Orpheus.Desktop.Lang;
 using Orpheus.Desktop.Theming;
 
@@ -158,6 +159,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private bool _showQueueSecondaryText = true;
     private bool _showLibraryFiles;
     private bool _isQueueDirty;
+    private SessionMode _sessionMode = SessionMode.Library;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -321,10 +323,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         {
             if (SetField(ref _searchQuery, value))
             {
-                _ = LoadLibraryAsync(_searchQuery);
+                // Only trigger library search when the query doesn't look like a URL.
+                if (!IsRadioUrl(value))
+                    _ = LoadLibraryAsync(_searchQuery);
             }
         }
     }
+
+    public SessionMode SessionMode
+    {
+        get => _sessionMode;
+        private set
+        {
+            if (SetField(ref _sessionMode, value))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SessionModeLabel)));
+        }
+    }
+
+    public string SessionModeLabel => _sessionMode switch
+    {
+        SessionMode.Radio  => Resources.SessionRadio,
+        SessionMode.Stream => Resources.SessionStream,
+        _                  => Resources.OfflineLibrary,
+    };
 
     public int SelectedTrackIndex
     {
@@ -721,7 +742,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _scanner = new FolderScanner(_library, new TagLibMetadataReader());
         _scanner.Progress += OnScanProgress;
 
-        var player = new VlcPlayer("--no-video");
+        var player = new VlcPlayer(config.AudioDevice, "--no-video");
+        if (!string.IsNullOrEmpty(config.AudioDevice))
+            player.SetAudioDevice(config.AudioDevice);
         _controller = new PlayerController(player);
         _controller.Playlist.Changed += OnPlaylistChanged;
         _controller.Playlist.CurrentIndexChanged += OnPlaylistIndexChanged;
@@ -1879,6 +1902,100 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         IsQueueDirty = false;
     }
 
+    // ── Internet radio / stream URL playback ──────────────────
+
+    /// <summary>
+    /// Returns true if <paramref name="text"/> looks like a URL that should be
+    /// treated as a radio/stream source rather than a library search query.
+    /// </summary>
+    public static bool IsRadioUrl(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        return Uri.TryCreate(text.Trim(), UriKind.Absolute, out var uri)
+            && uri.Scheme is "http" or "https" or "rtsp" or "rtp" or "mms" or "mmsh";
+    }
+
+    /// <summary>
+    /// Plays a URL directly. Supports:
+    ///  • Direct audio stream URLs (played immediately)
+    ///  • Remote .m3u/.m3u8/.pls playlist URLs (fetched, parsed, then played)
+    /// Updates <see cref="SessionMode"/> to reflect the new source type.
+    /// </summary>
+    public async Task PlayRadioUrlAsync(string url)
+    {
+        url = url.Trim();
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) return;
+
+        if (!await ConfirmQueueReplaceAsync()) return;
+
+        var ext = Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
+        IReadOnlyList<PlaylistItem> items;
+
+        if (ext is ".m3u" or ".m3u8" or ".pls")
+        {
+            // Fetch and parse the remote playlist.
+            items = await Task.Run(async () =>
+            {
+                try
+                {
+                    using var http = new System.Net.Http.HttpClient();
+                    http.Timeout = TimeSpan.FromSeconds(10);
+                    var content = await http.GetStringAsync(uri).ConfigureAwait(false);
+                    return ParseRemotePlaylist(content, ext, url);
+                }
+                catch
+                {
+                    return Array.Empty<PlaylistItem>();
+                }
+            });
+        }
+        else
+        {
+            // Treat as a direct stream/radio URL.
+            var source = MediaSource.FromUri(uri);
+            source.DisplayName = uri.Host;
+            items = new[] { new PlaylistItem { Source = source } };
+        }
+
+        if (items.Count == 0) return;
+
+        _controller.Playlist.Clear();
+        _controller.Playlist.AddRange(items);
+
+        // Determine session mode from the first item's source type.
+        var firstType = items[0].Source.Type;
+        SessionMode = firstType == MediaSourceType.InternetRadio
+            ? global::Orpheus.Desktop.SessionMode.Radio
+            : global::Orpheus.Desktop.SessionMode.Stream;
+
+        await Dispatcher.UIThread.InvokeAsync(UpdateQueueFromPlaylist);
+        await _controller.PlayAtIndexAsync(0).ConfigureAwait(false);
+        IsQueueDirty = false;
+
+        // Clear the search box so normal library search is restored.
+        _searchQuery = string.Empty;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SearchQuery)));
+    }
+
+    private static IReadOnlyList<PlaylistItem> ParseRemotePlaylist(string content, string ext, string sourceUrl)
+    {
+        // Write to a temp file so the existing PlaylistFileReader can parse it.
+        var tmp = Path.Combine(Path.GetTempPath(), $"orpheus_radio_{Guid.NewGuid()}{ext}");
+        try
+        {
+            File.WriteAllText(tmp, content);
+            return PlaylistFileReader.ReadFile(tmp);
+        }
+        catch
+        {
+            return Array.Empty<PlaylistItem>();
+        }
+        finally
+        {
+            try { File.Delete(tmp); } catch { /* best-effort */ }
+        }
+    }
+
     // ── Queue manipulation (add / remove / save / confirm) ────
 
     /// <summary>
@@ -2415,6 +2532,13 @@ public sealed record TrackRow(
 public sealed record QueueItem(string PrimaryText, string SecondaryText, string Length, bool IsPlaceholder = false);
 
 public readonly record struct TrackView(IReadOnlyList<LibraryTrack> Tracks, IReadOnlyList<TrackRow> Rows);
+
+public enum SessionMode
+{
+    Library,
+    Radio,
+    Stream,
+}
 
 public enum QueueDisplayMode
 {

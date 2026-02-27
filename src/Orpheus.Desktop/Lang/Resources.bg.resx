@@ -83,9 +83,11 @@
   <data name="Quit" xml:space="preserve"><value>Изход</value></data>
   <data name="Session" xml:space="preserve"><value>Сесия</value></data>
   <data name="OfflineLibrary" xml:space="preserve"><value>Офлайн библиотека</value></data>
+  <data name="SessionRadio" xml:space="preserve"><value>Интернет радио</value></data>
+  <data name="SessionStream" xml:space="preserve"><value>Мрежов поток</value></data>
   <data name="Equalizer" xml:space="preserve"><value>Еквалайзер</value></data>
   <data name="Settings" xml:space="preserve"><value>Настройки</value></data>
-  <data name="SearchWatermark" xml:space="preserve"><value>Търсене на песни, изпълнители или плейлисти</value></data>
+  <data name="SearchWatermark" xml:space="preserve"><value>Търси в библиотеката или постави URL на поток</value></data>
   <data name="Stop" xml:space="preserve"><value>Стоп</value></data>
   <data name="Previous" xml:space="preserve"><value>Предишна</value></data>
   <data name="PlayPause" xml:space="preserve"><value>Възпроизвеждане / Пауза</value></data>

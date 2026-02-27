@@ -83,9 +83,11 @@
   <data name="Quit" xml:space="preserve"><value>Salir</value></data>
   <data name="Session" xml:space="preserve"><value>Sesión</value></data>
   <data name="OfflineLibrary" xml:space="preserve"><value>Biblioteca sin conexión</value></data>
+  <data name="SessionRadio" xml:space="preserve"><value>Radio por Internet</value></data>
+  <data name="SessionStream" xml:space="preserve"><value>Transmisión en red</value></data>
   <data name="Equalizer" xml:space="preserve"><value>Ecualizador</value></data>
   <data name="Settings" xml:space="preserve"><value>Configuración</value></data>
-  <data name="SearchWatermark" xml:space="preserve"><value>Buscar pistas, artistas o listas</value></data>
+  <data name="SearchWatermark" xml:space="preserve"><value>Busca en la biblioteca o pega una URL de stream</value></data>
   <data name="Stop" xml:space="preserve"><value>Detener</value></data>
   <data name="Previous" xml:space="preserve"><value>Anterior</value></data>
   <data name="PlayPause" xml:space="preserve"><value>Reproducir / Pausar</value></data>

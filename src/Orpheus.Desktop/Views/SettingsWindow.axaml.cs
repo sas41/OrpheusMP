@@ -356,7 +356,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         MusicFolders = new ObservableCollection<string>();
         Licenses = new ObservableCollection<LicenseEntry>(LoadLicenses());
 
-        _selectedAudioDevice = _config.AudioDevice ?? "";
+        SelectedAudioDevice = _config.AudioDevice ?? "";
         _enableTrayIcon = _config.EnableTrayIcon;
 
         // Language selector
