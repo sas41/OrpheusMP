@@ -14,6 +14,7 @@ public class PlayerControllerTests : IAsyncLifetime
     {
         _mockPlayer = Substitute.For<IPlayer>();
         _mockPlayer.State.Returns(PlaybackState.Stopped);
+        _mockPlayer.LoadState.Returns(LoadState.Complete);
         _controller = new PlayerController(_mockPlayer);
     }
 
@@ -147,7 +148,7 @@ public class PlayerControllerTests : IAsyncLifetime
     public async Task RepeatOff_NextAsync_AdvancesSequentially()
     {
         LoadPlaylist(3);
-        _controller.RepeatMode = RepeatMode.Off;
+        _controller.SetRepeatMode(RepeatMode.Off);
 
         await _controller.NextAsync();
         Assert.Equal(1, _controller.Playlist.CurrentIndex);
@@ -160,7 +161,7 @@ public class PlayerControllerTests : IAsyncLifetime
     public async Task RepeatOff_NextAsync_StopsAtEnd()
     {
         LoadPlaylist(2);
-        _controller.RepeatMode = RepeatMode.Off;
+        _controller.SetRepeatMode(RepeatMode.Off);
         _controller.Playlist.CurrentIndex = 1;
 
         await _controller.NextAsync();
@@ -211,7 +212,7 @@ public class PlayerControllerTests : IAsyncLifetime
     public async Task RepeatOne_NextAsync_StaysOnSameTrack()
     {
         LoadPlaylist(3);
-        _controller.RepeatMode = RepeatMode.One;
+        _controller.SetRepeatMode(RepeatMode.One);
         _controller.Playlist.CurrentIndex = 1;
 
         await _controller.NextAsync();
@@ -226,7 +227,7 @@ public class PlayerControllerTests : IAsyncLifetime
     {
         _mockPlayer.Position.Returns(TimeSpan.FromSeconds(0));
         LoadPlaylist(3);
-        _controller.RepeatMode = RepeatMode.One;
+        _controller.SetRepeatMode(RepeatMode.One);
         _controller.Playlist.CurrentIndex = 1;
 
         await _controller.PreviousAsync();
@@ -240,7 +241,7 @@ public class PlayerControllerTests : IAsyncLifetime
     public async Task RepeatAll_NextAsync_WrapsToStart()
     {
         LoadPlaylist(3);
-        _controller.RepeatMode = RepeatMode.All;
+        _controller.SetRepeatMode(RepeatMode.All);
         _controller.Playlist.CurrentIndex = 2;
 
         await _controller.NextAsync();
@@ -253,7 +254,7 @@ public class PlayerControllerTests : IAsyncLifetime
     {
         _mockPlayer.Position.Returns(TimeSpan.FromSeconds(0));
         LoadPlaylist(3);
-        _controller.RepeatMode = RepeatMode.All;
+        _controller.SetRepeatMode(RepeatMode.All);
         _controller.Playlist.CurrentIndex = 0;
 
         await _controller.PreviousAsync();
@@ -265,21 +266,6 @@ public class PlayerControllerTests : IAsyncLifetime
 
     [Fact]
     public void CycleRepeatMode_CyclesOffAllOneOff()
-    {
-        Assert.Equal(RepeatMode.Off, _controller.RepeatMode);
-
-        var mode = _controller.CycleRepeatMode();
-        Assert.Equal(RepeatMode.All, mode);
-
-        mode = _controller.CycleRepeatMode();
-        Assert.Equal(RepeatMode.One, mode);
-
-        mode = _controller.CycleRepeatMode();
-        Assert.Equal(RepeatMode.Off, mode);
-    }
-
-    [Fact]
-    public void CycleRepeatMode_FiresEvent()
     {
         var reported = new List<RepeatMode>();
         _controller.RepeatModeChanged += (_, m) => reported.Add(m);
@@ -294,21 +280,16 @@ public class PlayerControllerTests : IAsyncLifetime
     // ── Shuffle Play ──────────────────────────────────────────────────
 
     [Fact]
-    public void ShufflePlay_DefaultsToFalse()
-    {
-        Assert.False(_controller.ShufflePlay);
-    }
-
-    [Fact]
     public void ToggleShufflePlay_TogglesState()
     {
-        var result = _controller.ToggleShufflePlay();
-        Assert.True(result);
-        Assert.True(_controller.ShufflePlay);
+        var reported = new List<bool>();
+        _controller.ShufflePlayChanged += (_, v) => reported.Add(v);
 
-        result = _controller.ToggleShufflePlay();
-        Assert.False(result);
-        Assert.False(_controller.ShufflePlay);
+        _controller.ToggleShufflePlay();
+        Assert.Equal([true], reported);
+
+        _controller.ToggleShufflePlay();
+        Assert.Equal([true, false], reported);
     }
 
     [Fact]
@@ -317,8 +298,8 @@ public class PlayerControllerTests : IAsyncLifetime
         var reported = new List<bool>();
         _controller.ShufflePlayChanged += (_, v) => reported.Add(v);
 
-        _controller.ShufflePlay = true;
-        _controller.ShufflePlay = false;
+        _controller.SetShufflePlay(true);
+        _controller.SetShufflePlay(false);
 
         Assert.Equal([true, false], reported);
     }
@@ -326,11 +307,11 @@ public class PlayerControllerTests : IAsyncLifetime
     [Fact]
     public void ShufflePlay_EventDoesNotFireWhenUnchanged()
     {
-        _controller.ShufflePlay = true;
+        _controller.SetShufflePlay(true);
         var fired = false;
         _controller.ShufflePlayChanged += (_, _) => fired = true;
 
-        _controller.ShufflePlay = true; // Same value.
+        _controller.SetShufflePlay(true); // Same value.
         Assert.False(fired);
     }
 
@@ -338,7 +319,7 @@ public class PlayerControllerTests : IAsyncLifetime
     public async Task ShufflePlay_NextAsync_VisitsAllTracks()
     {
         LoadPlaylist(10);
-        _controller.ShufflePlay = true;
+        _controller.SetShufflePlay(true);
 
         var visited = new HashSet<int> { _controller.Playlist.CurrentIndex };
         for (var i = 0; i < 9; i++)
@@ -354,8 +335,8 @@ public class PlayerControllerTests : IAsyncLifetime
     public async Task ShufflePlay_NextAsync_StopsWhenExhaustedAndRepeatOff()
     {
         LoadPlaylist(3);
-        _controller.ShufflePlay = true;
-        _controller.RepeatMode = RepeatMode.Off;
+        _controller.SetShufflePlay(true);
+        _controller.SetRepeatMode(RepeatMode.Off);
 
         // Exhaust all tracks.
         await _controller.NextAsync();
@@ -369,8 +350,8 @@ public class PlayerControllerTests : IAsyncLifetime
     public async Task ShufflePlay_NextAsync_ReshufflesOnRepeatAll()
     {
         LoadPlaylist(3);
-        _controller.ShufflePlay = true;
-        _controller.RepeatMode = RepeatMode.All;
+        _controller.SetShufflePlay(true);
+        _controller.SetRepeatMode(RepeatMode.All);
 
         // Exhaust all tracks.
         await _controller.NextAsync();
@@ -387,7 +368,7 @@ public class PlayerControllerTests : IAsyncLifetime
     {
         _mockPlayer.Position.Returns(TimeSpan.FromSeconds(0));
         LoadPlaylist(5);
-        _controller.ShufflePlay = true;
+        _controller.SetShufflePlay(true);
 
         // Move forward twice to establish a history.
         await _controller.NextAsync();
@@ -420,7 +401,7 @@ public class PlayerControllerTests : IAsyncLifetime
     {
         LoadPlaylist(5);
         _controller.Playlist.CurrentIndex = 3;
-        _controller.RepeatMode = RepeatMode.All;
+        _controller.SetRepeatMode(RepeatMode.All);
 
         var upcoming = _controller.GetUpcomingTracks();
 
@@ -453,7 +434,7 @@ public class PlayerControllerTests : IAsyncLifetime
     public void GetUpcomingTracks_ShufflePlayReturnsShuffleOrder()
     {
         LoadPlaylist(10);
-        _controller.ShufflePlay = true;
+        _controller.SetShufflePlay(true);
 
         var upcoming = _controller.GetUpcomingTracks();
 
@@ -489,7 +470,7 @@ public class PlayerControllerTests : IAsyncLifetime
     public void GetPlaybackPosition_ShufflePlayReturnsShufflePosition()
     {
         LoadPlaylist(10);
-        _controller.ShufflePlay = true;
+        _controller.SetShufflePlay(true);
 
         var (current, total) = _controller.GetPlaybackPosition();
 

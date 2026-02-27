@@ -15,6 +15,7 @@ public sealed class VlcPlayer : IPlayer
     private readonly MediaPlayer _mediaPlayer;
     private readonly SemaphoreSlim _playbackLock = new(1, 1);
     private PlaybackState _state = PlaybackState.Stopped;
+    private LoadState _loadState = LoadState.Complete;
     private MediaSource? _currentSource;
     private bool _isMuted;
     private bool _disposed;
@@ -42,12 +43,13 @@ public sealed class VlcPlayer : IPlayer
     }
 
     public PlaybackState State => _state;
+    public LoadState LoadState => _loadState;
 
     public TimeSpan Position
     {
         get
         {
-            if (_state is PlaybackState.Stopped or PlaybackState.Error)
+            if (_state == PlaybackState.Stopped)
                 return TimeSpan.Zero;
 
             return TimeSpan.FromMilliseconds(_mediaPlayer.Time);
@@ -264,7 +266,7 @@ public sealed class VlcPlayer : IPlayer
         Debug.WriteLine($"[VlcPlayer.SeekAsync] Called — position={position}, state={_state}, thread={Environment.CurrentManagedThreadId}");
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_state is PlaybackState.Stopped or PlaybackState.Error)
+        if (_state == PlaybackState.Stopped)
         {
             Debug.WriteLine($"[VlcPlayer.SeekAsync] Skipped — state is {_state}");
             return Task.CompletedTask;
@@ -276,6 +278,7 @@ public sealed class VlcPlayer : IPlayer
     }
 
     public event EventHandler<PlaybackStateChangedEventArgs>? StateChanged;
+    public event EventHandler<LoadStateChangedEventArgs>? LoadStateChanged;
     public event EventHandler<TimeSpan>? PositionChanged;
     public event EventHandler? MediaEnded;
     public event EventHandler<string>? ErrorOccurred;
@@ -356,15 +359,19 @@ public sealed class VlcPlayer : IPlayer
 
     private void AttachEvents()
     {
-        _mediaPlayer.Playing += (_, _) => SetState(PlaybackState.Playing);
+        _mediaPlayer.Playing += (_, _) =>
+        {
+            SetLoadState(LoadState.Complete);
+            SetState(PlaybackState.Playing);
+        };
         _mediaPlayer.Paused += (_, _) => SetState(PlaybackState.Paused);
         _mediaPlayer.Stopped += (_, _) => SetState(PlaybackState.Stopped);
-        _mediaPlayer.Opening += (_, _) => SetState(PlaybackState.Opening);
+        _mediaPlayer.Opening += (_, _) => SetLoadState(LoadState.Opening);
         _mediaPlayer.Buffering += (_, e) =>
         {
             // LibVLC fires Buffering with 100% when buffering is complete.
             if (e.Cache < 100f)
-                SetState(PlaybackState.Buffering);
+                SetLoadState(LoadState.Buffering);
         };
 
         _mediaPlayer.EndReached += (_, _) =>
@@ -383,7 +390,7 @@ public sealed class VlcPlayer : IPlayer
         {
             ThreadPool.QueueUserWorkItem(_ =>
             {
-                SetState(PlaybackState.Error);
+                SetLoadState(LoadState.Error);
                 ErrorOccurred?.Invoke(this, $"Playback error on: {_currentSource?.Uri}");
             });
         };
@@ -418,6 +425,26 @@ public sealed class VlcPlayer : IPlayer
             ThreadPool.QueueUserWorkItem(_ =>
             {
                 Debug.WriteLine($"[VlcPlayer.SetState] Firing StateChanged ({oldState} -> {newState}) on thread={Environment.CurrentManagedThreadId}");
+                handler.Invoke(this, args);
+            });
+        }
+    }
+
+    private void SetLoadState(LoadState newState)
+    {
+        var oldState = _loadState;
+        if (oldState == newState) return;
+
+        Debug.WriteLine($"[VlcPlayer.SetLoadState] {oldState} -> {newState}, thread={Environment.CurrentManagedThreadId}");
+        _loadState = newState;
+
+        var handler = LoadStateChanged;
+        if (handler is not null)
+        {
+            var args = new LoadStateChangedEventArgs(oldState, newState);
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                Debug.WriteLine($"[VlcPlayer.SetLoadState] Firing LoadStateChanged ({oldState} -> {newState}) on thread={Environment.CurrentManagedThreadId}");
                 handler.Invoke(this, args);
             });
         }

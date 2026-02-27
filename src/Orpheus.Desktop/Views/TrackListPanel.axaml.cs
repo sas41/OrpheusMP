@@ -1,12 +1,22 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using System;
 
 namespace Orpheus.Desktop.Views;
 
 public partial class TrackListPanel : UserControl
 {
+    private Point _dragStartPoint;
+    private bool _isDragPending;
+    private bool _isManagedDragging;
+    private IPointer? _capturedPointer;
+    private TopLevel? _dragTopLevel;
+    private const double DragThreshold = 8;
+
     public TrackListPanel()
     {
         InitializeComponent();
@@ -16,6 +26,115 @@ public partial class TrackListPanel : UserControl
     {
         base.OnDataContextChanged(e);
         ApplyColumnVisibility();
+    }
+
+    protected override void OnLoaded(RoutedEventArgs e)
+    {
+        base.OnLoaded(e);
+        if (TracksGrid is not null)
+        {
+            TracksGrid.AddHandler(PointerPressedEvent, OnGridPointerPressed, RoutingStrategies.Tunnel);
+            TracksGrid.AddHandler(PointerMovedEvent, OnGridPointerMoved, RoutingStrategies.Tunnel);
+        }
+    }
+
+    private void OnGridPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(TracksGrid).Properties.IsLeftButtonPressed)
+        {
+            _dragStartPoint = e.GetPosition(TracksGrid);
+            _isDragPending = true;
+        }
+    }
+
+    private void OnGridPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_isDragPending || ViewModel is null || TracksGrid is null)
+            return;
+
+        if (!e.GetCurrentPoint(TracksGrid).Properties.IsLeftButtonPressed)
+        {
+            _isDragPending = false;
+            return;
+        }
+
+        var pos = e.GetPosition(TracksGrid);
+        var delta = pos - _dragStartPoint;
+        if (Math.Abs(delta.X) < DragThreshold && Math.Abs(delta.Y) < DragThreshold)
+            return;
+
+        _isDragPending = false;
+
+        var index = ViewModel.SelectedTrackIndex;
+        if (index < 0) return;
+
+        var trackRow = index < ViewModel.Tracks.Count ? ViewModel.Tracks[index] : null;
+        var label = trackRow?.Title ?? trackRow?.FileName ?? "Track";
+
+        var payload = new System.Collections.Generic.Dictionary<string, string>
+        {
+            [DragFormats.TrackIndex] = index.ToString(),
+            [DragFormats.DragLabel] = label,
+        };
+
+        // Begin managed drag: capture pointer, show preview, notify drop targets
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is null) return;
+
+        _dragTopLevel = topLevel;
+        _isManagedDragging = true;
+        _capturedPointer = e.Pointer;
+        e.Pointer.Capture(TracksGrid);
+
+        // Attach top-level handlers to receive events even when pointer leaves this panel
+        topLevel.AddHandler(PointerMovedEvent, OnTopLevelPointerMoved,
+            RoutingStrategies.Tunnel, handledEventsToo: true);
+        topLevel.AddHandler(PointerReleasedEvent, OnTopLevelPointerReleased,
+            RoutingStrategies.Tunnel, handledEventsToo: true);
+
+        var previewText = new TextBlock
+        {
+            Text = label,
+            TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis,
+            MaxWidth = 220,
+            Foreground = TracksGrid.Foreground ?? Avalonia.Media.Brushes.White,
+        };
+        DragPreviewService.Show(previewText, topLevel, e.GetPosition(topLevel));
+        ManagedDragService.Instance.Begin(topLevel, payload, e.GetPosition(topLevel));
+    }
+
+    private void OnTopLevelPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_isManagedDragging || _dragTopLevel is null) return;
+
+        var clientPos = e.GetPosition(_dragTopLevel);
+        DragPreviewService.Move(_dragTopLevel, clientPos);
+        ManagedDragService.Instance.Move(clientPos);
+    }
+
+    private void OnTopLevelPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_isManagedDragging) return;
+        EndManagedDrag();
+    }
+
+    private void EndManagedDrag()
+    {
+        _isManagedDragging = false;
+        _isDragPending = false;
+
+        ManagedDragService.Instance.End();
+        DragPreviewService.Hide();
+
+        _capturedPointer?.Capture(null);
+        _capturedPointer = null;
+
+        if (_dragTopLevel is not null)
+        {
+            _dragTopLevel.RemoveHandler(PointerMovedEvent, OnTopLevelPointerMoved);
+            _dragTopLevel.RemoveHandler(PointerReleasedEvent, OnTopLevelPointerReleased);
+            _dragTopLevel = null;
+        }
     }
 
     private MainWindowViewModel? ViewModel => DataContext as MainWindowViewModel;

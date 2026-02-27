@@ -34,7 +34,8 @@
                   ToolTip.Tip="Previous">
             <Image Source="{Binding PreviousIcon}" Classes="transport" />
           </Button>
-          <Button Click="OnPlayClick" Classes="primary icon" Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
+          <Button Click="OnPlayClick" Classes="icon" Classes.primary="{Binding IsActive}"
+                  Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
                   ToolTip.Tip="Play / Pause">
             <Image Source="{Binding PlayPauseIconPrimary}" Classes="transport" />
           </Button>

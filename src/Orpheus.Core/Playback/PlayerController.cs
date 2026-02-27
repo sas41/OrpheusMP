@@ -1,10 +1,22 @@
+using System.Diagnostics;
 using Orpheus.Core.Playlist;
 
 namespace Orpheus.Core.Playback;
 
 /// <summary>
-/// High-level controller that connects an IPlayer with a Playlist.
-/// Owns shuffle play state, repeat mode, and track navigation.
+/// High-level controller that completely wraps an <see cref="IPlayer"/> and a
+/// <see cref="Playlist.Playlist"/>.  The GUI should interact exclusively through
+/// this class's async methods and subscribe to its events for state updates.
+///
+/// Design contract:
+/// <list type="bullet">
+///   <item>The GUI NEVER reads properties on this class to derive UI state.
+///         All UI-relevant data is delivered via event args.</item>
+///   <item>Every async method uses <c>ConfigureAwait(false)</c> internally and
+///         fires an event when the operation finishes so the GUI can react.</item>
+///   <item>The underlying <see cref="IPlayer"/> is fully encapsulated.
+///         The GUI never touches it directly.</item>
+/// </list>
 ///
 /// Shuffle Play vs Shuffle Playlist:
 /// - Shuffle Play: tracks play in a random order, but the playlist's
@@ -22,17 +34,24 @@ public sealed class PlayerController : IAsyncDisposable
     private RepeatMode _repeatMode = RepeatMode.Off;
     private bool _disposed;
 
+    // ── Volume / Mute state (owned by the controller) ─────────────────
+    private double _volume = 72;
+    private bool _isMuted;
+
+    // ── Fade configuration ────────────────────────────────────────────
+    private const int FadeDurationMs = 300;
+    private const int FadeSteps = 15;
+
     public PlayerController(IPlayer player)
     {
         ArgumentNullException.ThrowIfNull(player);
         _player = player;
         _player.MediaEnded += OnMediaEnded;
+        _player.StateChanged += OnPlayerStateChanged;
+        _player.LoadStateChanged += OnPlayerLoadStateChanged;
+        _player.PositionChanged += OnPlayerPositionChanged;
+        _player.ErrorOccurred += OnPlayerErrorOccurred;
     }
-
-    /// <summary>
-    /// The underlying player instance.
-    /// </summary>
-    public IPlayer Player => _player;
 
     /// <summary>
     /// The active playlist.
@@ -44,82 +63,168 @@ public sealed class PlayerController : IAsyncDisposable
     /// </summary>
     public bool AutoAdvance { get; set; } = true;
 
-    // ── Repeat ────────────────────────────────────────────────────────
+    /// <summary>
+    /// Exposes the underlying <see cref="IPlayer"/> for VLC-specific features
+    /// that are not part of the general playback contract (equalizer creation,
+    /// audio device enumeration, etc.).  The GUI should NOT use this for
+    /// state reads or playback control.
+    /// </summary>
+    public IPlayer Player => _player;
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Events — the sole source of state updates for the GUI
+    // ══════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Current repeat mode: Off, One, or All (playlist).
+    /// Fired whenever the playback state changes (playing, paused, stopped, etc.).
+    /// Carries a complete snapshot of playback-relevant state so the GUI never
+    /// needs to read back from the controller.
     /// </summary>
-    public RepeatMode RepeatMode
+    public event EventHandler<PlaybackStateSnapshot>? StateChanged;
+
+    /// <summary>
+    /// Fired periodically during playback with the current position / duration.
+    /// </summary>
+    public event EventHandler<PositionSnapshot>? PositionChanged;
+
+    /// <summary>
+    /// Fired when the volume or mute state changes.
+    /// </summary>
+    public event EventHandler<VolumeSnapshot>? VolumeChanged;
+
+    /// <summary>
+    /// Fired when shuffle play mode changes.
+    /// </summary>
+    public event EventHandler<bool>? ShufflePlayChanged;
+
+    /// <summary>
+    /// Fired when repeat mode changes.
+    /// </summary>
+    public event EventHandler<RepeatMode>? RepeatModeChanged;
+
+    /// <summary>
+    /// Fired when a playback error occurs.
+    /// </summary>
+    public event EventHandler<string>? ErrorOccurred;
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Repeat
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Set the repeat mode and notify subscribers.
+    /// </summary>
+    public void SetRepeatMode(RepeatMode mode)
     {
-        get => _repeatMode;
-        set
-        {
-            if (_repeatMode == value) return;
-            _repeatMode = value;
-            RepeatModeChanged?.Invoke(this, _repeatMode);
-        }
+        if (_repeatMode == mode) return;
+        _repeatMode = mode;
+        RepeatModeChanged?.Invoke(this, _repeatMode);
     }
 
     /// <summary>
     /// Cycle through repeat modes: Off → All → One → Off.
-    /// Returns the new mode.
     /// </summary>
-    public RepeatMode CycleRepeatMode()
+    public void CycleRepeatMode()
     {
-        RepeatMode = _repeatMode switch
+        SetRepeatMode(_repeatMode switch
         {
             RepeatMode.Off => RepeatMode.All,
             RepeatMode.All => RepeatMode.One,
             RepeatMode.One => RepeatMode.Off,
             _ => RepeatMode.Off
-        };
-        return _repeatMode;
+        });
     }
 
-    /// <summary>
-    /// Fired when RepeatMode changes.
-    /// </summary>
-    public event EventHandler<RepeatMode>? RepeatModeChanged;
-
-    // ── Shuffle Play ──────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════
+    //  Shuffle Play
+    // ══════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Whether shuffle play is active. When enabled, Next/Previous follow
-    /// a random sequence instead of playlist order. The playlist itself
-    /// is not reordered.
+    /// Set shuffle play mode and notify subscribers.
     /// </summary>
-    public bool ShufflePlay
+    public void SetShufflePlay(bool enabled)
     {
-        get => _shufflePlay;
-        set
-        {
-            if (_shufflePlay == value) return;
-            _shufflePlay = value;
+        if (_shufflePlay == enabled) return;
+        _shufflePlay = enabled;
 
-            if (_shufflePlay)
-                RebuildShuffleOrder();
-            else
-                _shuffleOrder.Clear();
+        if (_shufflePlay)
+            RebuildShuffleOrder();
+        else
+            _shuffleOrder.Clear();
 
-            ShufflePlayChanged?.Invoke(this, _shufflePlay);
-        }
+        ShufflePlayChanged?.Invoke(this, _shufflePlay);
     }
 
     /// <summary>
-    /// Toggle shuffle play on/off. Returns the new state.
+    /// Toggle shuffle play on/off.
     /// </summary>
-    public bool ToggleShufflePlay()
+    public void ToggleShufflePlay()
     {
-        ShufflePlay = !ShufflePlay;
-        return ShufflePlay;
+        SetShufflePlay(!_shufflePlay);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Volume / Mute
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Set the volume level (0–100) and notify subscribers.
+    /// </summary>
+    public void SetVolume(double volume)
+    {
+        volume = Math.Clamp(volume, 0, 100);
+        if (Math.Abs(_volume - volume) < 0.01) return;
+        _volume = volume;
+        _player.Volume = (int)Math.Round(volume);
+        VolumeChanged?.Invoke(this, new VolumeSnapshot(_volume, _isMuted));
     }
 
     /// <summary>
-    /// Fired when ShufflePlay changes.
+    /// Set the mute state and notify subscribers.
     /// </summary>
-    public event EventHandler<bool>? ShufflePlayChanged;
+    public void SetMuted(bool muted)
+    {
+        if (_isMuted == muted) return;
+        _isMuted = muted;
+        _player.IsMuted = muted;
+        VolumeChanged?.Invoke(this, new VolumeSnapshot(_volume, _isMuted));
+    }
 
-    // ── Playback Controls ─────────────────────────────────────────────
+    /// <summary>
+    /// Toggle mute on/off.
+    /// </summary>
+    public void ToggleMute()
+    {
+        SetMuted(!_isMuted);
+    }
+
+    /// <summary>
+    /// Initialize volume from persisted state (called once at startup).
+    /// Does NOT fire VolumeChanged to avoid triggering a save cycle.
+    /// </summary>
+    public void InitializeVolume(double volume)
+    {
+        _volume = Math.Clamp(volume, 0, 100);
+        _player.Volume = (int)Math.Round(_volume);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Seek
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Seek to a specific position.  Fires a <see cref="PositionChanged"/>
+    /// event with the new position once the seek is applied.
+    /// </summary>
+    public async Task SeekAsync(TimeSpan position)
+    {
+        await _player.SeekAsync(position);
+        FirePositionSnapshot();
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Playback Controls
+    // ══════════════════════════════════════════════════════════════════
 
     /// <summary>
     /// Play the track at the specified playlist index.
@@ -136,7 +241,12 @@ public sealed class PlayerController : IAsyncDisposable
         if (_shufflePlay)
             RebuildShuffleOrder();
 
-        await _player.PlayAsync(Playlist[index].Source, cancellationToken).ConfigureAwait(false);
+        await FadeOutAsync();
+        await _player.PlayAsync(Playlist[index].Source, cancellationToken);
+        ReapplyMuteIfNeeded();
+        await FadeInAsync();
+
+        FireStateSnapshot();
     }
 
     /// <summary>
@@ -156,7 +266,12 @@ public sealed class PlayerController : IAsyncDisposable
         var item = Playlist.CurrentItem;
         if (item is null) return;
 
-        await _player.PlayAsync(item.Source, cancellationToken).ConfigureAwait(false);
+        await FadeOutAsync();
+        await _player.PlayAsync(item.Source, cancellationToken);
+        ReapplyMuteIfNeeded();
+        await FadeInAsync();
+
+        FireStateSnapshot();
     }
 
     /// <summary>
@@ -165,19 +280,24 @@ public sealed class PlayerController : IAsyncDisposable
     /// </summary>
     public async Task NextAsync(CancellationToken cancellationToken = default)
     {
-        await _navigationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _navigationLock.WaitAsync(cancellationToken);
         try
         {
             var nextIndex = GetNextIndex();
             if (nextIndex is not null)
             {
                 Playlist.CurrentIndex = nextIndex.Value;
-                await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken).ConfigureAwait(false);
+                await FadeOutAsync();
+                await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken);
+                ReapplyMuteIfNeeded();
+                await FadeInAsync();
             }
             else
             {
                 // Queue exhausted (repeat off): stop and go back to first track
-                await _player.StopAsync().ConfigureAwait(false);
+                await FadeOutAsync();
+                await _player.StopAsync();
+                RestoreVolume();
                 if (Playlist.Count > 0)
                     Playlist.CurrentIndex = 0;
             }
@@ -186,6 +306,8 @@ public sealed class PlayerController : IAsyncDisposable
         {
             _navigationLock.Release();
         }
+
+        FireStateSnapshot();
     }
 
     /// <summary>
@@ -194,36 +316,69 @@ public sealed class PlayerController : IAsyncDisposable
     /// </summary>
     public async Task PreviousAsync(CancellationToken cancellationToken = default)
     {
-        await _navigationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _navigationLock.WaitAsync(cancellationToken);
         try
         {
             // If we're more than 3 seconds in, restart the current track.
             if (_player.Position > TimeSpan.FromSeconds(3))
             {
-                await _player.SeekAsync(TimeSpan.Zero).ConfigureAwait(false);
-                return;
-            }
-
-            var prevIndex = GetPreviousIndex();
-            if (prevIndex is not null)
-            {
-                Playlist.CurrentIndex = prevIndex.Value;
-                await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken).ConfigureAwait(false);
+                await _player.SeekAsync(TimeSpan.Zero);
             }
             else
             {
-                await _player.SeekAsync(TimeSpan.Zero).ConfigureAwait(false);
+                var prevIndex = GetPreviousIndex();
+                if (prevIndex is not null)
+                {
+                    Playlist.CurrentIndex = prevIndex.Value;
+                    await FadeOutAsync();
+                    await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken);
+                    ReapplyMuteIfNeeded();
+                    await FadeInAsync();
+                }
+                else
+                {
+                    await _player.SeekAsync(TimeSpan.Zero);
+                }
             }
         }
         finally
         {
             _navigationLock.Release();
         }
+
+        FireStateSnapshot();
     }
 
-    public Task PauseAsync() => _player.PauseAsync();
-    public Task ResumeAsync() => _player.ResumeAsync();
-    public Task StopAsync() => _player.StopAsync();
+    /// <summary>
+    /// Pause playback.
+    /// </summary>
+    public async Task PauseAsync()
+    {
+        await FadeOutAsync();
+        await _player.PauseAsync();
+        FireStateSnapshot();
+    }
+
+    /// <summary>
+    /// Resume playback from a paused state.
+    /// </summary>
+    public async Task ResumeAsync()
+    {
+        await _player.ResumeAsync();
+        await FadeInAsync();
+        FireStateSnapshot();
+    }
+
+    /// <summary>
+    /// Stop playback.
+    /// </summary>
+    public async Task StopAsync()
+    {
+        await FadeOutAsync();
+        await _player.StopAsync();
+        RestoreVolume();
+        FireStateSnapshot();
+    }
 
     /// <summary>
     /// Toggle between play and pause.
@@ -233,18 +388,20 @@ public sealed class PlayerController : IAsyncDisposable
         switch (_player.State)
         {
             case PlaybackState.Playing:
-                await _player.PauseAsync().ConfigureAwait(false);
+                await PauseAsync();
                 break;
             case PlaybackState.Paused:
-                await _player.ResumeAsync().ConfigureAwait(false);
+                await ResumeAsync();
                 break;
             case PlaybackState.Stopped:
-                await PlayAsync(cancellationToken).ConfigureAwait(false);
+                await PlayAsync(cancellationToken);
                 break;
         }
     }
 
-    // ── UI Helpers ────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════
+    //  UI Helpers
+    // ══════════════════════════════════════════════════════════════════
 
     /// <summary>
     /// Get the upcoming tracks in playback order (respecting shuffle play).
@@ -305,7 +462,143 @@ public sealed class PlayerController : IAsyncDisposable
         return (Playlist.CurrentIndex + 1, Playlist.Count);
     }
 
-    // ── Private ───────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════
+    //  Private — Fade helpers
+    // ══════════════════════════════════════════════════════════════════
+
+    private async Task FadeOutAsync()
+    {
+        // If muted, nothing to fade — audio is already silent.
+        if (_isMuted) return;
+
+        var startVolume = _player.Volume;
+        if (startVolume <= 0) return;
+        var stepDelay = FadeDurationMs / FadeSteps;
+        for (var i = FadeSteps - 1; i >= 0; i--)
+        {
+            _player.Volume = (int)(startVolume * i / (double)FadeSteps);
+            await Task.Delay(stepDelay);
+        }
+        _player.Volume = 0;
+    }
+
+    private async Task FadeInAsync()
+    {
+        var targetVolume = (int)Math.Round(_volume);
+
+        // If muted, restore the volume level silently and ensure mute
+        // stays applied.
+        if (_isMuted)
+        {
+            _player.Volume = targetVolume;
+            _player.IsMuted = true;
+            return;
+        }
+
+        if (targetVolume <= 0) return;
+        _player.Volume = 0;
+        var stepDelay = FadeDurationMs / FadeSteps;
+        for (var i = 1; i <= FadeSteps; i++)
+        {
+            _player.Volume = (int)(targetVolume * i / (double)FadeSteps);
+            await Task.Delay(stepDelay);
+        }
+        _player.Volume = targetVolume;
+    }
+
+    /// <summary>
+    /// Restore the volume level (so the next play starts at
+    /// the user's chosen volume).
+    /// </summary>
+    private void RestoreVolume()
+    {
+        _player.Volume = (int)Math.Round(_volume);
+    }
+
+    /// <summary>
+    /// LibVLC resets mute when new media starts. Re-apply if needed.
+    /// </summary>
+    private void ReapplyMuteIfNeeded()
+    {
+        if (_isMuted)
+            _player.IsMuted = true;
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Private — Snapshot builders & event firing
+    // ══════════════════════════════════════════════════════════════════
+
+    private void FireStateSnapshot()
+    {
+        var handler = StateChanged;
+        if (handler is null) return;
+
+        var state = _player.State;
+        var loadState = _player.LoadState;
+        var position = state == PlaybackState.Stopped ? TimeSpan.Zero : _player.Position;
+        var duration = _player.Duration ?? TimeSpan.Zero;
+        var currentItem = Playlist.CurrentItem;
+        var currentIndex = Playlist.CurrentIndex;
+
+        var snapshot = new PlaybackStateSnapshot(
+            state, loadState, position, duration, currentItem, currentIndex, Playlist.Count);
+
+        handler.Invoke(this, snapshot);
+    }
+
+    private void FirePositionSnapshot()
+    {
+        var handler = PositionChanged;
+        if (handler is null) return;
+
+        var position = _player.Position;
+        var duration = _player.Duration ?? TimeSpan.Zero;
+
+        handler.Invoke(this, new PositionSnapshot(position, duration));
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Private — IPlayer event handlers
+    // ══════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Relay IPlayer state changes as controller-level state snapshots.
+    /// These fire from background threads (VlcPlayer uses ThreadPool), so
+    /// the GUI must marshal to its UI thread in its own handler.
+    /// </summary>
+    private void OnPlayerStateChanged(object? sender, PlaybackStateChangedEventArgs e)
+    {
+        FireStateSnapshot();
+    }
+
+    /// <summary>
+    /// Relay IPlayer load-state changes as controller-level state snapshots.
+    /// </summary>
+    private void OnPlayerLoadStateChanged(object? sender, LoadStateChangedEventArgs e)
+    {
+        FireStateSnapshot();
+    }
+
+    /// <summary>
+    /// Relay IPlayer position changes as controller-level position snapshots.
+    /// </summary>
+    private void OnPlayerPositionChanged(object? sender, TimeSpan position)
+    {
+        var handler = PositionChanged;
+        if (handler is null) return;
+
+        var duration = _player.Duration ?? TimeSpan.Zero;
+        handler.Invoke(this, new PositionSnapshot(position, duration));
+    }
+
+    private void OnPlayerErrorOccurred(object? sender, string message)
+    {
+        ErrorOccurred?.Invoke(this, message);
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    //  Private — Navigation helpers
+    // ══════════════════════════════════════════════════════════════════
 
     private int? GetNextIndex()
     {
@@ -401,7 +694,7 @@ public sealed class PlayerController : IAsyncDisposable
 
         try
         {
-            await NextAsync().ConfigureAwait(false);
+            await NextAsync();
         }
         catch
         {
@@ -416,7 +709,48 @@ public sealed class PlayerController : IAsyncDisposable
         _disposed = true;
 
         _player.MediaEnded -= OnMediaEnded;
-        await _player.DisposeAsync().ConfigureAwait(false);
+        _player.StateChanged -= OnPlayerStateChanged;
+        _player.LoadStateChanged -= OnPlayerLoadStateChanged;
+        _player.PositionChanged -= OnPlayerPositionChanged;
+        _player.ErrorOccurred -= OnPlayerErrorOccurred;
+        await _player.DisposeAsync();
         _navigationLock.Dispose();
     }
 }
+
+// ══════════════════════════════════════════════════════════════════════
+//  Snapshot records — immutable data bags delivered via events
+// ══════════════════════════════════════════════════════════════════════
+
+/// <summary>
+/// Complete snapshot of playback state, delivered via
+/// <see cref="PlayerController.StateChanged"/>.
+/// </summary>
+public sealed record PlaybackStateSnapshot(
+    PlaybackState State,
+    LoadState LoadState,
+    TimeSpan Position,
+    TimeSpan Duration,
+    PlaylistItem? CurrentItem,
+    int CurrentIndex,
+    int PlaylistCount)
+{
+    public bool IsPlaying => State == PlaybackState.Playing;
+    public bool IsStopped => State == PlaybackState.Stopped;
+}
+
+/// <summary>
+/// Position/duration snapshot delivered via
+/// <see cref="PlayerController.PositionChanged"/>.
+/// </summary>
+public sealed record PositionSnapshot(
+    TimeSpan Position,
+    TimeSpan Duration);
+
+/// <summary>
+/// Volume/mute snapshot delivered via
+/// <see cref="PlayerController.VolumeChanged"/>.
+/// </summary>
+public sealed record VolumeSnapshot(
+    double Volume,
+    bool IsMuted);

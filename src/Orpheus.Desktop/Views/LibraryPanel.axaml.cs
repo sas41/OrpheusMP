@@ -17,9 +17,16 @@ public partial class LibraryPanel : UserControl
     /// system default so that users don't have to click as fast.
     /// </summary>
     private const int DoubleClickMs = 650;
+    private const double DragThreshold = 8;
 
     private DateTime _lastClickTime;
     private LibraryNode? _lastClickNode;
+    private Point _dragStartPoint;
+    private LibraryNode? _dragPendingNode;
+    private bool _isManagedDragging;
+    private IPointer? _capturedPointer;
+    private TopLevel? _dragTopLevel;
+    private TreeView? _tree;
 
     public LibraryPanel()
     {
@@ -32,16 +39,103 @@ public partial class LibraryPanel : UserControl
     {
         base.OnLoaded(e);
 
-        var tree = this.FindControl<TreeView>("LibraryTree");
-        if (tree is not null)
+        _tree = this.FindControl<TreeView>("LibraryTree");
+        if (_tree is not null)
         {
             // Tunnel handler to intercept pointer presses before the TreeViewItem
             // expander receives them, so we can restrict expand/collapse to the arrow.
-            tree.AddHandler(PointerPressedEvent, OnTreePointerPressed, RoutingStrategies.Tunnel);
+            _tree.AddHandler(PointerPressedEvent, OnTreePointerPressed, RoutingStrategies.Tunnel);
+            _tree.AddHandler(PointerMovedEvent, OnTreePointerMoved, RoutingStrategies.Tunnel);
 
             // Note: the built-in TreeViewItem double-tap expand/collapse is
             // disabled by renaming PART_HeaderPresenter in our ControlTheme
             // so TreeViewItem.OnApplyTemplate can't find it to subscribe.
+        }
+    }
+
+    private void OnTreePointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_dragPendingNode is null || _tree is null)
+            return;
+
+        if (!e.GetCurrentPoint(_tree).Properties.IsLeftButtonPressed)
+        {
+            _dragPendingNode = null;
+            return;
+        }
+
+        var pos = e.GetPosition(_tree);
+        var delta = pos - _dragStartPoint;
+        if (Math.Abs(delta.X) < DragThreshold && Math.Abs(delta.Y) < DragThreshold)
+            return;
+
+        var node = _dragPendingNode;
+        _dragPendingNode = null;
+
+        var label = node.Name;
+        var payload = new System.Collections.Generic.Dictionary<string, string>
+        {
+            [DragFormats.LibraryNodePath] = node.Path,
+            [DragFormats.LibraryNodeType] = ((int)node.NodeType).ToString(),
+            [DragFormats.DragLabel] = label,
+        };
+
+        // Begin managed drag: capture pointer, show preview, notify drop targets
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is null) return;
+
+        _dragTopLevel = topLevel;
+        _isManagedDragging = true;
+        _capturedPointer = e.Pointer;
+        e.Pointer.Capture(_tree);
+
+        topLevel.AddHandler(PointerMovedEvent, OnTopLevelPointerMoved,
+            RoutingStrategies.Tunnel, handledEventsToo: true);
+        topLevel.AddHandler(PointerReleasedEvent, OnTopLevelPointerReleased,
+            RoutingStrategies.Tunnel, handledEventsToo: true);
+
+        var previewText = new TextBlock
+        {
+            Text = label,
+            TextTrimming = Avalonia.Media.TextTrimming.CharacterEllipsis,
+            MaxWidth = 220,
+            Foreground = _tree.Foreground ?? Avalonia.Media.Brushes.White,
+        };
+        DragPreviewService.Show(previewText, topLevel, e.GetPosition(topLevel));
+        ManagedDragService.Instance.Begin(topLevel, payload, e.GetPosition(topLevel));
+    }
+
+    private void OnTopLevelPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_isManagedDragging || _dragTopLevel is null) return;
+
+        var clientPos = e.GetPosition(_dragTopLevel);
+        DragPreviewService.Move(_dragTopLevel, clientPos);
+        ManagedDragService.Instance.Move(clientPos);
+    }
+
+    private void OnTopLevelPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_isManagedDragging) return;
+        EndManagedDrag();
+    }
+
+    private void EndManagedDrag()
+    {
+        _isManagedDragging = false;
+        _dragPendingNode = null;
+
+        ManagedDragService.Instance.End();
+        DragPreviewService.Hide();
+
+        _capturedPointer?.Capture(null);
+        _capturedPointer = null;
+
+        if (_dragTopLevel is not null)
+        {
+            _dragTopLevel.RemoveHandler(PointerMovedEvent, OnTopLevelPointerMoved);
+            _dragTopLevel.RemoveHandler(PointerReleasedEvent, OnTopLevelPointerReleased);
+            _dragTopLevel = null;
         }
     }
 
@@ -116,6 +210,7 @@ public partial class LibraryPanel : UserControl
             // Allow the chevron click to toggle expand/collapse (default behavior).
             // Reset double-click tracking so the chevron click doesn't count.
             _lastClickNode = null;
+            _dragPendingNode = null;
             return;
         }
 
@@ -127,12 +222,17 @@ public partial class LibraryPanel : UserControl
         // Set selection manually since we handled the event
         tree.SelectedItem = node;
 
+        // Track for potential drag
+        _dragStartPoint = e.GetPosition(tree);
+        _dragPendingNode = node;
+
         // Custom double-click detection
         var now = DateTime.UtcNow;
         if (_lastClickNode == node && (now - _lastClickTime).TotalMilliseconds <= DoubleClickMs)
         {
             // Double-click detected: dispatch based on node type
             _lastClickNode = null;
+            _dragPendingNode = null;
             switch (node.NodeType)
             {
                 case LibraryNodeType.Playlist:

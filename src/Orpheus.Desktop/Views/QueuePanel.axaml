@@ -15,11 +15,14 @@
         </StackPanel>
         <Button Grid.Column="1" x:Name="QueueOptionsButton"
                 Classes="icon" Width="28" Height="28"
-                Click="OnQueueOptionsClick" ToolTip.Tip="Display options"
+                Click="OnQueueOptionsClick" ToolTip.Tip="Queue options"
                 VerticalAlignment="Top" Padding="4">
           <Image Source="{Binding EllipsisIcon}" Width="14" Height="14" />
           <Button.ContextMenu>
             <ContextMenu x:Name="QueueOptionsMenu" Opened="OnQueueOptionsMenuOpened">
+              <MenuItem Header="Save Queue as Playlist..." Click="OnSaveQueueClick" />
+              <MenuItem Header="Clear Queue" Click="OnClearQueueClick" />
+              <Separator />
               <MenuItem Header="Show Title" Tag="Title" ToggleType="Radio" Click="OnShowTitle" />
               <MenuItem Header="Show Filename" Tag="FileName" ToggleType="Radio" Click="OnShowFileName" />
               <Separator />
@@ -31,13 +34,19 @@
       <ListBox Grid.Row="1"
                x:Name="QueueList"
                ItemsSource="{Binding Queue}"
-               SelectedIndex="{Binding CurrentQueueIndex, Mode=OneWay}">
+               SelectedIndex="{Binding CurrentQueueIndex, Mode=OneWay}"
+                >
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="local:QueueItem">
             <Panel>
               <!-- Normal item content -->
               <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
                     IsVisible="{Binding IsPlaceholder, Converter={x:Static BoolConverters.Not}}">
+                <Grid.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="Remove from Queue" Click="OnRemoveQueueItemClick" />
+                  </ContextMenu>
+                </Grid.ContextMenu>
                 <TextBlock Text="&#x2261;" FontSize="16" Classes="muted"
                            VerticalAlignment="Center" Cursor="Hand"
                            Tag="DragHandle" />

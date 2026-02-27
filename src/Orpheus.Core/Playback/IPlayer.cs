@@ -9,9 +9,14 @@ namespace Orpheus.Core.Playback;
 public interface IPlayer : IAsyncDisposable
 {
     /// <summary>
-    /// Current playback state.
+    /// Current transport state (playing, paused, stopped).
     /// </summary>
     PlaybackState State { get; }
+
+    /// <summary>
+    /// Current media loading state (opening, buffering, complete, error).
+    /// </summary>
+    LoadState LoadState { get; }
 
     /// <summary>
     /// Current playback position.
@@ -64,9 +69,14 @@ public interface IPlayer : IAsyncDisposable
     Task SeekAsync(TimeSpan position);
 
     /// <summary>
-    /// Fired when playback state changes.
+    /// Fired when the transport state changes (playing, paused, stopped).
     /// </summary>
     event EventHandler<PlaybackStateChangedEventArgs>? StateChanged;
+
+    /// <summary>
+    /// Fired when the media loading state changes (opening, buffering, complete, error).
+    /// </summary>
+    event EventHandler<LoadStateChangedEventArgs>? LoadStateChanged;
 
     /// <summary>
     /// Fired when playback position changes (typically every ~250ms during playback).

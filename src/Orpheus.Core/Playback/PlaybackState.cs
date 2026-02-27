@@ -1,25 +1,16 @@
 namespace Orpheus.Core.Playback;
 
 /// <summary>
-/// Represents the current state of audio playback.
+/// Transport state of audio playback (play, pause, stop).
 /// </summary>
 public enum PlaybackState
 {
-    /// <summary>No media is loaded.</summary>
+    /// <summary>No media is loaded or playback has been stopped.</summary>
     Stopped,
 
     /// <summary>Media is actively playing.</summary>
     Playing,
 
     /// <summary>Playback is paused.</summary>
-    Paused,
-
-    /// <summary>Media is buffering (network streams).</summary>
-    Buffering,
-
-    /// <summary>Playback encountered an error.</summary>
-    Error,
-
-    /// <summary>Media is being opened/loaded.</summary>
-    Opening
+    Paused
 }
