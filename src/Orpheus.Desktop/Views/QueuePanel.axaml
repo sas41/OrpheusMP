@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Orpheus.Desktop"
+             xmlns:lang="clr-namespace:Orpheus.Desktop.Lang"
              mc:Ignorable="d" d:DesignWidth="260" d:DesignHeight="520"
              x:Class="Orpheus.Desktop.Views.QueuePanel"
              x:DataType="local:MainWindowViewModel">
@@ -10,23 +11,23 @@
     <Grid RowDefinitions="Auto,*" RowSpacing="10">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
         <StackPanel>
-          <TextBlock Text="Play Queue" Classes="subheading" />
+          <TextBlock Text="{x:Static lang:Resources.PlayQueue}" Classes="subheading" />
           <TextBlock Text="{Binding QueueSummary}" Classes="muted small" />
         </StackPanel>
         <Button Grid.Column="1" x:Name="QueueOptionsButton"
                 Classes="icon" Width="28" Height="28"
-                Click="OnQueueOptionsClick" ToolTip.Tip="Queue options"
+                Click="OnQueueOptionsClick" ToolTip.Tip="{x:Static lang:Resources.QueueOptions}"
                 VerticalAlignment="Top" Padding="4">
           <Image Source="{Binding EllipsisIcon}" Width="14" Height="14" />
           <Button.ContextMenu>
             <ContextMenu x:Name="QueueOptionsMenu" Opened="OnQueueOptionsMenuOpened">
-              <MenuItem Header="Save Queue as Playlist..." Click="OnSaveQueueClick" />
-              <MenuItem Header="Clear Queue" Click="OnClearQueueClick" />
+              <MenuItem Header="{x:Static lang:Resources.SaveQueueAsPlaylistMenu}" Click="OnSaveQueueClick" />
+              <MenuItem Header="{x:Static lang:Resources.ClearQueue}" Click="OnClearQueueClick" />
               <Separator />
-              <MenuItem Header="Show Title" Tag="Title" ToggleType="Radio" Click="OnShowTitle" />
-              <MenuItem Header="Show Filename" Tag="FileName" ToggleType="Radio" Click="OnShowFileName" />
+              <MenuItem Header="{x:Static lang:Resources.ShowTitle}" Tag="Title" ToggleType="Radio" Click="OnShowTitle" />
+              <MenuItem Header="{x:Static lang:Resources.ShowFilename}" Tag="FileName" ToggleType="Radio" Click="OnShowFileName" />
               <Separator />
-              <MenuItem Header="Show Secondary Text" Tag="SecondaryText" ToggleType="CheckBox" Click="OnToggleSecondaryText" />
+              <MenuItem Header="{x:Static lang:Resources.ShowSecondaryText}" Tag="SecondaryText" ToggleType="CheckBox" Click="OnToggleSecondaryText" />
             </ContextMenu>
           </Button.ContextMenu>
         </Button>
@@ -44,7 +45,7 @@
                     IsVisible="{Binding IsPlaceholder, Converter={x:Static BoolConverters.Not}}">
                 <Grid.ContextMenu>
                   <ContextMenu>
-                    <MenuItem Header="Remove from Queue" Click="OnRemoveQueueItemClick" />
+                    <MenuItem Header="{x:Static lang:Resources.RemoveFromQueue}" Click="OnRemoveQueueItemClick" />
                   </ContextMenu>
                 </Grid.ContextMenu>
                 <TextBlock Text="&#x2261;" FontSize="16" Classes="muted"

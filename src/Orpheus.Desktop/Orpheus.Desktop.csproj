@@ -33,6 +33,21 @@
     <Content Include="LICENSES\*.txt" CopyToOutputDirectory="PreserveNewest" Link="LICENSES/%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- ResX localization files -->
+  <ItemGroup>
+    <EmbeddedResource Update="Lang\Resources.resx">
+      <Generator>PublicResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Update="Lang\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
   <!-- Top-level shared assets — icons (SVG + AXAML) and themes -->
   <ItemGroup>
     <AvaloniaResource Include="../../assets/icons/**/*" Link="assets/icons/%(RecursiveDir)%(Filename)%(Extension)" />

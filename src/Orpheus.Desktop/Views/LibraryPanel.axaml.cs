@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
+using Lang = Orpheus.Desktop.Lang;
 using System;
 using System.Linq;
 
@@ -151,7 +152,7 @@ public partial class LibraryPanel : UserControl
 
         var result = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Add music folder",
+            Title = Lang.Resources.AddMusicFolder,
             AllowMultiple = false
         });
 

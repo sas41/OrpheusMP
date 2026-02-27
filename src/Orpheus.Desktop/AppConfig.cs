@@ -30,6 +30,10 @@ public sealed class AppConfig
     [JsonPropertyName("audioDevice")]
     public string? AudioDevice { get; set; }
 
+    /// <summary>Language/locale code (e.g. "en", "de", "ja"), or null for English default.</summary>
+    [JsonPropertyName("language")]
+    public string? Language { get; set; }
+
     // ── Queue display ────────────────────────────────────────
 
     /// <summary>Queue primary text mode: "Title" or "FileName".</summary>

@@ -9,37 +9,46 @@
         x:CompileBindings="False"
         Width="560" Height="620"
         MinWidth="420" MinHeight="480"
-        Title="Settings"
+        Title="{Binding LocSettings}"
         WindowStartupLocation="CenterOwner"
         CanResize="True">
 
   <TabControl Margin="8">
 
     <!-- ── General ────────────────────────────────────────── -->
-    <TabItem Header="General">
+    <TabItem Header="{Binding LocGeneral}">
       <StackPanel Spacing="12" Margin="8">
-        <TextBlock Text="General" Classes="heading" />
+        <TextBlock Text="{Binding LocGeneral}" Classes="heading" />
 
-        <CheckBox Content="Enable tray icon (minimize to tray on close)"
+        <CheckBox Content="{Binding LocEnableTrayIcon}"
                   IsChecked="{Binding EnableTrayIcon}" />
+
+        <Separator Margin="0,8" />
+
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding LocLanguage}" Classes="muted small" />
+          <ComboBox ItemsSource="{Binding LanguageOptions}"
+                    SelectedItem="{Binding SelectedLanguage}"
+                    MinWidth="200" />
+        </StackPanel>
       </StackPanel>
     </TabItem>
 
     <!-- ── Theme ──────────────────────────────────────────── -->
-    <TabItem Header="Theme">
+    <TabItem Header="{Binding LocTheme}">
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="12" Margin="8">
-          <TextBlock Text="Appearance" Classes="heading" />
+          <TextBlock Text="{Binding LocAppearance}" Classes="heading" />
 
           <StackPanel Spacing="4">
-            <TextBlock Text="Theme" Classes="muted small" />
+            <TextBlock Text="{Binding LocTheme}" Classes="muted small" />
             <ComboBox ItemsSource="{Binding Themes}"
                       SelectedItem="{Binding SelectedTheme}"
                       MinWidth="200" />
           </StackPanel>
 
           <StackPanel Spacing="4">
-            <TextBlock Text="Color Variant" Classes="muted small" />
+            <TextBlock Text="{Binding LocColorVariant}" Classes="muted small" />
             <ComboBox ItemsSource="{Binding Variants}"
                       SelectedItem="{Binding SelectedVariant}"
                       MinWidth="200" />
@@ -47,8 +56,8 @@
 
           <Separator Margin="0,8" />
 
-          <TextBlock Text="Custom Colors" Classes="subheading" />
-          <CheckBox Content="Enable custom color overrides"
+          <TextBlock Text="{Binding LocCustomColors}" Classes="subheading" />
+          <CheckBox Content="{Binding LocEnableCustomColorOverrides}"
                     IsChecked="{Binding CustomColorsEnabled}" />
 
           <ItemsControl ItemsSource="{Binding PaletteEntries}"
@@ -71,14 +80,14 @@
 
           <StackPanel Orientation="Horizontal" Spacing="8"
                       IsVisible="{Binding CustomColorsEnabled}">
-            <Button Content="Apply Colors" Click="OnApplyColors" />
-            <Button Content="Reset to Default" Click="OnResetColors" />
+            <Button Content="{Binding LocApplyColors}" Click="OnApplyColors" />
+            <Button Content="{Binding LocResetToDefault}" Click="OnResetColors" />
           </StackPanel>
 
           <Separator Margin="0,8" IsVisible="{Binding CustomColorsEnabled}" />
 
           <StackPanel Spacing="4">
-            <TextBlock Text="Layouts directory:" Classes="muted small" />
+            <TextBlock Text="{Binding LocLayoutsDirectory}" Classes="muted small" />
             <TextBox IsReadOnly="True" Text="{Binding UserLayoutsDirectory}" FontSize="11" />
           </StackPanel>
         </StackPanel>
@@ -86,37 +95,37 @@
     </TabItem>
 
     <!-- ── Library ────────────────────────────────────────── -->
-    <TabItem Header="Library">
+    <TabItem Header="{Binding LocLibrary}">
       <StackPanel Spacing="12" Margin="8">
-        <TextBlock Text="Music Folders" Classes="heading" />
+        <TextBlock Text="{Binding LocMusicFolders}" Classes="heading" />
 
         <ListBox ItemsSource="{Binding MusicFolders}"
                  x:Name="FolderList"
                  MinHeight="100" MaxHeight="200" />
 
         <StackPanel Orientation="Horizontal" Spacing="8">
-          <Button Content="Add Folder" Click="OnAddFolder" />
-          <Button Content="Remove Selected" Click="OnRemoveFolder" />
+          <Button Content="{Binding LocAddFolder}" Click="OnAddFolder" />
+          <Button Content="{Binding LocRemoveSelected}" Click="OnRemoveFolder" />
         </StackPanel>
 
         <Separator Margin="0,8" />
 
-        <TextBlock Text="Database" Classes="subheading" />
-        <TextBlock Text="Reset the library database to clear all indexed tracks and folders."
+        <TextBlock Text="{Binding LocDatabase}" Classes="subheading" />
+        <TextBlock Text="{Binding LocResetLibraryDescription}"
                    TextWrapping="Wrap" Classes="muted small" />
-        <Button Content="Reset Library" Click="OnResetLibrary" />
+        <Button Content="{Binding LocResetLibrary}" Click="OnResetLibrary" />
 
         <TextBlock Text="{Binding StatusMessage}" Classes="muted small" />
       </StackPanel>
     </TabItem>
 
     <!-- ── Output ─────────────────────────────────────────── -->
-    <TabItem Header="Output">
+    <TabItem Header="{Binding LocOutput}">
       <StackPanel Spacing="12" Margin="8">
-        <TextBlock Text="Audio Output" Classes="heading" />
+        <TextBlock Text="{Binding LocAudioOutput}" Classes="heading" />
 
         <StackPanel Spacing="4">
-          <TextBlock Text="Output Device" Classes="muted small" />
+          <TextBlock Text="{Binding LocOutputDevice}" Classes="muted small" />
           <ComboBox ItemsSource="{Binding AudioDevices}"
                     SelectedValue="{Binding SelectedAudioDevice}"
                     SelectedValueBinding="{Binding Id}"

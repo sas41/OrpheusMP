@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Orpheus.Desktop"
+             xmlns:lang="clr-namespace:Orpheus.Desktop.Lang"
              mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="52"
              x:Class="Orpheus.Desktop.Views.TransportBar"
              x:DataType="local:MainWindowViewModel">
@@ -27,25 +28,25 @@
         <!-- Transport buttons -->
         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
           <Button Click="OnStopClick" Classes="icon" Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
-                  ToolTip.Tip="Stop">
+                  ToolTip.Tip="{x:Static lang:Resources.Stop}">
             <Image Source="{Binding StopIcon}" Classes="transport" />
           </Button>
           <Button Click="OnPrevClick" Classes="icon" Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
-                  ToolTip.Tip="Previous">
+                  ToolTip.Tip="{x:Static lang:Resources.Previous}">
             <Image Source="{Binding PreviousIcon}" Classes="transport" />
           </Button>
           <Button Click="OnPlayClick" Classes="icon" Classes.primary="{Binding IsActive}"
                   Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
-                  ToolTip.Tip="Play / Pause">
+                  ToolTip.Tip="{x:Static lang:Resources.PlayPause}">
             <Image Source="{Binding PlayPauseIconPrimary}" Classes="transport" />
           </Button>
           <Button Click="OnNextClick" Classes="icon" Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
-                  ToolTip.Tip="Next">
+                  ToolTip.Tip="{x:Static lang:Resources.Next}">
             <Image Source="{Binding NextIcon}" Classes="transport" />
           </Button>
           <ToggleButton Click="OnShuffleClick" Classes="icon" Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
                         IsChecked="{Binding IsShuffleEnabled, Mode=OneWay}"
-                        ToolTip.Tip="Shuffle">
+                        ToolTip.Tip="{x:Static lang:Resources.Shuffle}">
             <Image Source="{Binding ShuffleIcon}" Classes="transport" />
           </ToggleButton>
           <ToggleButton Click="OnRepeatClick" Classes="icon" Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
@@ -64,7 +65,7 @@
 
         <!-- Volume icon (mute/unmute) -->
         <Button Grid.Column="3" Classes="icon" Width="24" Height="24" MinWidth="24" MinHeight="24" Padding="4"
-                Click="OnVolumeIconClick" ToolTip.Tip="Mute / Unmute"
+                Click="OnVolumeIconClick" ToolTip.Tip="{x:Static lang:Resources.MuteUnmute}"
                 VerticalAlignment="Center">
           <Image Source="{Binding VolumeIcon}" Width="14" Height="14" />
         </Button>

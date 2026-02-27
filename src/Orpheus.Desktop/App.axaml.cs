@@ -1,20 +1,26 @@
 using System;
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
+using Orpheus.Desktop.Lang;
 using Orpheus.Desktop.Theming;
 
 namespace Orpheus.Desktop;
 
 public partial class App : Application
 {
+    public static event Action? LanguageChanged;
+
     public ThemeManager? ThemeManager { get; private set; }
     public AppConfig Config { get; private set; } = new();
     public AppState State { get; private set; } = new();
 
     private TrayIcon? _trayIcon;
+    private NativeMenuItem? _showMenuItem;
+    private NativeMenuItem? _quitMenuItem;
     private bool _isQuitting;
 
     /// <summary>
@@ -30,6 +36,10 @@ public partial class App : Application
         // Load user settings and session state (creates defaults if missing)
         Config = AppConfig.Load();
         State = AppState.Load();
+
+        // Initialize localization from config (must happen before UI is built)
+        if (!string.IsNullOrEmpty(Config.Language))
+            Lang.Resources.Culture = new CultureInfo(Config.Language);
 
         // Initialize theming from config
         ThemeManager = new ThemeManager(this);
@@ -80,22 +90,28 @@ public partial class App : Application
         }
     }
 
+    public static void SetLanguage(string cultureCode)
+    {
+        Lang.Resources.Culture = new CultureInfo(cultureCode);
+        LanguageChanged?.Invoke();
+    }
+
     private void CreateTrayIcon()
     {
-        var showItem = new NativeMenuItem("Show Orpheus");
-        showItem.Click += (_, _) => ShowMainWindow();
+        _showMenuItem = new NativeMenuItem(Lang.Resources.ShowOrpheus);
+        _showMenuItem.Click += (_, _) => ShowMainWindow();
 
-        var quitItem = new NativeMenuItem("Quit");
-        quitItem.Click += (_, _) => QuitApplication();
+        _quitMenuItem = new NativeMenuItem(Lang.Resources.Quit);
+        _quitMenuItem.Click += (_, _) => QuitApplication();
 
         var menu = new NativeMenu();
-        menu.Items.Add(showItem);
+        menu.Items.Add(_showMenuItem);
         menu.Items.Add(new NativeMenuItemSeparator());
-        menu.Items.Add(quitItem);
+        menu.Items.Add(_quitMenuItem);
 
         _trayIcon = new TrayIcon
         {
-            ToolTipText = "Orpheus Music Player",
+            ToolTipText = Lang.Resources.AppTitle,
             Menu = menu,
             IsVisible = true,
             Icon = new WindowIcon(
@@ -103,6 +119,18 @@ public partial class App : Application
         };
 
         _trayIcon.Clicked += (_, _) => ShowMainWindow();
+
+        LanguageChanged += OnLanguageChangedTray;
+    }
+
+    private void OnLanguageChangedTray()
+    {
+        if (_trayIcon is not null)
+            _trayIcon.ToolTipText = Lang.Resources.AppTitle;
+        if (_showMenuItem is not null)
+            _showMenuItem.Header = Lang.Resources.ShowOrpheus;
+        if (_quitMenuItem is not null)
+            _quitMenuItem.Header = Lang.Resources.Quit;
     }
 
     private void OnMainWindowClosing(object? sender, WindowClosingEventArgs e)

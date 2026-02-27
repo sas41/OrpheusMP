@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Orpheus.Desktop"
+             xmlns:lang="clr-namespace:Orpheus.Desktop.Lang"
              mc:Ignorable="d" d:DesignWidth="240" d:DesignHeight="520"
              x:Class="Orpheus.Desktop.Views.LibraryPanel"
              x:DataType="local:MainWindowViewModel">
@@ -10,19 +11,19 @@
     <Grid RowDefinitions="Auto,*" RowSpacing="8">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
         <StackPanel>
-          <TextBlock Text="Library" Classes="subheading" />
+          <TextBlock Text="{x:Static lang:Resources.Library}" Classes="subheading" />
           <TextBlock Text="{Binding LibrarySummary}" Classes="muted small" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
           <Button Classes="icon" Width="28" Height="28" Padding="4"
-                  Click="OnAddLibraryFolderClick" ToolTip.Tip="Add library folder">
+                  Click="OnAddLibraryFolderClick" ToolTip.Tip="{x:Static lang:Resources.AddLibraryFolder}">
             <Image Source="{Binding PlusIcon}" Width="14" Height="14" />
           </Button>
           <Button Classes="icon" Width="28" Height="28" Padding="4"
-                  ToolTip.Tip="Library options">
+                  ToolTip.Tip="{x:Static lang:Resources.LibraryOptions}">
             <Button.Flyout>
               <MenuFlyout Placement="BottomEdgeAlignedRight">
-                <MenuItem Header="Show Files"
+                <MenuItem Header="{x:Static lang:Resources.ShowFiles}"
                           Click="OnToggleShowFiles">
                   <MenuItem.Icon>
                     <CheckBox IsChecked="{Binding ShowLibraryFiles}"

@@ -4,6 +4,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Lang = Orpheus.Desktop.Lang;
 using System;
 
 namespace Orpheus.Desktop.Views;
@@ -69,7 +70,7 @@ public partial class TrackListPanel : UserControl
         if (index < 0) return;
 
         var trackRow = index < ViewModel.Tracks.Count ? ViewModel.Tracks[index] : null;
-        var label = trackRow?.Title ?? trackRow?.FileName ?? "Track";
+        var label = trackRow?.Title ?? trackRow?.FileName ?? Lang.Resources.Track;
 
         var payload = new System.Collections.Generic.Dictionary<string, string>
         {

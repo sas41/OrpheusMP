@@ -12,7 +12,7 @@
         Background="Transparent"
         x:DataType="local:MainWindowViewModel"
         Icon="avares://Orpheus.Desktop/assets/icon-256.png"
-        Title="Orpheus Music Player">
+        Title="{Binding AppTitle}">
 
   <!-- The window is a thin shell. Layout, styles, and colors are all
        provided by the active theme via ThemeManager.

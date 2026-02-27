@@ -18,6 +18,7 @@ using System.Linq;
 using System;
 using System.Threading.Tasks;
 using System.IO;
+using Orpheus.Desktop.Lang;
 using Orpheus.Desktop.Theming;
 
 
@@ -77,12 +78,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private DispatcherTimer? _expandedPathsSaveTimer;
     private DispatcherTimer? _queueStateSaveTimer;
 
-    private string _librarySummary = "Library loading";
-    private string _queueSummary = "Queue empty";
-    private string _nowPlayingTitle = "Nothing playing";
+    private string _librarySummary = Resources.LibraryLoading;
+    private string _queueSummary = Resources.QueueEmpty;
+    private string _nowPlayingTitle = Resources.NothingPlaying;
     private string _nowPlayingArtist = "";
     private string _nowPlayingAlbum = "";
-    private string _nowPlayingPrimary = "Nothing playing";
+    private string _nowPlayingPrimary = Resources.NothingPlaying;
     private string _nowPlayingSecondary = "";
     private string _nowPlayingTime = "00:00 / 00:00";
     private double _playbackDuration;
@@ -454,13 +455,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }
     }
 
+    public string AppTitle => Resources.AppTitle;
+
     public bool IsRepeatEnabled => _repeatMode != RepeatMode.Off;
 
     public string RepeatLabel => _repeatMode switch
     {
-        RepeatMode.All => "Repeat All",
-        RepeatMode.One => "Repeat One",
-        _ => "Repeat"
+        RepeatMode.All => Resources.RepeatAll,
+        RepeatMode.One => Resources.RepeatOne,
+        _ => Resources.Repeat
     };
 
     /// <summary>
@@ -690,6 +693,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (app.ThemeManager is { } tm)
             tm.ThemeChanged += OnThemeChanged;
 
+        // Refresh locale-dependent UI when the language changes at runtime.
+        App.LanguageChanged += OnLanguageChanged;
+
         _ = InitializeAsync();
     }
 
@@ -712,6 +718,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlusIcon)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EllipsisIcon)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VolumeIcon)));
+        });
+    }
+
+    /// <summary>
+    /// Refresh all locale-dependent text when the user switches language at runtime.
+    /// </summary>
+    private void OnLanguageChanged()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            // Computed properties that use Resources — just raise PropertyChanged
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AppTitle)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RepeatLabel)));
+
+            // Re-compute dynamic summary strings
+            QueueSummary = _queue.Count > 0
+                ? string.Format(Resources.QueuedSummary, _queue.Count)
+                : Resources.QueueEmpty;
+
+            // Re-compute now-playing display
+            UpdateNowPlayingDisplay();
+
+            // Rebuild the library tree so folder meta strings are re-localized
+            _ = LoadLibraryAsync();
         });
     }
 
@@ -812,7 +842,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             MergeNodes(_libraryRoots, treeNodes);
             RestoreExpandedPaths(_libraryRoots, expandedPaths);
             SubscribeToExpansionChanges(_libraryRoots);
-            LibrarySummary = $"{folders.Count} folders - {allTracks.Count} tracks";
+            LibrarySummary = string.Format(Resources.FoldersSummary, folders.Count, allTracks.Count);
         });
 
         await RefreshTrackViewAsync(resetSelection: true);
@@ -921,7 +951,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             _queue.Add(ToQueueItem(item));
         }
 
-        QueueSummary = $"{_queue.Count} queued";
+        QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
     }
 
     private void OnScanProgress(object? sender, LibraryScanProgress e)
@@ -972,7 +1002,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         var item = _controller.Playlist.CurrentItem;
         if (item is null)
         {
-            NowPlayingPrimary = "Nothing playing";
+            NowPlayingPrimary = Resources.NothingPlaying;
             NowPlayingSecondary = "";
             return;
         }
@@ -1084,7 +1114,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             track.DiscNumber?.ToString() ?? "",
             track.Year?.ToString() ?? "",
             track.Genre ?? "",
-            track.Bitrate is null ? "" : $"{track.Bitrate} kbps",
+            track.Bitrate is null ? "" : string.Format(Resources.BitrateFmt, track.Bitrate),
             FormatTime(track.Duration ?? TimeSpan.Zero),
             track.Codec ?? "");
     }
@@ -1105,18 +1135,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             secondaryText = _showQueueSecondaryText
                 ? (Path.GetFileName(Path.GetDirectoryName(filePath) ?? "") is { Length: > 0 } folder
                     ? folder
-                    : "<Folder Unknown>")
+                    : Resources.FolderUnknown)
                 : "";
         }
         else
         {
             primaryText = !string.IsNullOrWhiteSpace(metadata?.Title)
                 ? metadata!.Title!
-                : "<Title Unknown>";
+                : Resources.TitleUnknown;
             secondaryText = _showQueueSecondaryText
                 ? (!string.IsNullOrWhiteSpace(metadata?.Artist)
                     ? metadata!.Artist!
-                    : "<Artist Unknown>")
+                    : Resources.ArtistUnknown)
                 : "";
         }
 
@@ -1165,7 +1195,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }
 
         // Keep this node if it has matching tracks directly or surviving children.
-        var hasOwnTracks = node.Meta != "Empty" && node.Meta != "Missing";
+        var hasOwnTracks = node.Meta != Resources.Empty && node.Meta != Resources.Missing;
         if (!hasOwnTracks && prunedChildren.Count == 0)
             return null;
 
@@ -1242,23 +1272,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         string meta;
         if (!Directory.Exists(path))
         {
-            meta = "Missing";
+            meta = Resources.Missing;
         }
         else if (trackCount > 0 && playlistCount > 0)
         {
-            meta = $"{trackCount} tracks \u00b7 {playlistCount} playlists";
+            meta = string.Format(Resources.TracksAndPlaylists, trackCount, playlistCount);
         }
         else if (trackCount > 0)
         {
-            meta = $"{trackCount} tracks";
+            meta = string.Format(Resources.TrackCount, trackCount);
         }
         else if (playlistCount > 0)
         {
-            meta = $"{playlistCount} playlists";
+            meta = string.Format(Resources.PlaylistCount, playlistCount);
         }
         else
         {
-            meta = "Empty";
+            meta = Resources.Empty;
         }
 
         return new LibraryNode(name, meta, path, children);
@@ -1854,13 +1884,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         var result = await storage.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
         {
-            Title = "Save queue as playlist",
+            Title = Resources.SaveQueueAsPlaylist,
             SuggestedFileName = "playlist",
             DefaultExtension = "m3u",
             FileTypeChoices = new[]
             {
-                new Avalonia.Platform.Storage.FilePickerFileType("M3U Playlist") { Patterns = new[] { "*.m3u" } },
-                new Avalonia.Platform.Storage.FilePickerFileType("PLS Playlist") { Patterns = new[] { "*.pls" } },
+                new Avalonia.Platform.Storage.FilePickerFileType(Resources.M3UPlaylist) { Patterns = new[] { "*.m3u" } },
+                new Avalonia.Platform.Storage.FilePickerFileType(Resources.PLSPlaylist) { Patterns = new[] { "*.pls" } },
             }
         });
 
@@ -1915,7 +1945,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (insertAt >= 0 && insertAt <= CurrentQueueIndex && CurrentQueueIndex >= 0)
             CurrentQueueIndex += items.Count;
 
-        QueueSummary = $"{_queue.Count} queued";
+        QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
         IsQueueDirty = true;
         ScheduleQueueStateSave();
     }
@@ -1964,7 +1994,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             _queue.Add(ToQueueItem(item));
         }
 
-        QueueSummary = $"{_queue.Count} queued";
+        QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
         IsQueueDirty = true;
         ScheduleQueueStateSave();
     }
@@ -2003,7 +2033,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (insertAt >= 0 && insertAt <= CurrentQueueIndex && CurrentQueueIndex >= 0)
             CurrentQueueIndex += items.Count;
 
-        QueueSummary = $"{_queue.Count} queued";
+        QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
         IsQueueDirty = true;
         ScheduleQueueStateSave();
     }
@@ -2038,7 +2068,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         _queue.RemoveAt(index);
         CurrentQueueIndex = _controller.Playlist.CurrentIndex;
-        QueueSummary = $"{_queue.Count} queued";
+        QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
         IsQueueDirty = true;
         ScheduleQueueStateSave();
     }
@@ -2144,6 +2174,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         // Persist queue and playback state before tearing down
         SaveQueueState();
 
+        App.LanguageChanged -= OnLanguageChanged;
         if (((App)Application.Current!).ThemeManager is { } tm)
             tm.ThemeChanged -= OnThemeChanged;
         _scanner.Progress -= OnScanProgress;
@@ -2537,7 +2568,7 @@ public sealed class QueueConfirmDialog : Window
 
     public QueueConfirmDialog()
     {
-        Title = "Unsaved Queue";
+        Title = Lang.Resources.UnsavedQueue;
         Width = 380;
         Height = 100;
         CanResize = false;
@@ -2546,14 +2577,14 @@ public sealed class QueueConfirmDialog : Window
 
         var message = new TextBlock
         {
-            Text = "Your play queue has been modified.\nDo you want to save it as a playlist before replacing it?",
+            Text = Lang.Resources.UnsavedQueueMessage,
             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
             Margin = new Thickness(20, 20, 20, 12),
         };
 
-        var saveBtn = new Button { Content = "Save", Width = 80, HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
-        var discardBtn = new Button { Content = "Discard", Width = 80, HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
-        var cancelBtn = new Button { Content = "Cancel", Width = 80, HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
+        var saveBtn = new Button { Content = Lang.Resources.Save, Width = 80, HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
+        var discardBtn = new Button { Content = Lang.Resources.Discard, Width = 80, HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
+        var cancelBtn = new Button { Content = Lang.Resources.Cancel, Width = 80, HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center };
 
         saveBtn.Click += (_, _) => { _result = QueueConfirmResult.Save; Close(); };
         discardBtn.Click += (_, _) => { _result = QueueConfirmResult.Discard; Close(); };

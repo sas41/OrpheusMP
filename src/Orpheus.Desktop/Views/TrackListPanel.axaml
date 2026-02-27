@@ -3,59 +3,60 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Orpheus.Desktop"
+             xmlns:lang="clr-namespace:Orpheus.Desktop.Lang"
              mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="520"
              x:Class="Orpheus.Desktop.Views.TrackListPanel"
              x:DataType="local:MainWindowViewModel"
              x:CompileBindings="False">
   <UserControl.Resources>
     <ContextMenu x:Key="TrackColumnsMenu" Opened="OnTrackColumnsMenuOpened">
-      <MenuItem Header="Title" Tag="Title" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
-      <MenuItem Header="Artist" Tag="Artist" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
-      <MenuItem Header="Album" Tag="Album" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
-      <MenuItem Header="Filename" Tag="Filename" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
-      <MenuItem Header="Track #" Tag="TrackNumber" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
-      <MenuItem Header="Disc #" Tag="DiscNumber" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
-      <MenuItem Header="Year" Tag="Year" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
-      <MenuItem Header="Genre" Tag="Genre" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
-      <MenuItem Header="Bitrate" Tag="Bitrate" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
-      <MenuItem Header="Time" Tag="Time" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
-      <MenuItem Header="Format" Tag="Format" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColTitle}" Tag="Title" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColArtist}" Tag="Artist" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColAlbum}" Tag="Album" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColFilename}" Tag="Filename" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColTrackNumber}" Tag="TrackNumber" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColDiscNumber}" Tag="DiscNumber" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColYear}" Tag="Year" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColGenre}" Tag="Genre" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColBitrate}" Tag="Bitrate" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColTime}" Tag="Time" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColFormat}" Tag="Format" ToggleType="CheckBox" Click="OnToggleColumnClicked" />
     </ContextMenu>
     <ContextMenu x:Key="TrackSortMenu" Opened="OnTrackSortMenuOpened">
-      <MenuItem Header="Title" Tag="Title" ToggleType="Radio" Click="OnSortMenuClicked" />
-      <MenuItem Header="Artist" Tag="Artist" ToggleType="Radio" Click="OnSortMenuClicked" />
-      <MenuItem Header="Album" Tag="Album" ToggleType="Radio" Click="OnSortMenuClicked" />
-      <MenuItem Header="File name" Tag="FileName" ToggleType="Radio" Click="OnSortMenuClicked" />
-      <MenuItem Header="Track #" Tag="TrackNumber" ToggleType="Radio" Click="OnSortMenuClicked" />
-      <MenuItem Header="Year" Tag="Year" ToggleType="Radio" Click="OnSortMenuClicked" />
-      <MenuItem Header="Duration" Tag="Duration" ToggleType="Radio" Click="OnSortMenuClicked" />
-      <MenuItem Header="Date added" Tag="DateAdded" ToggleType="Radio" Click="OnSortMenuClicked" />
-      <MenuItem Header="Bitrate" Tag="Bitrate" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColTitle}" Tag="Title" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColArtist}" Tag="Artist" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColAlbum}" Tag="Album" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.SortFileName}" Tag="FileName" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColTrackNumber}" Tag="TrackNumber" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColYear}" Tag="Year" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.SortDuration}" Tag="Duration" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.SortDateAdded}" Tag="DateAdded" ToggleType="Radio" Click="OnSortMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.ColBitrate}" Tag="Bitrate" ToggleType="Radio" Click="OnSortMenuClicked" />
       <Separator />
-      <MenuItem Header="Ascending" Tag="Ascending" ToggleType="CheckBox" Click="OnSortDirectionClicked" />
+      <MenuItem Header="{x:Static lang:Resources.SortAscending}" Tag="Ascending" ToggleType="CheckBox" Click="OnSortDirectionClicked" />
     </ContextMenu>
     <ContextMenu x:Key="TrackFilterMenu" Opened="OnTrackFilterMenuOpened">
-      <MenuItem Header="Hide missing title" Tag="HideMissingTitle" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
-      <MenuItem Header="Hide missing artist" Tag="HideMissingArtist" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
-      <MenuItem Header="Hide missing album" Tag="HideMissingAlbum" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
-      <MenuItem Header="Hide missing genre" Tag="HideMissingGenre" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
-      <MenuItem Header="Hide missing track #" Tag="HideMissingTrackNumber" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.FilterHideMissingTitle}" Tag="HideMissingTitle" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.FilterHideMissingArtist}" Tag="HideMissingArtist" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.FilterHideMissingAlbum}" Tag="HideMissingAlbum" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.FilterHideMissingGenre}" Tag="HideMissingGenre" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
+      <MenuItem Header="{x:Static lang:Resources.FilterHideMissingTrackNumber}" Tag="HideMissingTrackNumber" ToggleType="CheckBox" Click="OnFilterMenuClicked" />
     </ContextMenu>
   </UserControl.Resources>
   <Border Classes="panel tight reveal-2">
     <Grid RowDefinitions="Auto,*" RowSpacing="10">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
         <StackPanel>
-          <TextBlock Text="Track List" Classes="subheading" />
-          <TextBlock Text="Curated from playlists and folders" Classes="muted small" />
+          <TextBlock Text="{x:Static lang:Resources.TrackList}" Classes="subheading" />
+          <TextBlock Text="{x:Static lang:Resources.CuratedFromPlaylistsAndFolders}" Classes="muted small" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
           <Button Classes="icon" Click="OnSortButtonClick" ContextMenu="{StaticResource TrackSortMenu}"
-                  ToolTip.Tip="Sort" Width="28" Height="28" Padding="4">
+                  ToolTip.Tip="{x:Static lang:Resources.Sort}" Width="28" Height="28" Padding="4">
             <Image Source="{Binding SortIcon}" Width="14" Height="14" />
           </Button>
           <Button Classes="icon" Click="OnFilterButtonClick" ContextMenu="{StaticResource TrackFilterMenu}"
-                  ToolTip.Tip="Filter" Width="28" Height="28" Padding="4">
+                  ToolTip.Tip="{x:Static lang:Resources.Filter}" Width="28" Height="28" Padding="4">
             <Image Source="{Binding FilterIcon}" Width="14" Height="14" />
           </Button>
         </StackPanel>
@@ -78,77 +79,77 @@
                 ColumnHeaderHeight="34"
                 Loaded="OnTracksGridLoaded">
         <DataGrid.Columns>
-          <DataGridTemplateColumn Header="Title" Width="*" MinWidth="120">
+          <DataGridTemplateColumn Header="{x:Static lang:Resources.ColTitle}" Width="*" MinWidth="120">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Artist" Width="Auto" MinWidth="110" MaxWidth="220">
+          <DataGridTemplateColumn Header="{x:Static lang:Resources.ColArtist}" Width="Auto" MinWidth="110" MaxWidth="220">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding Artist}" Classes="muted" TextTrimming="CharacterEllipsis" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Album" Width="Auto" MinWidth="120" MaxWidth="240">
+          <DataGridTemplateColumn Header="{x:Static lang:Resources.ColAlbum}" Width="Auto" MinWidth="120" MaxWidth="240">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding Album}" Classes="muted" TextTrimming="CharacterEllipsis" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="File" Width="Auto" MinWidth="150" MaxWidth="260">
+          <DataGridTemplateColumn Header="{x:Static lang:Resources.ColFile}" Width="Auto" MinWidth="150" MaxWidth="260">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding FileName}" Classes="muted" TextTrimming="CharacterEllipsis" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="#" Width="70">
+          <DataGridTemplateColumn Header="{x:Static lang:Resources.ColTrackHash}" Width="70">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding TrackNumber}" Classes="muted" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Disc" Width="70">
+          <DataGridTemplateColumn Header="{x:Static lang:Resources.ColDisc}" Width="70">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding DiscNumber}" Classes="muted" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Year" Width="70">
+          <DataGridTemplateColumn Header="{x:Static lang:Resources.ColYear}" Width="70">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding Year}" Classes="muted" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Genre" Width="Auto" MinWidth="100" MaxWidth="200">
+          <DataGridTemplateColumn Header="{x:Static lang:Resources.ColGenre}" Width="Auto" MinWidth="100" MaxWidth="200">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding Genre}" Classes="muted" TextTrimming="CharacterEllipsis" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Bitrate" Width="90">
+          <DataGridTemplateColumn Header="{x:Static lang:Resources.ColBitrate}" Width="90">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding Bitrate}" Classes="muted" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Time" Width="80">
+          <DataGridTemplateColumn Header="{x:Static lang:Resources.ColTime}" Width="80">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding Length}" />
               </DataTemplate>
             </DataGridTemplateColumn.CellTemplate>
           </DataGridTemplateColumn>
-          <DataGridTemplateColumn Header="Format" Width="90">
+          <DataGridTemplateColumn Header="{x:Static lang:Resources.ColFormat}" Width="90">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding Format}" Classes="muted" />
