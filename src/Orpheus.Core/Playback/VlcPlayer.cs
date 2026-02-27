@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using LibVLCSharp.Shared;
+using Orpheus.Core.Effects;
 using Orpheus.Core.Media;
 
 namespace Orpheus.Core.Playback;
@@ -15,6 +16,7 @@ public sealed class VlcPlayer : IPlayer
     private readonly SemaphoreSlim _playbackLock = new(1, 1);
     private PlaybackState _state = PlaybackState.Stopped;
     private MediaSource? _currentSource;
+    private bool _isMuted;
     private bool _disposed;
 
     public VlcPlayer()
@@ -69,8 +71,12 @@ public sealed class VlcPlayer : IPlayer
 
     public bool IsMuted
     {
-        get => _mediaPlayer.Mute;
-        set => _mediaPlayer.Mute = value;
+        get => _isMuted;
+        set
+        {
+            _isMuted = value;
+            _mediaPlayer.Mute = value;
+        }
     }
 
     public MediaSource? CurrentSource => _currentSource;
@@ -86,6 +92,13 @@ public sealed class VlcPlayer : IPlayer
         Debug.WriteLine("[VlcPlayer.PlayAsync] Acquired _playbackLock");
         try
         {
+            // Capture mute/volume state before stopping — LibVLC resets
+            // these when new media starts.  Use our own _isMuted backing
+            // field rather than _mediaPlayer.Mute, which LibVLC may have
+            // already cleared when the previous media ended.
+            var savedMute = _isMuted;
+            var savedVolume = _mediaPlayer.Volume;
+
             Debug.WriteLine("[VlcPlayer.PlayAsync] Calling StopInternalAsync...");
             await StopInternalAsync().ConfigureAwait(false);
             Debug.WriteLine($"[VlcPlayer.PlayAsync] StopInternalAsync completed, state={_state}");
@@ -142,7 +155,12 @@ public sealed class VlcPlayer : IPlayer
                 await tcs.Task.ConfigureAwait(false);
             }
 
-            Debug.WriteLine($"[VlcPlayer.PlayAsync] Playback started successfully, state={_state}");
+            // Restore mute and volume after playback has started — LibVLC
+            // resets both when new media begins playing.
+            _mediaPlayer.Volume = savedVolume;
+            _mediaPlayer.Mute = savedMute;
+
+            Debug.WriteLine($"[VlcPlayer.PlayAsync] Playback started successfully, state={_state}, mute={savedMute}");
         }
         catch (Exception ex)
         {
@@ -241,27 +259,100 @@ public sealed class VlcPlayer : IPlayer
         });
     }
 
-    public async Task SeekAsync(TimeSpan position)
+    public Task SeekAsync(TimeSpan position)
     {
         Debug.WriteLine($"[VlcPlayer.SeekAsync] Called — position={position}, state={_state}, thread={Environment.CurrentManagedThreadId}");
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_state is PlaybackState.Playing or PlaybackState.Paused)
+        if (_state is PlaybackState.Stopped or PlaybackState.Error)
         {
-            Debug.WriteLine($"[VlcPlayer.SeekAsync] Setting _mediaPlayer.Time to {(long)position.TotalMilliseconds}ms");
-            await Task.Run(() => _mediaPlayer.Time = (long)position.TotalMilliseconds).ConfigureAwait(false);
-            Debug.WriteLine("[VlcPlayer.SeekAsync] Seek applied");
+            Debug.WriteLine($"[VlcPlayer.SeekAsync] Skipped — state is {_state}");
+            return Task.CompletedTask;
         }
-        else
-        {
-            Debug.WriteLine($"[VlcPlayer.SeekAsync] Skipped — state is {_state}, not Playing or Paused");
-        }
+
+        Debug.WriteLine($"[VlcPlayer.SeekAsync] Seeking to {position.TotalMilliseconds}ms");
+        _mediaPlayer.SeekTo(position);
+        return Task.CompletedTask;
     }
 
     public event EventHandler<PlaybackStateChangedEventArgs>? StateChanged;
     public event EventHandler<TimeSpan>? PositionChanged;
     public event EventHandler? MediaEnded;
     public event EventHandler<string>? ErrorOccurred;
+
+    // ── Equalizer ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a <see cref="VlcEqualizer"/> bound to this player's internal MediaPlayer.
+    /// The caller is responsible for disposing the returned equalizer.
+    /// </summary>
+    public VlcEqualizer CreateEqualizer() => new(_mediaPlayer);
+
+    // ── Audio output device enumeration / selection ──────────────────
+
+    /// <summary>
+    /// Returns the available audio output devices.
+    /// Each entry is (id, description) where id can be passed to <see cref="SetAudioDevice"/>.
+    /// The first entry is always ("", "System Default").
+    /// </summary>
+    public IReadOnlyList<(string Id, string Description)> GetAudioOutputDevices()
+    {
+        var devices = new List<(string, string)> { ("", "System Default") };
+
+        // LibVLCSharp AudioOutputDevices needs an output module name.
+        // Enumerate the default output module's devices.
+        foreach (var output in _libVlc.AudioOutputs)
+        {
+            foreach (var dev in _libVlc.AudioOutputDevices(output.Name))
+            {
+                devices.Add((dev.DeviceIdentifier, $"{dev.Description} ({output.Name})"));
+            }
+            break; // Only enumerate the primary output module
+        }
+
+        return devices;
+    }
+
+    /// <summary>
+    /// Selects an audio output device by its identifier.
+    /// Pass an empty string or null to use the system default.
+    /// </summary>
+    public void SetAudioDevice(string? deviceId)
+    {
+        // Capture current volume/mute before switching — LibVLC resets
+        // volume when the audio output module changes.
+        var savedVolume = _mediaPlayer.Volume;
+        var savedMute = _isMuted;
+
+        if (string.IsNullOrEmpty(deviceId))
+        {
+            foreach (var output in _libVlc.AudioOutputs)
+            {
+                _mediaPlayer.SetAudioOutput(output.Name);
+                break;
+            }
+        }
+        else
+        {
+            foreach (var output in _libVlc.AudioOutputs)
+            {
+                foreach (var dev in _libVlc.AudioOutputDevices(output.Name))
+                {
+                    if (dev.DeviceIdentifier == deviceId)
+                    {
+                        _mediaPlayer.SetAudioOutput(output.Name);
+                        _mediaPlayer.SetOutputDevice(deviceId);
+                        goto done;
+                    }
+                }
+            }
+        }
+
+        done:
+        // Re-apply volume after the output switch
+        _mediaPlayer.Volume = savedVolume;
+        _mediaPlayer.Mute = savedMute;
+    }
 
     private void AttachEvents()
     {

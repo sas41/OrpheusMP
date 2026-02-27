@@ -11,6 +11,11 @@
     <PackageReference Include="Avalonia" Version="11.3.12" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
     <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Svg.Skia" Version="11.3.0" />
+    <!-- Pin native SkiaSharp to match managed 3.116.1 — Avalonia.Svg.Skia
+         transitively pulls 2.88.9 for Linux which is incompatible -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.116.1" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
     <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
     <PackageReference Include="Avalonia.Diagnostics" Version="11.3.12">
@@ -21,6 +26,20 @@
 
   <ItemGroup>
     <ProjectReference Include="../Orpheus.Core/Orpheus.Core.csproj" />
+  </ItemGroup>
+
+  <!-- License files — copied to output for the Licenses settings tab -->
+  <ItemGroup>
+    <Content Include="LICENSES\*.txt" CopyToOutputDirectory="PreserveNewest" Link="LICENSES/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- Top-level shared assets — icons (SVG + AXAML) and themes -->
+  <ItemGroup>
+    <AvaloniaResource Include="../../assets/icons/**/*" Link="assets/icons/%(RecursiveDir)%(Filename)%(Extension)" />
+    <AvaloniaResource Include="../../assets/themes/**/*.axaml" Link="assets/themes/%(RecursiveDir)%(Filename)%(Extension)" />
+    <AvaloniaResource Include="../../assets/icon.png" Link="assets/icon.png" />
+    <AvaloniaResource Include="../../assets/icon-256.png" Link="assets/icon-256.png" />
+    <AvaloniaResource Include="../../assets/icon.svg" Link="assets/icon.svg" />
   </ItemGroup>
 
 </Project>

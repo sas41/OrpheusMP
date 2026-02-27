@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="0 0 100 100"
+   fill="currentColor"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="previous.svg"
+   width="100"
+   height="100"
+   inkscape:version="1.4.3 (0d15f75042, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#505050"
+     bordercolor="#ffffff"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="1"
+     inkscape:deskcolor="#505050"
+     inkscape:zoom="4"
+     inkscape:cx="17.125"
+     inkscape:cy="68.25"
+     inkscape:window-width="1920"
+     inkscape:window-height="1052"
+     inkscape:window-x="0"
+     inkscape:window-y="0"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <g
+     inkscape:groupmode="layer"
+     id="layer1"
+     inkscape:label="Line">
+    <path
+       d="m 5.5,14.999999 c 0,-6.6666653 10,-6.6666653 10,0 v 70.000002 c 0,6.666665 -10,6.666665 -10,0 z"
+       id="path1-5"
+       style="fill:currentColor;stroke-width:5"
+       inkscape:label="Line" />
+  </g>
+  <g
+     inkscape:groupmode="layer"
+     id="layer2"
+     inkscape:label="Arrow">
+    <path
+       d="m 94.5,15.580301 c -0.02584,-4.300358 -4.684479,-6.9712959 -8.408722,-4.821 L 55.653486,33.967373 V 15.580301 c -0.02585,-4.300358 -4.684477,-6.9712959 -8.408722,-4.821 L 16.0186,45.179001 c -2.859745,3.152215 -2.859744,6.489787 0,9.642001 l 31.226164,34.419704 c 3.724245,2.150289 8.382857,-0.520672 8.408722,-4.821005 V 66.032631 L 86.091278,89.240706 C 89.815521,91.390995 94.474133,88.720034 94.5,84.419701 Z"
+       id="path1"
+       sodipodi:nodetypes="cccccsscccccc"
+       style="fill:currentColor;stroke-width:5.60581"
+       inkscape:label="Arrow" />
+  </g>
+</svg>

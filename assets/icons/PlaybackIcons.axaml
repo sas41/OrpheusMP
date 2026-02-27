@@ -1,0 +1,23 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:svg="clr-namespace:Avalonia.Svg.Skia;assembly=Avalonia.Svg.Skia">
+
+  <svg:SvgImage x:Key="PlayIconSvg" Source="avares://Orpheus.Desktop/assets/icons/play.svg" />
+  <svg:SvgImage x:Key="PauseIconSvg" Source="avares://Orpheus.Desktop/assets/icons/pause.svg" />
+  <svg:SvgImage x:Key="StopIconSvg" Source="avares://Orpheus.Desktop/assets/icons/stop.svg" />
+  <svg:SvgImage x:Key="PreviousIconSvg" Source="avares://Orpheus.Desktop/assets/icons/previous.svg" />
+  <svg:SvgImage x:Key="NextIconSvg" Source="avares://Orpheus.Desktop/assets/icons/next.svg" />
+  <svg:SvgImage x:Key="ShuffleIconSvg" Source="avares://Orpheus.Desktop/assets/icons/shuffle.svg" />
+  <svg:SvgImage x:Key="RepeatIconSvg" Source="avares://Orpheus.Desktop/assets/icons/repeat-all.svg" />
+  <svg:SvgImage x:Key="RepeatOneIconSvg" Source="avares://Orpheus.Desktop/assets/icons/repeat-one.svg" />
+  <svg:SvgImage x:Key="RepeatNoneIconSvg" Source="avares://Orpheus.Desktop/assets/icons/repeat-none.svg" />
+  <svg:SvgImage x:Key="VolumeIconSvg" Source="avares://Orpheus.Desktop/assets/icons/volume.svg" />
+  <svg:SvgImage x:Key="SettingsIconSvg" Source="avares://Orpheus.Desktop/assets/icons/settings.svg" />
+  <svg:SvgImage x:Key="SearchIconSvg" Source="avares://Orpheus.Desktop/assets/icons/search.svg" />
+  <svg:SvgImage x:Key="EqualizerIconSvg" Source="avares://Orpheus.Desktop/assets/icons/equalizer.svg" />
+  <svg:SvgImage x:Key="SortIconSvg" Source="avares://Orpheus.Desktop/assets/icons/sort.svg" />
+  <svg:SvgImage x:Key="FilterIconSvg" Source="avares://Orpheus.Desktop/assets/icons/filter.svg" />
+  <svg:SvgImage x:Key="PlusIconSvg" Source="avares://Orpheus.Desktop/assets/icons/plus.svg" />
+  <svg:SvgImage x:Key="EllipsisIconSvg" Source="avares://Orpheus.Desktop/assets/icons/ellipsis.svg" />
+
+</ResourceDictionary>

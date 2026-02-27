@@ -12,12 +12,20 @@ public sealed class FolderScanner
     private readonly IMetadataReader _metadataReader;
 
     /// <summary>
-    /// File extensions to scan for.
+    /// File extensions recognized as audio files.
     /// </summary>
-    private static readonly HashSet<string> AudioExtensions = new(StringComparer.OrdinalIgnoreCase)
+    public static readonly IReadOnlySet<string> AudioExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         ".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wma",
         ".wav", ".aiff", ".ape", ".mpc", ".wv", ".tta", ".dsf", ".dff"
+    };
+
+    /// <summary>
+    /// File extensions recognized as playlist files.
+    /// </summary>
+    public static readonly IReadOnlySet<string> PlaylistExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ".m3u", ".m3u8", ".pls"
     };
 
     public FolderScanner(IMediaLibrary library, IMetadataReader metadataReader)

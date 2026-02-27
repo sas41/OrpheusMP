@@ -49,9 +49,15 @@
           <TextBlock Text="Track List" Classes="subheading" />
           <TextBlock Text="Curated from playlists and folders" Classes="muted small" />
         </StackPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-          <Button Content="Sort" Click="OnSortButtonClick" ContextMenu="{StaticResource TrackSortMenu}" />
-          <Button Content="Filter" Click="OnFilterButtonClick" ContextMenu="{StaticResource TrackFilterMenu}" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <Button Classes="icon" Click="OnSortButtonClick" ContextMenu="{StaticResource TrackSortMenu}"
+                  ToolTip.Tip="Sort" Width="28" Height="28" Padding="4">
+            <Image Source="{Binding SortIcon}" Width="14" Height="14" />
+          </Button>
+          <Button Classes="icon" Click="OnFilterButtonClick" ContextMenu="{StaticResource TrackFilterMenu}"
+                  ToolTip.Tip="Filter" Width="28" Height="28" Padding="4">
+            <Image Source="{Binding FilterIcon}" Width="14" Height="14" />
+          </Button>
         </StackPanel>
       </Grid>
       <DataGrid Grid.Row="1"
@@ -72,7 +78,7 @@
                 ColumnHeaderHeight="34"
                 Loaded="OnTracksGridLoaded">
         <DataGrid.Columns>
-          <DataGridTemplateColumn Header="Title" Width="Auto" MinWidth="140" MaxWidth="360">
+          <DataGridTemplateColumn Header="Title" Width="*" MinWidth="120">
             <DataGridTemplateColumn.CellTemplate>
               <DataTemplate>
                 <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" />

@@ -13,21 +13,47 @@
           <TextBlock Text="Library" Classes="subheading" />
           <TextBlock Text="{Binding LibrarySummary}" Classes="muted small" />
         </StackPanel>
-        <Button Grid.Column="1" Content="+" Width="28" Height="28" Click="OnAddLibraryFolderClick" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+          <Button Classes="icon" Width="28" Height="28" Padding="4"
+                  Click="OnAddLibraryFolderClick" ToolTip.Tip="Add library folder">
+            <Image Source="{Binding PlusIcon}" Width="14" Height="14" />
+          </Button>
+          <Button Classes="icon" Width="28" Height="28" Padding="4"
+                  ToolTip.Tip="Library options">
+            <Button.Flyout>
+              <MenuFlyout Placement="BottomEdgeAlignedRight">
+                <MenuItem Header="Show Files"
+                          Click="OnToggleShowFiles">
+                  <MenuItem.Icon>
+                    <CheckBox IsChecked="{Binding ShowLibraryFiles}"
+                              IsHitTestVisible="False"
+                              Margin="0" Padding="0" MinWidth="0" />
+                  </MenuItem.Icon>
+                </MenuItem>
+              </MenuFlyout>
+            </Button.Flyout>
+            <Image Source="{Binding EllipsisIcon}" Width="14" Height="14" />
+          </Button>
+        </StackPanel>
       </Grid>
       <TreeView Grid.Row="1"
+                x:Name="LibraryTree"
                 ItemsSource="{Binding LibraryRoots}"
-                SelectionChanged="OnTreeSelectionChanged"
-                DoubleTapped="OnTreeDoubleTapped">
+                AutoScrollToSelectedItem="False"
+                ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                SelectionChanged="OnTreeSelectionChanged">
+        <TreeView.Styles>
+          <Style Selector="TreeViewItem" x:DataType="local:LibraryNode">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+          </Style>
+        </TreeView.Styles>
         <TreeView.ItemTemplate>
           <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="local:LibraryNode">
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-              <Border Width="8" Height="8" CornerRadius="4" Background="{DynamicResource AccentColor}" VerticalAlignment="Center" />
-              <StackPanel Grid.Column="1">
-                <TextBlock Text="{Binding Name}" />
-                <TextBlock Text="{Binding Meta}" Classes="muted small" />
-              </StackPanel>
-            </Grid>
+            <StackPanel Spacing="-3" Margin="0,1,0,1">
+              <TextBlock Text="{Binding Name}" FontSize="11" Padding="0" Margin="0"
+                         Opacity="{Binding NodeType, Converter={x:Static local:NodeTypeToOpacityConverter.Instance}}" />
+              <TextBlock Text="{Binding Meta}" Classes="muted" FontSize="9" Padding="0" Margin="0" />
+            </StackPanel>
           </TreeDataTemplate>
         </TreeView.ItemTemplate>
       </TreeView>

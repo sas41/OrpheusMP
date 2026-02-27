@@ -1,0 +1,36 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ═══════════════════════════════════════════════════════
+       Muse — Midnight color variant
+       A cool, blue-tinted dark variant of the Muse layout.
+       Only redefines colors; layout and styles are inherited.
+       ═══════════════════════════════════════════════════════ -->
+
+  <Color x:Key="AccentColor">#5B8FE6</Color>
+  <Color x:Key="AccentSoft">#1A2540</Color>
+  <Color x:Key="PanelFill">#161C26</Color>
+  <Color x:Key="PanelStroke">#243040</Color>
+  <Color x:Key="TextPrimary">#EDF1F4</Color>
+  <Color x:Key="TextMuted">#A5B2BC</Color>
+  <Color x:Key="RowHover">#1E2A3A</Color>
+  <Color x:Key="RowSelected">#1C2744</Color>
+  <Color x:Key="ButtonFill">#1C2636</Color>
+  <Color x:Key="ButtonHover">#283848</Color>
+  <Color x:Key="ButtonPressed">#141C28</Color>
+  <Color x:Key="IconColor">#5B8FE6</Color>
+  <Color x:Key="IconActiveColor">#FFFFFF</Color>
+  <x:String x:Key="IconCss">svg { color: #5B8FE6 !important; }</x:String>
+  <x:String x:Key="IconActiveCss">svg { color: #FFFFFF !important; }</x:String>
+
+  <LinearGradientBrush x:Key="AppSurfaceBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+    <GradientStop Color="#0E1118" Offset="0" />
+    <GradientStop Color="#161C26" Offset="1" />
+  </LinearGradientBrush>
+
+  <LinearGradientBrush x:Key="SheenBrush" StartPoint="0%,0%" EndPoint="100%,0%">
+    <GradientStop Color="#1A2540" Offset="0" />
+    <GradientStop Color="Transparent" Offset="1" />
+  </LinearGradientBrush>
+
+</ResourceDictionary>

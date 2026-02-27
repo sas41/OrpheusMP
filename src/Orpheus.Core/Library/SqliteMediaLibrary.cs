@@ -147,6 +147,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         cmd.CommandText = """
             SELECT * FROM tracks
             WHERE title LIKE @q OR artist LIKE @q OR album LIKE @q OR album_artist LIKE @q
+                  OR file_path LIKE @q
             ORDER BY title COLLATE NOCASE
             """;
         cmd.Parameters.AddWithValue("@q", $"%{query}%");
@@ -555,6 +556,16 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
     {
         var ordinal = reader.GetOrdinal(column);
         return reader.IsDBNull(ordinal) ? null : reader.GetInt64(ordinal);
+    }
+
+    public async Task ClearAsync(CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM tracks; DELETE FROM watched_folders;";
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public void Dispose()

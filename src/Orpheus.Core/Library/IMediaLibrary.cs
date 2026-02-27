@@ -109,4 +109,9 @@ public interface IMediaLibrary : IDisposable
     /// Remove a folder from monitoring.
     /// </summary>
     Task RemoveWatchedFolderAsync(string folderPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Delete all tracks and watched folders, resetting the library to an empty state.
+    /// </summary>
+    Task ClearAsync(CancellationToken cancellationToken = default);
 }

@@ -7,14 +7,11 @@
              x:Class="Orpheus.Desktop.Views.HeaderBar"
              x:DataType="local:MainWindowViewModel">
   <Border Classes="panel card tight reveal-1">
-    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-      <StackPanel>
-        <TextBlock Text="OrpheusMP" Classes="heading" />
-        <TextBlock Text="Library, queue, and playback workspace" Classes="muted small" />
-      </StackPanel>
+    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="12">
+      <TextBlock Text="Orpheus" Classes="heading" VerticalAlignment="Center" />
       <Border Grid.Column="1" Classes="accent-bar" Padding="8" HorizontalAlignment="Stretch" MinWidth="260">
         <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-          <TextBlock Text="Search" Classes="muted" VerticalAlignment="Center" />
+          <Image Source="{Binding SearchIcon}" Width="14" Height="14" VerticalAlignment="Center" />
           <TextBox Grid.Column="1" Watermark="Find tracks, artists, or playlists" Text="{Binding SearchQuery}" />
         </Grid>
       </Border>
@@ -22,6 +19,14 @@
         <TextBlock Text="Session" Classes="muted small" />
         <TextBlock Text="Offline Library" Classes="subheading" />
       </StackPanel>
+      <Button Grid.Column="3" Classes="icon" Click="OnEqualizerClick"
+              VerticalAlignment="Center" ToolTip.Tip="Equalizer">
+        <Image Source="{Binding EqualizerIcon}" Width="16" Height="16" />
+      </Button>
+      <Button Grid.Column="4" Classes="icon" Click="OnSettingsClick"
+              VerticalAlignment="Center" ToolTip.Tip="Settings">
+        <Image Source="{Binding SettingsIcon}" Width="16" Height="16" />
+      </Button>
     </Grid>
   </Border>
 </UserControl>

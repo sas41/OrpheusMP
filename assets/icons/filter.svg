@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg viewBox="0 0 100 100" fill="currentColor" width="100" height="100"
+     xmlns="http://www.w3.org/2000/svg">
+  <!-- Funnel/filter shape -->
+  <path d="M10 15 h80 L58 50 v25 l-16 10 V50 Z" fill="currentColor"/>
+</svg>

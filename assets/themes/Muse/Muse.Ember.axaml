@@ -1,0 +1,34 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ═══════════════════════════════════════════════════════
+       Muse — Ember color variant
+       A warmer, copper-tinted variant of the Muse layout.
+       Only redefines colors; layout and styles are inherited.
+       ═══════════════════════════════════════════════════════ -->
+
+  <Color x:Key="AccentColor">#C87533</Color>
+  <Color x:Key="AccentSoft">#2E1F12</Color>
+  <Color x:Key="PanelFill">#1C1916</Color>
+  <Color x:Key="PanelStroke">#3A3028</Color>
+  <Color x:Key="RowHover">#2A2420</Color>
+  <Color x:Key="RowSelected">#3A2818</Color>
+  <Color x:Key="ButtonFill">#262018</Color>
+  <Color x:Key="ButtonHover">#382E22</Color>
+  <Color x:Key="ButtonPressed">#181410</Color>
+  <Color x:Key="IconColor">#C87533</Color>
+  <Color x:Key="IconActiveColor">#FFFFFF</Color>
+  <x:String x:Key="IconCss">svg { color: #C87533 !important; }</x:String>
+  <x:String x:Key="IconActiveCss">svg { color: #FFFFFF !important; }</x:String>
+
+  <LinearGradientBrush x:Key="AppSurfaceBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+    <GradientStop Color="#121010" Offset="0" />
+    <GradientStop Color="#1C1916" Offset="1" />
+  </LinearGradientBrush>
+
+  <LinearGradientBrush x:Key="SheenBrush" StartPoint="0%,0%" EndPoint="100%,0%">
+    <GradientStop Color="#2E1F12" Offset="0" />
+    <GradientStop Color="Transparent" Offset="1" />
+  </LinearGradientBrush>
+
+</ResourceDictionary>

@@ -1,0 +1,40 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="540" d:DesignHeight="360"
+        x:Class="Orpheus.Desktop.Views.EqualizerWindow"
+        x:CompileBindings="False"
+        Width="540" Height="360"
+        MinWidth="440" MinHeight="300"
+        Title="Equalizer"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+  <StackPanel Margin="12" Spacing="12">
+
+    <!-- Enable / Preset row -->
+    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+      <CheckBox x:Name="EnabledCheck" Content="Enable Equalizer" IsChecked="False"
+                Click="OnEnabledChanged" VerticalAlignment="Center" />
+      <ComboBox Grid.Column="1" x:Name="PresetCombo" MinWidth="160"
+                SelectionChanged="OnPresetChanged" VerticalAlignment="Center" />
+      <Button Grid.Column="2" Content="Reset" Click="OnResetClick" VerticalAlignment="Center" />
+    </Grid>
+
+    <!-- Preamp -->
+    <Grid ColumnDefinitions="60,*,40" ColumnSpacing="8">
+      <TextBlock Text="Preamp" Classes="muted small" VerticalAlignment="Center" />
+      <Slider Grid.Column="1" x:Name="PreampSlider" Minimum="-20" Maximum="20" Value="0"
+              ValueChanged="OnPreampChanged" />
+      <TextBlock Grid.Column="2" x:Name="PreampLabel" Text="0 dB" Classes="muted small"
+                 VerticalAlignment="Center" HorizontalAlignment="Right" />
+    </Grid>
+
+    <Separator />
+
+    <!-- Band sliders -->
+    <Grid x:Name="BandsGrid" RowDefinitions="Auto,*,Auto" RowSpacing="4" Height="160" />
+
+  </StackPanel>
+</Window>

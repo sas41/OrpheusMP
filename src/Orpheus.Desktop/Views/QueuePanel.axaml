@@ -8,23 +8,54 @@
              x:DataType="local:MainWindowViewModel">
   <Border Classes="panel tight reveal-2">
     <Grid RowDefinitions="Auto,*" RowSpacing="10">
-      <StackPanel>
-        <TextBlock Text="Play Queue" Classes="subheading" />
-        <TextBlock Text="{Binding QueueSummary}" Classes="muted small" />
-      </StackPanel>
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <StackPanel>
+          <TextBlock Text="Play Queue" Classes="subheading" />
+          <TextBlock Text="{Binding QueueSummary}" Classes="muted small" />
+        </StackPanel>
+        <Button Grid.Column="1" x:Name="QueueOptionsButton"
+                Classes="icon" Width="28" Height="28"
+                Click="OnQueueOptionsClick" ToolTip.Tip="Display options"
+                VerticalAlignment="Top" Padding="4">
+          <Image Source="{Binding EllipsisIcon}" Width="14" Height="14" />
+          <Button.ContextMenu>
+            <ContextMenu x:Name="QueueOptionsMenu" Opened="OnQueueOptionsMenuOpened">
+              <MenuItem Header="Show Title" Tag="Title" ToggleType="Radio" Click="OnShowTitle" />
+              <MenuItem Header="Show Filename" Tag="FileName" ToggleType="Radio" Click="OnShowFileName" />
+              <Separator />
+              <MenuItem Header="Show Secondary Text" Tag="SecondaryText" ToggleType="CheckBox" Click="OnToggleSecondaryText" />
+            </ContextMenu>
+          </Button.ContextMenu>
+        </Button>
+      </Grid>
       <ListBox Grid.Row="1"
                x:Name="QueueList"
                ItemsSource="{Binding Queue}"
-               SelectedIndex="{Binding CurrentQueueIndex}">
+               SelectedIndex="{Binding CurrentQueueIndex, Mode=OneWay}">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="local:QueueItem">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-              <StackPanel>
-                <TextBlock Text="{Binding Title}" />
-                <TextBlock Text="{Binding Artist}" Classes="muted small" />
-              </StackPanel>
-              <TextBlock Grid.Column="1" Text="{Binding Length}" Classes="muted" VerticalAlignment="Center" />
-            </Grid>
+            <Panel>
+              <!-- Normal item content -->
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
+                    IsVisible="{Binding IsPlaceholder, Converter={x:Static BoolConverters.Not}}">
+                <TextBlock Text="&#x2261;" FontSize="16" Classes="muted"
+                           VerticalAlignment="Center" Cursor="Hand"
+                           Tag="DragHandle" />
+                <StackPanel Grid.Column="1">
+                  <TextBlock Text="{Binding PrimaryText}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding SecondaryText}" Classes="muted small" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding Length}" Classes="muted" VerticalAlignment="Center" />
+              </Grid>
+              <!-- Placeholder (empty drop target) -->
+              <Border IsVisible="{Binding IsPlaceholder}"
+                      BorderBrush="{DynamicResource AccentColor}"
+                      BorderThickness="1"
+                      CornerRadius="4"
+                      Background="{DynamicResource AccentSoft}"
+                      Opacity="0.5"
+                      MinHeight="28" />
+            </Panel>
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>

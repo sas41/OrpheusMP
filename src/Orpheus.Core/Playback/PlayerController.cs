@@ -176,7 +176,10 @@ public sealed class PlayerController : IAsyncDisposable
             }
             else
             {
+                // Queue exhausted (repeat off): stop and go back to first track
                 await _player.StopAsync().ConfigureAwait(false);
+                if (Playlist.Count > 0)
+                    Playlist.CurrentIndex = 0;
             }
         }
         finally

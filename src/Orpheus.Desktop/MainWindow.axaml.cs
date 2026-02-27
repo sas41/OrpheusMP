@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Data.Converters;
 using Avalonia.Threading;
 using Avalonia.Media;
 using Orpheus.Core.Library;
@@ -7,14 +8,18 @@ using Orpheus.Core.Metadata;
 using Orpheus.Core.Playback;
 using Orpheus.Core.Media;
 using Orpheus.Core.Playlist;
+using Orpheus.Core.Effects;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Linq;
 using System;
 using System.Threading.Tasks;
 using System.IO;
+using Orpheus.Desktop.Theming;
+
 
 namespace Orpheus.Desktop;
 
@@ -24,53 +29,34 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = new MainWindowViewModel();
-        ApplyTheme();
+        KeyDown += OnGlobalKeyDown;
     }
 
-    private void ApplyTheme()
+    private async void OnGlobalKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
     {
-        Resources.MergedDictionaries.Clear();
-        Resources.MergedDictionaries.Add(BerryTheme);
-    }
+        if (DataContext is not MainWindowViewModel vm)
+            return;
 
-    private static readonly ResourceDictionary BerryTheme = new()
-    {
-        ["AppBgTop"] = Color.Parse("#15171A"),
-        ["AppBgBottom"] = Color.Parse("#1E242B"),
-        ["AccentColor"] = Color.Parse("#E65B6C"),
-        ["AccentSoft"] = Color.Parse("#3A1E25"),
-        ["PanelFill"] = Color.Parse("#1D232B"),
-        ["PanelStroke"] = Color.Parse("#2A343F"),
-        ["TextPrimary"] = Color.Parse("#EDF1F4"),
-        ["TextMuted"] = Color.Parse("#A5B2BC"),
-        ["RowHover"] = Color.Parse("#26313B"),
-        ["RowSelected"] = Color.Parse("#3A1F24"),
-        ["ButtonFill"] = Color.Parse("#26303A"),
-        ["ButtonHover"] = Color.Parse("#323E4A"),
-        ["ButtonPressed"] = Color.Parse("#1C232B"),
-        ["AccentText"] = Color.Parse("#FFFFFF"),
-        ["AppSurfaceBrush"] = new LinearGradientBrush
+        switch (e.Key)
         {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(1, 1, RelativeUnit.Relative),
-            GradientStops = new GradientStops
-            {
-                new GradientStop(Color.Parse("#15171A"), 0),
-                new GradientStop(Color.Parse("#1E242B"), 1)
-            }
-        },
-        ["SheenBrush"] = new LinearGradientBrush
-        {
-            StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-            EndPoint = new RelativePoint(1, 0, RelativeUnit.Relative),
-            GradientStops = new GradientStops
-            {
-                new GradientStop(Color.Parse("#3A1E25"), 0),
-                new GradientStop(Colors.Transparent, 1)
-            }
+            case Avalonia.Input.Key.MediaPlayPause:
+                await vm.TogglePlayPauseAsync();
+                e.Handled = true;
+                break;
+            case Avalonia.Input.Key.MediaNextTrack:
+                await vm.PlayNextAsync();
+                e.Handled = true;
+                break;
+            case Avalonia.Input.Key.MediaPreviousTrack:
+                await vm.PlayPreviousAsync();
+                e.Handled = true;
+                break;
+            case Avalonia.Input.Key.MediaStop:
+                await vm.StopAsync();
+                e.Handled = true;
+                break;
         }
-    };
-
+    }
 }
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposable
@@ -79,6 +65,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private readonly FolderScanner _scanner;
     private readonly PlayerController _controller;
     private readonly VlcPlayer _player;
+    private VlcEqualizer? _equalizer;
     private readonly ObservableCollection<LibraryNode> _libraryRoots = new();
     private readonly ObservableCollection<TrackRow> _tracks = new();
     private readonly ObservableCollection<QueueItem> _queue = new();
@@ -87,15 +74,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private IReadOnlyList<LibraryTrack> _viewTracks = Array.Empty<LibraryTrack>();
     private readonly string _databasePath;
     private readonly string _musicFolder;
+    private bool _suppressPlaylistChanged;
+    private DispatcherTimer? _expandedPathsSaveTimer;
+    private DispatcherTimer? _queueStateSaveTimer;
 
     private string _librarySummary = "Library loading";
     private string _queueSummary = "Queue empty";
     private string _nowPlayingTitle = "Nothing playing";
     private string _nowPlayingArtist = "";
     private string _nowPlayingAlbum = "";
+    private string _nowPlayingPrimary = "Nothing playing";
+    private string _nowPlayingSecondary = "";
     private string _nowPlayingTime = "00:00 / 00:00";
     private double _playbackDuration;
     private double _playbackPosition;
+    private bool _isPositionUpdateFromPlayer;
+    private bool _isUserSeekingPosition;
+    private long _seekSuppressUntilTicks;
     private double _volume = 72;
     private string _searchQuery = string.Empty;
     private int _selectedTrackIndex = -1;
@@ -107,6 +102,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private bool _hideMissingAlbum;
     private bool _hideMissingGenre;
     private bool _hideMissingTrackNumber;
+    private bool _isPlaying;
     private bool _isShuffleEnabled;
     private RepeatMode _repeatMode = RepeatMode.Off;
     private bool _showTitle = true;
@@ -120,6 +116,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private bool _showYear = false;
     private bool _showGenre = false;
     private bool _showBitrate = false;
+    private QueueDisplayMode _queueDisplayMode = QueueDisplayMode.Title;
+    private bool _showQueueSecondaryText = true;
+    private bool _showLibraryFiles;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -153,6 +152,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         private set => SetField(ref _nowPlayingAlbum, value);
     }
 
+    /// <summary>
+    /// Primary text displayed above the seek bar, formatted according
+    /// to the current QueueDisplayMode setting.
+    /// </summary>
+    public string NowPlayingPrimary
+    {
+        get => _nowPlayingPrimary;
+        private set => SetField(ref _nowPlayingPrimary, value);
+    }
+
+    /// <summary>
+    /// Secondary text displayed above the seek bar (e.g. artist or folder),
+    /// formatted according to the current QueueDisplayMode and ShowQueueSecondaryText settings.
+    /// </summary>
+    public string NowPlayingSecondary
+    {
+        get => _nowPlayingSecondary;
+        private set => SetField(ref _nowPlayingSecondary, value);
+    }
+
     public string NowPlayingTime
     {
         get => _nowPlayingTime;
@@ -165,10 +184,52 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         private set => SetField(ref _playbackDuration, value);
     }
 
+    /// <summary>
+    /// Set to true while the user is dragging the position slider.
+    /// Suppresses player-driven position updates so the slider doesn't fight the user.
+    /// </summary>
+    public bool IsUserSeekingPosition
+    {
+        get => _isUserSeekingPosition;
+        set
+        {
+            if (!SetField(ref _isUserSeekingPosition, value))
+                return;
+
+            // When the user releases the slider, apply the seek
+            if (!value)
+            {
+                ApplySeek(_playbackPosition);
+            }
+        }
+    }
+
     public double PlaybackPosition
     {
         get => _playbackPosition;
-        private set => SetField(ref _playbackPosition, value);
+        set
+        {
+            if (!SetField(ref _playbackPosition, value))
+                return;
+
+            // Seek immediately if user changes position but is NOT dragging
+            if (!_isPositionUpdateFromPlayer && !_isUserSeekingPosition)
+            {
+                ApplySeek(value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Suppress player-driven position updates for a short window after seeking,
+    /// so stale VLC callbacks don't snap the slider back to the pre-seek position.
+    /// </summary>
+    private const long SeekSuppressionMs = 500;
+
+    private void ApplySeek(double positionSeconds)
+    {
+        _seekSuppressUntilTicks = Environment.TickCount64 + SeekSuppressionMs;
+        _ = _player.SeekAsync(TimeSpan.FromSeconds(positionSeconds));
     }
 
     public double Volume
@@ -179,9 +240,35 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             if (SetField(ref _volume, value))
             {
                 _player.Volume = (int)Math.Round(value);
+                SaveConfig();
             }
         }
     }
+
+    private bool _isMuted;
+
+    public bool IsMuted
+    {
+        get => _isMuted;
+        set
+        {
+            if (SetField(ref _isMuted, value))
+            {
+                _player.IsMuted = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VolumeIcon)));
+            }
+        }
+    }
+
+    public void ToggleMute()
+    {
+        IsMuted = !IsMuted;
+    }
+
+    /// <summary>Volume icon — changes appearance when muted.</summary>
+    public IImage? VolumeIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/volume.svg",
+            _isMuted ? Color.Parse("#666666") : ResolveIconColor());
 
     public string SearchQuery
     {
@@ -269,10 +356,63 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }
     }
 
+    public bool IsPlaying
+    {
+        get => _isPlaying;
+        private set
+        {
+            if (SetField(ref _isPlaying, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlayPauseIcon)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlayPauseIconPrimary)));
+            }
+        }
+    }
+
+    /// <summary>Play/Pause icon for the primary (accent-background) button — white.</summary>
+    public IImage? PlayPauseIconPrimary =>
+        SvgIconHelper.Load(
+            _isPlaying
+                ? "avares://Orpheus.Desktop/assets/icons/pause.svg"
+                : "avares://Orpheus.Desktop/assets/icons/play.svg",
+            ResolveIconActiveColor());
+
+    /// <summary>Play/Pause icon in default icon color (for non-primary contexts).</summary>
+    public IImage? PlayPauseIcon =>
+        SvgIconHelper.Load(
+            _isPlaying
+                ? "avares://Orpheus.Desktop/assets/icons/pause.svg"
+                : "avares://Orpheus.Desktop/assets/icons/play.svg",
+            ResolveIconColor());
+
+    /// <summary>Previous icon — default icon color (accent).</summary>
+    public IImage? PreviousIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/previous.svg", ResolveIconColor());
+
+    /// <summary>Next icon — default icon color (accent).</summary>
+    public IImage? NextIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/next.svg", ResolveIconColor());
+
+    /// <summary>Stop icon — default icon color (accent).</summary>
+    public IImage? StopIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/stop.svg", ResolveIconColor());
+
+    /// <summary>
+    /// Shuffle icon — accent when off, white when on.
+    /// </summary>
+    public IImage? ShuffleIcon =>
+        SvgIconHelper.Load(
+            "avares://Orpheus.Desktop/assets/icons/shuffle.svg",
+            _isShuffleEnabled ? ResolveIconActiveColor() : ResolveIconColor());
+
     public bool IsShuffleEnabled
     {
         get => _isShuffleEnabled;
-        private set => SetField(ref _isShuffleEnabled, value);
+        private set
+        {
+            if (SetField(ref _isShuffleEnabled, value))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShuffleIcon)));
+        }
     }
 
     public RepeatMode RepeatMode
@@ -284,6 +424,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRepeatEnabled)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RepeatLabel)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RepeatIcon)));
             }
         }
     }
@@ -297,70 +438,178 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _ => "Repeat"
     };
 
+    /// <summary>
+    /// Repeat icon — accent when off, white when on (any repeat mode).
+    /// </summary>
+    public IImage? RepeatIcon
+    {
+        get
+        {
+            var path = _repeatMode switch
+            {
+                RepeatMode.All => "avares://Orpheus.Desktop/assets/icons/repeat-all.svg",
+                RepeatMode.One => "avares://Orpheus.Desktop/assets/icons/repeat-one.svg",
+                _ => "avares://Orpheus.Desktop/assets/icons/repeat-none.svg",
+            };
+            return SvgIconHelper.Load(path, IsRepeatEnabled ? ResolveIconActiveColor() : ResolveIconColor());
+        }
+    }
+
+    // ── Static UI icons (accent-colored) ──────────────────────
+
+    /// <summary>Search icon — default icon color (accent).</summary>
+    public IImage? SearchIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/search.svg", ResolveIconColor());
+
+    /// <summary>Equalizer icon — default icon color (accent).</summary>
+    public IImage? EqualizerIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/equalizer.svg", ResolveIconColor());
+
+    /// <summary>Settings icon — default icon color (accent).</summary>
+    public IImage? SettingsIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/settings.svg", ResolveIconColor());
+
+    /// <summary>Sort icon — default icon color (accent).</summary>
+    public IImage? SortIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/sort.svg", ResolveIconColor());
+
+    /// <summary>Filter icon — default icon color (accent).</summary>
+    public IImage? FilterIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/filter.svg", ResolveIconColor());
+
+    /// <summary>Plus icon — default icon color (accent).</summary>
+    public IImage? PlusIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/plus.svg", ResolveIconColor());
+
+    /// <summary>Ellipsis icon — default icon color (accent).</summary>
+    public IImage? EllipsisIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/ellipsis.svg", ResolveIconColor());
+
+    // ── Theme icon color helpers ─────────────────────────────
+
+    private Color ResolveIconColor()
+    {
+        if (Application.Current!.Resources.TryGetResource(
+                "IconColor", Application.Current.ActualThemeVariant, out var obj)
+            && obj is Color color)
+            return color;
+        return Color.Parse("#D4A843"); // fallback
+    }
+
+    private Color ResolveIconActiveColor()
+    {
+        if (Application.Current!.Resources.TryGetResource(
+                "IconActiveColor", Application.Current.ActualThemeVariant, out var obj)
+            && obj is Color color)
+            return color;
+        return Colors.White; // fallback
+    }
+
     public bool ShowTitle
     {
         get => _showTitle;
-        set => SetField(ref _showTitle, value);
+        set { if (SetField(ref _showTitle, value)) SaveConfig(); }
     }
 
     public bool ShowArtist
     {
         get => _showArtist;
-        set => SetField(ref _showArtist, value);
+        set { if (SetField(ref _showArtist, value)) SaveConfig(); }
     }
 
     public bool ShowAlbum
     {
         get => _showAlbum;
-        set => SetField(ref _showAlbum, value);
+        set { if (SetField(ref _showAlbum, value)) SaveConfig(); }
     }
 
     public bool ShowFileName
     {
         get => _showFileName;
-        set => SetField(ref _showFileName, value);
+        set { if (SetField(ref _showFileName, value)) SaveConfig(); }
     }
 
     public bool ShowLength
     {
         get => _showLength;
-        set => SetField(ref _showLength, value);
+        set { if (SetField(ref _showLength, value)) SaveConfig(); }
     }
 
     public bool ShowFormat
     {
         get => _showFormat;
-        set => SetField(ref _showFormat, value);
+        set { if (SetField(ref _showFormat, value)) SaveConfig(); }
     }
 
     public bool ShowTrackNumber
     {
         get => _showTrackNumber;
-        set => SetField(ref _showTrackNumber, value);
+        set { if (SetField(ref _showTrackNumber, value)) SaveConfig(); }
     }
 
     public bool ShowDiscNumber
     {
         get => _showDiscNumber;
-        set => SetField(ref _showDiscNumber, value);
+        set { if (SetField(ref _showDiscNumber, value)) SaveConfig(); }
     }
 
     public bool ShowYear
     {
         get => _showYear;
-        set => SetField(ref _showYear, value);
+        set { if (SetField(ref _showYear, value)) SaveConfig(); }
     }
 
     public bool ShowGenre
     {
         get => _showGenre;
-        set => SetField(ref _showGenre, value);
+        set { if (SetField(ref _showGenre, value)) SaveConfig(); }
     }
 
     public bool ShowBitrate
     {
         get => _showBitrate;
-        set => SetField(ref _showBitrate, value);
+        set { if (SetField(ref _showBitrate, value)) SaveConfig(); }
+    }
+
+    public QueueDisplayMode QueueDisplayMode
+    {
+        get => _queueDisplayMode;
+        set
+        {
+            if (SetField(ref _queueDisplayMode, value))
+            {
+                Dispatcher.UIThread.Post(UpdateQueueFromPlaylist);
+                UpdateNowPlayingDisplay();
+                SaveConfig();
+            }
+        }
+    }
+
+    public bool ShowQueueSecondaryText
+    {
+        get => _showQueueSecondaryText;
+        set
+        {
+            if (SetField(ref _showQueueSecondaryText, value))
+            {
+                Dispatcher.UIThread.Post(UpdateQueueFromPlaylist);
+                UpdateNowPlayingDisplay();
+                SaveConfig();
+            }
+        }
+    }
+
+    public bool ShowLibraryFiles
+    {
+        get => _showLibraryFiles;
+        set
+        {
+            if (SetField(ref _showLibraryFiles, value))
+            {
+                SaveConfig();
+                _ = RefreshLibraryAsync();
+            }
+        }
     }
 
     public ObservableCollection<LibraryNode> LibraryRoots => _libraryRoots;
@@ -375,6 +624,25 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             "library.db");
 
         _musicFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyMusic);
+
+        // Load persisted settings and state
+        var config = ((App)Application.Current!).Config;
+        var state = ((App)Application.Current!).State;
+        _queueDisplayMode = Enum.TryParse<QueueDisplayMode>(config.QueueDisplayMode, out var qm) ? qm : QueueDisplayMode.Title;
+        _showQueueSecondaryText = config.QueueShowSecondaryText;
+        _showTitle = config.ShowTitle;
+        _showArtist = config.ShowArtist;
+        _showAlbum = config.ShowAlbum;
+        _showFileName = config.ShowFileName;
+        _showLength = config.ShowLength;
+        _showFormat = config.ShowFormat;
+        _showTrackNumber = config.ShowTrackNumber;
+        _showDiscNumber = config.ShowDiscNumber;
+        _showYear = config.ShowYear;
+        _showGenre = config.ShowGenre;
+        _showBitrate = config.ShowBitrate;
+        _showLibraryFiles = config.ShowLibraryFiles;
+        _volume = state.Volume;
 
         _library = new SqliteMediaLibrary(_databasePath);
         _scanner = new FolderScanner(_library, new TagLibMetadataReader());
@@ -392,7 +660,34 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         _player.Volume = (int)Math.Round(_volume);
 
+        // Re-tint all icons when the theme/variant changes.
+        var app = (App)Application.Current!;
+        if (app.ThemeManager is { } tm)
+            tm.ThemeChanged += OnThemeChanged;
+
         _ = InitializeAsync();
+    }
+
+    private void OnThemeChanged(object? sender, EventArgs e)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlayPauseIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlayPauseIconPrimary)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PreviousIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NextIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(StopIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShuffleIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RepeatIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SearchIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EqualizerIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SettingsIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SortIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FilterIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlusIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EllipsisIcon)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VolumeIcon)));
+        });
     }
 
     public async Task AddLibraryFolderAsync(string folder)
@@ -402,6 +697,39 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         await _library.AddWatchedFolderAsync(folder);
         await _scanner.ScanFoldersAsync(new[] { folder });
+        await LoadLibraryAsync();
+    }
+
+    /// <summary>
+    /// Reload the library UI after an external change (e.g. database reset).
+    /// </summary>
+    public async Task RefreshLibraryAsync()
+    {
+        await LoadLibraryAsync();
+    }
+
+    /// <summary>
+    /// Returns the shared VlcEqualizer instance, creating it on first access.
+    /// </summary>
+    public VlcEqualizer GetEqualizer()
+    {
+        _equalizer ??= _player.CreateEqualizer();
+        return _equalizer;
+    }
+
+    /// <summary>
+    /// Creates a SettingsViewModel wired to this ViewModel's dependencies.
+    /// </summary>
+    public Views.SettingsViewModel CreateSettingsViewModel()
+    {
+        var app = (App)Application.Current!;
+        return new Views.SettingsViewModel(
+            app.ThemeManager!,
+            app.Config,
+            _player,
+            _library,
+            onLibraryReset: RefreshLibraryAsync,
+            addLibraryFolder: AddLibraryFolderAsync);
     }
 
     private async Task InitializeAsync()
@@ -409,6 +737,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         await EnsureDefaultLibraryAsync();
         await LoadLibraryAsync();
         await LoadPlaylistAsync();
+
+        // Scan watched folders in the background so the UI is responsive
+        // while the database is brought up to date with any file changes.
+        _ = _scanner.ScanAsync();
     }
 
     private async Task EnsureDefaultLibraryAsync()
@@ -424,33 +756,36 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private async Task LoadLibraryAsync(string? query = null)
     {
         IReadOnlyList<LibraryTrack> tracks;
+        var isSearch = !string.IsNullOrWhiteSpace(query);
 
-        if (!string.IsNullOrWhiteSpace(query))
+        if (isSearch)
         {
-            tracks = await _library.SearchAsync(query);
+            tracks = await _library.SearchAsync(query!);
         }
         else
         {
             tracks = await _library.GetAllTracksAsync();
         }
-        var folders = await _library.GetWatchedFoldersAsync();
-        var treeTracks = !string.IsNullOrWhiteSpace(query)
+
+        var allTracks = isSearch
             ? await _library.GetAllTracksAsync()
             : tracks;
 
-        var totalTracks = tracks.Count;
-        var treeNodes = await Task.Run(() => BuildFolderTree(folders, treeTracks));
-
-        _allTracks = treeTracks;
+        _allTracks = allTracks;
         _currentTracks = tracks;
+
+        var folders = await _library.GetWatchedFoldersAsync();
+        var treeNodes = await Task.Run(() => BuildFolderTree(folders, tracks, pruneEmpty: isSearch, showFiles: _showLibraryFiles));
+
+        var state = ((App)Application.Current!).State;
+        var expandedPaths = new HashSet<string>(state.ExpandedPaths, StringComparer.OrdinalIgnoreCase);
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            _libraryRoots.Clear();
-            foreach (var node in treeNodes)
-                _libraryRoots.Add(node);
-
-            LibrarySummary = $"{folders.Count} folders - {totalTracks} tracks";
+            MergeNodes(_libraryRoots, treeNodes);
+            RestoreExpandedPaths(_libraryRoots, expandedPaths);
+            SubscribeToExpansionChanges(_libraryRoots);
+            LibrarySummary = $"{folders.Count} folders - {allTracks.Count} tracks";
         });
 
         await RefreshTrackViewAsync(resetSelection: true);
@@ -458,25 +793,96 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     private async Task LoadPlaylistAsync()
     {
-        var tracks = await _library.GetAllTracksAsync();
-        var items = tracks
-            .Take(25)
-            .Select(t => new PlaylistItem
+        var state = ((App)Application.Current!).State;
+        var savedPaths = state.QueuePaths;
+
+        if (savedPaths.Count > 0)
+        {
+            // Restore the play queue from state
+            var allTracks = await _library.GetAllTracksAsync();
+            var tracksByPath = new Dictionary<string, LibraryTrack>(StringComparer.OrdinalIgnoreCase);
+            foreach (var t in allTracks)
+                tracksByPath[t.FilePath] = t;
+
+            var items = new List<PlaylistItem>();
+            foreach (var path in savedPaths)
             {
-                Source = MediaSource.FromFile(t.FilePath),
-                Metadata = new TrackMetadata
+                if (!File.Exists(path))
+                    continue;
+
+                PlaylistItem item;
+                if (tracksByPath.TryGetValue(path, out var track))
                 {
-                    Title = t.Title,
-                    Artist = t.Artist,
-                    Album = t.Album,
-                    Duration = t.Duration
+                    item = new PlaylistItem
+                    {
+                        Source = MediaSource.FromFile(track.FilePath),
+                        Metadata = new TrackMetadata
+                        {
+                            Title = track.Title,
+                            Artist = track.Artist,
+                            Album = track.Album,
+                            Duration = track.Duration
+                        }
+                    };
                 }
-            })
-            .ToList();
+                else
+                {
+                    // File exists but not in library yet — add with minimal metadata
+                    item = new PlaylistItem
+                    {
+                        Source = MediaSource.FromFile(path),
+                    };
+                }
 
+                items.Add(item);
+            }
+
+            if (items.Count > 0)
+            {
+                _controller.Playlist.Clear();
+                _controller.Playlist.AddRange(items);
+
+                // Restore the current index and position
+                var restoredIndex = state.QueueIndex;
+                if (restoredIndex >= 0 && restoredIndex < items.Count)
+                {
+                    _controller.Playlist.CurrentIndex = restoredIndex;
+
+                    // Update display for the restored track
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        UpdateQueueFromPlaylist();
+                        CurrentQueueIndex = restoredIndex;
+
+                        var item = _controller.Playlist.CurrentItem;
+                        if (item is not null)
+                        {
+                            NowPlayingTitle = item.Metadata?.Title ?? item.DisplayName;
+                            NowPlayingArtist = item.Metadata?.Artist ?? string.Empty;
+                            NowPlayingAlbum = item.Metadata?.Album ?? string.Empty;
+                            UpdateNowPlayingDisplay();
+
+                            var dur = item.Metadata?.Duration ?? TimeSpan.Zero;
+                            var pos = TimeSpan.FromSeconds(state.PlaybackPositionSeconds);
+                            _isPositionUpdateFromPlayer = true;
+                            PlaybackDuration = dur.TotalSeconds;
+                            PlaybackPosition = pos.TotalSeconds;
+                            _isPositionUpdateFromPlayer = false;
+                            UpdateNowPlayingTime(pos, dur);
+                        }
+                    });
+                }
+                else
+                {
+                    await Dispatcher.UIThread.InvokeAsync(UpdateQueueFromPlaylist);
+                }
+
+                return;
+            }
+        }
+
+        // No saved queue (or all tracks gone) — start empty
         _controller.Playlist.Clear();
-        _controller.Playlist.AddRange(items);
-
         await Dispatcher.UIThread.InvokeAsync(UpdateQueueFromPlaylist);
     }
 
@@ -495,27 +901,80 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     {
         if (e.IsComplete)
         {
+            // Refresh the library tree but don't touch the play queue — the user
+            // may have a restored or manually curated queue we shouldn't overwrite.
             _ = LoadLibraryAsync();
-            _ = LoadPlaylistAsync();
         }
     }
 
     private void OnPlaylistChanged(object? sender, EventArgs e)
     {
-        Dispatcher.UIThread.Post(UpdateQueueFromPlaylist);
+        if (_suppressPlaylistChanged)
+            return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            UpdateQueueFromPlaylist();
+            ScheduleQueueStateSave();
+        });
     }
 
     private void OnPlaylistIndexChanged(object? sender, int index)
     {
-        CurrentQueueIndex = index;
+        Dispatcher.UIThread.Post(() =>
+        {
+            CurrentQueueIndex = index;
+            var item = _controller.Playlist.CurrentItem;
+            if (item is null)
+                return;
+
+            NowPlayingTitle = item.Metadata?.Title ?? item.DisplayName;
+            NowPlayingArtist = item.Metadata?.Artist ?? string.Empty;
+            NowPlayingAlbum = item.Metadata?.Album ?? string.Empty;
+            UpdateNowPlayingDisplay();
+            UpdateNowPlayingTime(_player.Position, _player.Duration ?? TimeSpan.Zero);
+            ScheduleQueueStateSave();
+        });
+    }
+
+    /// <summary>
+    /// Recomputes <see cref="NowPlayingPrimary"/> and <see cref="NowPlayingSecondary"/>
+    /// from the current playlist item, respecting QueueDisplayMode and ShowQueueSecondaryText.
+    /// </summary>
+    private void UpdateNowPlayingDisplay()
+    {
         var item = _controller.Playlist.CurrentItem;
         if (item is null)
+        {
+            NowPlayingPrimary = "Nothing playing";
+            NowPlayingSecondary = "";
             return;
+        }
 
-        NowPlayingTitle = item.Metadata?.Title ?? item.DisplayName;
-        NowPlayingArtist = item.Metadata?.Artist ?? string.Empty;
-        NowPlayingAlbum = item.Metadata?.Album ?? string.Empty;
-        UpdateNowPlayingTime(_player.Position, _player.Duration ?? TimeSpan.Zero);
+        var metadata = item.Metadata;
+        var filePath = item.Source.Type == MediaSourceType.LocalFile
+            ? item.Source.Uri.LocalPath
+            : item.Source.Uri.ToString();
+
+        if (_queueDisplayMode == QueueDisplayMode.FileName)
+        {
+            NowPlayingPrimary = Path.GetFileNameWithoutExtension(filePath);
+            NowPlayingSecondary = _showQueueSecondaryText
+                ? (Path.GetFileName(Path.GetDirectoryName(filePath) ?? "") is { Length: > 0 } folder
+                    ? folder
+                    : "")
+                : "";
+        }
+        else
+        {
+            NowPlayingPrimary = !string.IsNullOrWhiteSpace(metadata?.Title)
+                ? metadata!.Title!
+                : item.DisplayName;
+            NowPlayingSecondary = _showQueueSecondaryText
+                ? (!string.IsNullOrWhiteSpace(metadata?.Artist)
+                    ? metadata!.Artist!
+                    : "")
+                : "";
+        }
     }
 
     private void OnPositionChanged(object? sender, TimeSpan position)
@@ -523,7 +982,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         var duration = _player.Duration ?? TimeSpan.Zero;
         Dispatcher.UIThread.Post(() =>
         {
-            PlaybackPosition = position.TotalSeconds;
+            // Don't overwrite the slider while the user is dragging it
+            // or during the brief suppression window after a seek
+            if (!_isUserSeekingPosition && Environment.TickCount64 >= _seekSuppressUntilTicks)
+            {
+                _isPositionUpdateFromPlayer = true;
+                PlaybackPosition = position.TotalSeconds;
+                _isPositionUpdateFromPlayer = false;
+            }
             PlaybackDuration = duration.TotalSeconds;
             UpdateNowPlayingTime(position, duration);
         });
@@ -532,11 +998,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private void OnStateChanged(object? sender, PlaybackStateChangedEventArgs e)
     {
         var duration = _player.Duration ?? TimeSpan.Zero;
+        var playing = e.NewState == PlaybackState.Playing;
+        var stopped = e.NewState == PlaybackState.Stopped;
+
+        // Reapply mute state — LibVLC can reset it when new media starts.
+        if (playing && _isMuted)
+            _player.IsMuted = true;
+
         Dispatcher.UIThread.Post(() =>
         {
+            IsPlaying = playing;
             PlaybackDuration = duration.TotalSeconds;
-            PlaybackPosition = _player.Position.TotalSeconds;
-            UpdateNowPlayingTime(_player.Position, duration);
+            _isPositionUpdateFromPlayer = true;
+            if (stopped)
+            {
+                // When stopped, reset position to beginning instead of leaving it at the end
+                PlaybackPosition = 0;
+                UpdateNowPlayingTime(TimeSpan.Zero, duration);
+            }
+            else
+            {
+                PlaybackPosition = _player.Position.TotalSeconds;
+                UpdateNowPlayingTime(_player.Position, duration);
+            }
+            _isPositionUpdateFromPlayer = false;
         });
     }
 
@@ -568,28 +1053,88 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             track.Codec ?? "");
     }
 
-    private static QueueItem ToQueueItem(PlaylistItem item)
+    private QueueItem ToQueueItem(PlaylistItem item)
     {
         var metadata = item.Metadata;
+        var filePath = item.Source.Type == MediaSourceType.LocalFile
+            ? item.Source.Uri.LocalPath
+            : item.Source.Uri.ToString();
+
+        string primaryText;
+        string secondaryText;
+
+        if (_queueDisplayMode == QueueDisplayMode.FileName)
+        {
+            primaryText = Path.GetFileNameWithoutExtension(filePath);
+            secondaryText = _showQueueSecondaryText
+                ? (Path.GetFileName(Path.GetDirectoryName(filePath) ?? "") is { Length: > 0 } folder
+                    ? folder
+                    : "<Folder Unknown>")
+                : "";
+        }
+        else
+        {
+            primaryText = !string.IsNullOrWhiteSpace(metadata?.Title)
+                ? metadata!.Title!
+                : "<Title Unknown>";
+            secondaryText = _showQueueSecondaryText
+                ? (!string.IsNullOrWhiteSpace(metadata?.Artist)
+                    ? metadata!.Artist!
+                    : "<Artist Unknown>")
+                : "";
+        }
+
         return new QueueItem(
-            metadata?.Title ?? item.DisplayName,
-            metadata?.Artist ?? "",
+            primaryText,
+            secondaryText,
             FormatTime(metadata?.Duration ?? TimeSpan.Zero));
     }
 
     private static List<LibraryNode> BuildFolderTree(
         IReadOnlyList<string> folders,
-        IReadOnlyList<LibraryTrack> tracks)
+        IReadOnlyList<LibraryTrack> tracks,
+        bool pruneEmpty = false,
+        bool showFiles = false)
     {
         var counts = BuildTrackCounts(tracks);
         var nodes = new List<LibraryNode>();
 
         foreach (var folder in folders.OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
-            nodes.Add(BuildFolderNode(folder, counts));
+            var node = BuildFolderNode(folder, counts, showFiles);
+            if (pruneEmpty)
+                node = PruneEmptyNodes(node);
+            if (node is not null)
+            {
+                node.IsExpanded = true;
+                nodes.Add(node);
+            }
         }
 
         return nodes;
+    }
+
+    /// <summary>
+    /// Recursively remove child nodes with no matching tracks.
+    /// Returns null if this node itself should be removed.
+    /// </summary>
+    private static LibraryNode? PruneEmptyNodes(LibraryNode node)
+    {
+        var prunedChildren = new List<LibraryNode>();
+        foreach (var child in node.Children)
+        {
+            var pruned = PruneEmptyNodes(child);
+            if (pruned is not null)
+                prunedChildren.Add(pruned);
+        }
+
+        // Keep this node if it has matching tracks directly or surviving children.
+        var hasOwnTracks = node.Meta != "Empty" && node.Meta != "Missing";
+        if (!hasOwnTracks && prunedChildren.Count == 0)
+            return null;
+
+        // Return a new node with only the surviving children.
+        return new LibraryNode(node.Name, node.Meta, node.Path, prunedChildren);
     }
 
     private static Dictionary<string, int> BuildTrackCounts(IEnumerable<LibraryTrack> tracks)
@@ -609,17 +1154,41 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         return counts;
     }
 
-    private static LibraryNode BuildFolderNode(string path, Dictionary<string, int> counts)
+    private static LibraryNode BuildFolderNode(string path, Dictionary<string, int> counts, bool showFiles)
     {
         var children = new List<LibraryNode>();
         if (Directory.Exists(path))
         {
             try
             {
+                // Subdirectories
                 foreach (var child in Directory.EnumerateDirectories(path)
                              .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
                 {
-                    children.Add(BuildFolderNode(child, counts));
+                    children.Add(BuildFolderNode(child, counts, showFiles));
+                }
+
+                // Playlist files (.m3u, .m3u8, .pls) — always shown
+                foreach (var file in Directory.EnumerateFiles(path)
+                             .Where(f => FolderScanner.PlaylistExtensions.Contains(Path.GetExtension(f)))
+                             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+                {
+                    var fileName = Path.GetFileName(file);
+                    var ext = Path.GetExtension(file).TrimStart('.').ToUpperInvariant();
+                    children.Add(new LibraryNode(fileName, ext, file, nodeType: LibraryNodeType.Playlist));
+                }
+
+                // Audio files — only when ShowLibraryFiles is enabled
+                if (showFiles)
+                {
+                    foreach (var file in Directory.EnumerateFiles(path)
+                                 .Where(f => FolderScanner.AudioExtensions.Contains(Path.GetExtension(f)))
+                                 .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+                    {
+                        var fileName = Path.GetFileNameWithoutExtension(file);
+                        var ext = Path.GetExtension(file).TrimStart('.').ToUpperInvariant();
+                        children.Add(new LibraryNode(fileName, ext, file, nodeType: LibraryNodeType.File));
+                    }
                 }
             }
             catch
@@ -639,24 +1208,270 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         return new LibraryNode(name, meta, path, children);
     }
 
+    /// <summary>
+    /// Recursively merge new tree nodes into an existing ObservableCollection,
+    /// updating Meta in-place and only adding/removing nodes as needed.
+    /// This preserves the TreeView's expansion state.
+    /// </summary>
+    private static void MergeNodes(ObservableCollection<LibraryNode> existing, IReadOnlyList<LibraryNode> incoming)
+    {
+        // Build lookup of incoming nodes by path for fast matching.
+        var incomingByPath = new Dictionary<string, LibraryNode>(StringComparer.OrdinalIgnoreCase);
+        foreach (var node in incoming)
+            incomingByPath[node.Path] = node;
+
+        // Remove nodes that are no longer present.
+        for (var i = existing.Count - 1; i >= 0; i--)
+        {
+            if (!incomingByPath.ContainsKey(existing[i].Path))
+                existing.RemoveAt(i);
+        }
+
+        // Update existing nodes and insert new ones in the correct order.
+        for (var i = 0; i < incoming.Count; i++)
+        {
+            var source = incoming[i];
+
+            if (i < existing.Count && string.Equals(existing[i].Path, source.Path, StringComparison.OrdinalIgnoreCase))
+            {
+                // Same node — update meta and recurse into children.
+                existing[i].Meta = source.Meta;
+                MergeNodes(existing[i].Children, (IReadOnlyList<LibraryNode>)source.Children);
+            }
+            else
+            {
+                // Find whether this node exists further in the list.
+                var found = false;
+                for (var j = i + 1; j < existing.Count; j++)
+                {
+                    if (string.Equals(existing[j].Path, source.Path, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // Move it into position.
+                        existing.Move(j, i);
+                        existing[i].Meta = source.Meta;
+                        MergeNodes(existing[i].Children, (IReadOnlyList<LibraryNode>)source.Children);
+                        found = true;
+                        break;
+                    }
+                }
+
+                if (!found)
+                {
+                    // New node — insert at the correct position.
+                    existing.Insert(i, source);
+                }
+            }
+        }
+    }
+
+    // ── Tree expansion state persistence ────────────────────
+
+    /// <summary>
+    /// Walk the tree and set IsExpanded for nodes whose Path is in the saved set.
+    /// Root nodes default to expanded if they have no saved state.
+    /// </summary>
+    private static void RestoreExpandedPaths(
+        ObservableCollection<LibraryNode> roots,
+        HashSet<string> expandedPaths)
+    {
+        if (expandedPaths.Count == 0)
+        {
+            // No saved state — keep root nodes expanded (default behavior)
+            return;
+        }
+
+        foreach (var root in roots)
+            RestoreExpandedPathsRecursive(root, expandedPaths);
+    }
+
+    private static void RestoreExpandedPathsRecursive(LibraryNode node, HashSet<string> expandedPaths)
+    {
+        node.IsExpanded = expandedPaths.Contains(node.Path);
+        foreach (var child in node.Children)
+            RestoreExpandedPathsRecursive(child, expandedPaths);
+    }
+
+    /// <summary>
+    /// Subscribe to IsExpanded changes on all tree nodes so we can persist state.
+    /// </summary>
+    private void SubscribeToExpansionChanges(ObservableCollection<LibraryNode> roots)
+    {
+        foreach (var root in roots)
+            SubscribeToExpansionChangesRecursive(root);
+    }
+
+    private void SubscribeToExpansionChangesRecursive(LibraryNode node)
+    {
+        // Avoid duplicate subscriptions by unsubscribing first
+        node.PropertyChanged -= OnLibraryNodePropertyChanged;
+        node.PropertyChanged += OnLibraryNodePropertyChanged;
+
+        foreach (var child in node.Children)
+            SubscribeToExpansionChangesRecursive(child);
+    }
+
+    private void OnLibraryNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(LibraryNode.IsExpanded))
+            return;
+
+        // Debounce: save after a short delay so rapid expand/collapse doesn't thrash disk
+        _expandedPathsSaveTimer?.Stop();
+        _expandedPathsSaveTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(500)
+        };
+        _expandedPathsSaveTimer.Tick += (_, _) =>
+        {
+            _expandedPathsSaveTimer.Stop();
+            SaveExpandedPaths();
+        };
+        _expandedPathsSaveTimer.Start();
+    }
+
+    private void SaveExpandedPaths()
+    {
+        var expanded = new List<string>();
+        CollectExpandedPaths(_libraryRoots, expanded);
+
+        var state = ((App)Application.Current!).State;
+        state.ExpandedPaths = expanded;
+        state.Save();
+    }
+
+    private static void CollectExpandedPaths(IEnumerable<LibraryNode> nodes, List<string> paths)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.IsExpanded)
+                paths.Add(node.Path);
+            CollectExpandedPaths(node.Children, paths);
+        }
+    }
+
+    // ── Queue / playback state persistence ───────────────────
+
+    /// <summary>
+    /// Debounced save of queue state (paths, current index, playback position).
+    /// </summary>
+    private void ScheduleQueueStateSave()
+    {
+        _queueStateSaveTimer?.Stop();
+        _queueStateSaveTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(500)
+        };
+        _queueStateSaveTimer.Tick += (_, _) =>
+        {
+            _queueStateSaveTimer.Stop();
+            SaveQueueState();
+        };
+        _queueStateSaveTimer.Start();
+    }
+
+    private void SaveQueueState()
+    {
+        var state = ((App)Application.Current!).State;
+
+        var paths = new List<string>();
+        foreach (var item in _controller.Playlist)
+        {
+            if (item.Source.Type == MediaSourceType.LocalFile)
+                paths.Add(item.Source.Uri.LocalPath);
+            else
+                paths.Add(item.Source.Uri.ToString());
+        }
+
+        state.QueuePaths = paths;
+        state.QueueIndex = _controller.Playlist.CurrentIndex;
+        state.PlaybackPositionSeconds = _playbackPosition;
+        state.Save();
+    }
+
+    private const int FadeDurationMs = 300;
+    private const int FadeSteps = 15;
+
+    private async Task FadeOutAsync()
+    {
+        // If muted, nothing to fade — audio is already silent.
+        if (_isMuted) return;
+
+        var startVolume = _player.Volume;
+        if (startVolume <= 0) return;
+        var stepDelay = FadeDurationMs / FadeSteps;
+        for (var i = FadeSteps - 1; i >= 0; i--)
+        {
+            _player.Volume = (int)(startVolume * i / (double)FadeSteps);
+            await Task.Delay(stepDelay).ConfigureAwait(false);
+        }
+        _player.Volume = 0;
+    }
+
+    private async Task FadeInAsync()
+    {
+        var targetVolume = (int)Math.Round(_volume);
+
+        // If muted, restore the volume level silently and ensure mute
+        // stays applied.  VlcPlayer.PlayAsync already saves/restores
+        // mute across media changes, but we reinforce it here in case
+        // of any race with LibVLC events.
+        if (_isMuted)
+        {
+            _player.Volume = targetVolume;
+            _player.IsMuted = true;
+            return;
+        }
+
+        if (targetVolume <= 0) return;
+        _player.Volume = 0;
+        var stepDelay = FadeDurationMs / FadeSteps;
+        for (var i = 1; i <= FadeSteps; i++)
+        {
+            _player.Volume = (int)(targetVolume * i / (double)FadeSteps);
+            await Task.Delay(stepDelay).ConfigureAwait(false);
+        }
+        _player.Volume = targetVolume;
+    }
+
     public async Task TogglePlayPauseAsync()
     {
-        await _controller.TogglePlayPauseAsync().ConfigureAwait(false);
+        switch (_player.State)
+        {
+            case PlaybackState.Playing:
+                await FadeOutAsync().ConfigureAwait(false);
+                await _controller.PauseAsync().ConfigureAwait(false);
+                break;
+            case PlaybackState.Paused:
+                await _controller.ResumeAsync().ConfigureAwait(false);
+                await FadeInAsync().ConfigureAwait(false);
+                break;
+            case PlaybackState.Stopped:
+                await _controller.PlayAsync().ConfigureAwait(false);
+                await FadeInAsync().ConfigureAwait(false);
+                break;
+        }
     }
 
     public async Task PlayPreviousAsync()
     {
+        await FadeOutAsync().ConfigureAwait(false);
         await _controller.PreviousAsync().ConfigureAwait(false);
+        await FadeInAsync().ConfigureAwait(false);
     }
 
     public async Task PlayNextAsync()
     {
+        await FadeOutAsync().ConfigureAwait(false);
         await _controller.NextAsync().ConfigureAwait(false);
+        await FadeInAsync().ConfigureAwait(false);
     }
 
     public async Task StopAsync()
     {
+        await FadeOutAsync().ConfigureAwait(false);
         await _controller.StopAsync().ConfigureAwait(false);
+        // Restore volume level for next play
+        _player.Volume = (int)Math.Round(_volume);
     }
 
     public void ToggleShuffle()
@@ -693,7 +1508,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (selectedIndex < 0)
             selectedIndex = 0;
 
+        if (_player.State == PlaybackState.Playing)
+            await FadeOutAsync().ConfigureAwait(false);
         await _controller.PlayAtIndexAsync(selectedIndex).ConfigureAwait(false);
+        await FadeInAsync().ConfigureAwait(false);
     }
 
     public async Task SelectFolderAsync(string folderPath)
@@ -708,6 +1526,115 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         await RefreshTrackViewAsync(resetSelection: true);
     }
 
+    /// <summary>
+    /// Move a queue item from one position to another (for drag-and-drop reorder).
+    /// </summary>
+    public void MoveQueueItem(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0 || fromIndex >= _queue.Count ||
+            toIndex < 0 || toIndex >= _queue.Count ||
+            fromIndex == toIndex)
+            return;
+
+        // Suppress the Playlist.Changed → UpdateQueueFromPlaylist round-trip
+        // so the ObservableCollection move is the only UI mutation during drag.
+        _suppressPlaylistChanged = true;
+        try
+        {
+            _controller.Playlist.Move(fromIndex, toIndex);
+        }
+        finally
+        {
+            _suppressPlaylistChanged = false;
+        }
+
+        _queue.Move(fromIndex, toIndex);
+
+        // Update the current queue index display
+        CurrentQueueIndex = _controller.Playlist.CurrentIndex;
+    }
+
+    // ── Visual drag-and-drop with placeholder ────────────────
+
+    /// <summary>Sentinel QueueItem that renders as an empty placeholder gap.</summary>
+    private static readonly QueueItem DragPlaceholder = new("", "", "", IsPlaceholder: true);
+
+    /// <summary>
+    /// Begins a visual drag: removes the real item from the queue and inserts
+    /// a placeholder at its position.  The real item is held by the caller
+    /// and shown in a floating adorner.
+    /// </summary>
+    public void BeginDragQueueItem(int index)
+    {
+        if (index < 0 || index >= _queue.Count)
+            return;
+
+        _suppressPlaylistChanged = true;
+        try
+        {
+            _controller.Playlist.Move(index, index); // no-op — keeps playlist in sync later
+        }
+        finally
+        {
+            _suppressPlaylistChanged = false;
+        }
+
+        _queue[index] = DragPlaceholder;
+    }
+
+    /// <summary>
+    /// Moves the placeholder from one position to another during a drag,
+    /// keeping the underlying playlist in sync.
+    /// </summary>
+    public void MoveDragPlaceholder(int fromIndex, int toIndex)
+    {
+        if (fromIndex < 0 || fromIndex >= _queue.Count ||
+            toIndex < 0 || toIndex >= _queue.Count ||
+            fromIndex == toIndex)
+            return;
+
+        _suppressPlaylistChanged = true;
+        try
+        {
+            _controller.Playlist.Move(fromIndex, toIndex);
+        }
+        finally
+        {
+            _suppressPlaylistChanged = false;
+        }
+
+        _queue.Move(fromIndex, toIndex);
+        CurrentQueueIndex = _controller.Playlist.CurrentIndex;
+    }
+
+    /// <summary>
+    /// Completes the drag: replaces the placeholder with the real item at the
+    /// final drop position.
+    /// </summary>
+    public void EndDragQueueItem(int placeholderIndex, QueueItem realItem)
+    {
+        if (placeholderIndex < 0 || placeholderIndex >= _queue.Count)
+            return;
+
+        _queue[placeholderIndex] = realItem;
+        CurrentQueueIndex = _controller.Playlist.CurrentIndex;
+    }
+
+    /// <summary>
+    /// Skip to and play the queue item at the given index.
+    /// </summary>
+    public async Task PlayQueueItemAsync(int index)
+    {
+        if (index < 0 || index >= _controller.Playlist.Count)
+            return;
+
+        if (_player.State == PlaybackState.Playing)
+            await FadeOutAsync().ConfigureAwait(false);
+
+        await _controller.PlayAtIndexAsync(index).ConfigureAwait(false);
+        await FadeInAsync().ConfigureAwait(false);
+    }
+
     public async Task PlayFolderAsync(string folderPath)
     {
         if (string.IsNullOrWhiteSpace(folderPath))
@@ -716,14 +1643,91 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         var folderTracks = await Task.Run(() =>
             _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).ToList());
 
+        if (folderTracks.Count == 0)
+            return;
+
+        // Update the track list to show this folder's tracks
+        _currentTracks = folderTracks;
+        await RefreshTrackViewAsync(resetSelection: true);
+
+        // Build playlist and load into play queue
         var (items, _) = await Task.Run(() => BuildPlaylistItems(folderTracks, null));
         if (items.Count == 0)
             return;
+
+        if (_player.State == PlaybackState.Playing)
+            await FadeOutAsync().ConfigureAwait(false);
 
         _controller.Playlist.Clear();
         _controller.Playlist.AddRange(items);
         await Dispatcher.UIThread.InvokeAsync(UpdateQueueFromPlaylist);
         await _controller.PlayAtIndexAsync(0).ConfigureAwait(false);
+        await FadeInAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Play a single audio file by loading it into the queue.
+    /// </summary>
+    public async Task PlayFileAsync(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return;
+
+        var item = new PlaylistItem
+        {
+            Source = MediaSource.FromFile(filePath)
+        };
+
+        // Try to find matching metadata from the library
+        var track = _allTracks.FirstOrDefault(t =>
+            string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+        if (track is not null)
+        {
+            item.Metadata = new TrackMetadata
+            {
+                Title = track.Title,
+                Artist = track.Artist,
+                Album = track.Album,
+                Duration = track.Duration
+            };
+        }
+
+        if (_player.State == PlaybackState.Playing)
+            await FadeOutAsync().ConfigureAwait(false);
+
+        _controller.Playlist.Clear();
+        _controller.Playlist.Add(item);
+        await Dispatcher.UIThread.InvokeAsync(UpdateQueueFromPlaylist);
+        await _controller.PlayAtIndexAsync(0).ConfigureAwait(false);
+        await FadeInAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Load a playlist file (.m3u, .m3u8, .pls) via PlaylistFileReader
+    /// and play its contents.
+    /// </summary>
+    public async Task PlayPlaylistFileAsync(string playlistPath)
+    {
+        if (string.IsNullOrWhiteSpace(playlistPath) || !File.Exists(playlistPath))
+            return;
+
+        var items = await Task.Run(() =>
+        {
+            try { return PlaylistFileReader.ReadFile(playlistPath); }
+            catch { return Array.Empty<PlaylistItem>(); }
+        });
+
+        if (items.Count == 0)
+            return;
+
+        if (_player.State == PlaybackState.Playing)
+            await FadeOutAsync().ConfigureAwait(false);
+
+        _controller.Playlist.Clear();
+        _controller.Playlist.AddRange(items);
+        await Dispatcher.UIThread.InvokeAsync(UpdateQueueFromPlaylist);
+        await _controller.PlayAtIndexAsync(0).ConfigureAwait(false);
+        await FadeInAsync().ConfigureAwait(false);
     }
 
     private static bool IsUnderFolder(string filePath, string folderPath)
@@ -772,6 +1776,32 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         return (items, selectedIndex);
     }
 
+    private void SaveConfig()
+    {
+        var app = (App)Application.Current!;
+
+        var config = app.Config;
+        config.QueueDisplayMode = _queueDisplayMode.ToString();
+        config.QueueShowSecondaryText = _showQueueSecondaryText;
+        config.ShowTitle = _showTitle;
+        config.ShowArtist = _showArtist;
+        config.ShowAlbum = _showAlbum;
+        config.ShowFileName = _showFileName;
+        config.ShowLength = _showLength;
+        config.ShowFormat = _showFormat;
+        config.ShowTrackNumber = _showTrackNumber;
+        config.ShowDiscNumber = _showDiscNumber;
+        config.ShowYear = _showYear;
+        config.ShowGenre = _showGenre;
+        config.ShowBitrate = _showBitrate;
+        config.ShowLibraryFiles = _showLibraryFiles;
+        config.Save();
+
+        var state = app.State;
+        state.Volume = _volume;
+        state.Save();
+    }
+
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
         if (EqualityComparer<T>.Default.Equals(field, value))
@@ -784,6 +1814,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     public async ValueTask DisposeAsync()
     {
+        // Persist queue and playback state before tearing down
+        SaveQueueState();
+
+        if (((App)Application.Current!).ThemeManager is { } tm)
+            tm.ThemeChanged -= OnThemeChanged;
         _scanner.Progress -= OnScanProgress;
         _controller.Playlist.Changed -= OnPlaylistChanged;
         _controller.Playlist.CurrentIndexChanged -= OnPlaylistIndexChanged;
@@ -791,6 +1826,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _controller.RepeatModeChanged -= OnRepeatModeChanged;
         _player.PositionChanged -= OnPositionChanged;
         _player.StateChanged -= OnStateChanged;
+        _equalizer?.Dispose();
         await _controller.DisposeAsync().ConfigureAwait(false);
         _library.Dispose();
     }
@@ -902,7 +1938,56 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     }
 }
 
-public sealed record LibraryNode(string Name, string Meta, string Path, IReadOnlyList<LibraryNode>? Children = null);
+public enum LibraryNodeType { Folder, File, Playlist }
+
+public sealed class LibraryNode : INotifyPropertyChanged
+{
+    private string _meta;
+    private bool _isExpanded;
+
+    public LibraryNode(string name, string meta, string path,
+        IReadOnlyList<LibraryNode>? children = null, bool isExpanded = false,
+        LibraryNodeType nodeType = LibraryNodeType.Folder)
+    {
+        Name = name;
+        _meta = meta;
+        _isExpanded = isExpanded;
+        Path = path;
+        NodeType = nodeType;
+        Children = children is null
+            ? new ObservableCollection<LibraryNode>()
+            : new ObservableCollection<LibraryNode>(children);
+    }
+
+    public string Name { get; }
+    public string Path { get; }
+    public LibraryNodeType NodeType { get; }
+    public ObservableCollection<LibraryNode> Children { get; }
+
+    public string Meta
+    {
+        get => _meta;
+        set
+        {
+            if (_meta == value) return;
+            _meta = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Meta)));
+        }
+    }
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            if (_isExpanded == value) return;
+            _isExpanded = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
 
 public sealed record TrackRow(
     string Title,
@@ -917,9 +2002,15 @@ public sealed record TrackRow(
     string Length,
     string Format);
 
-public sealed record QueueItem(string Title, string Artist, string Length);
+public sealed record QueueItem(string PrimaryText, string SecondaryText, string Length, bool IsPlaceholder = false);
 
 public readonly record struct TrackView(IReadOnlyList<LibraryTrack> Tracks, IReadOnlyList<TrackRow> Rows);
+
+public enum QueueDisplayMode
+{
+    Title,
+    FileName
+}
 
 public enum TrackSortField
 {
@@ -932,4 +2023,19 @@ public enum TrackSortField
     Duration,
     DateAdded,
     Bitrate
+}
+
+/// <summary>
+/// Converts <see cref="LibraryNodeType"/> to an opacity value.
+/// Folders are full opacity; files and playlists are slightly dimmed.
+/// </summary>
+public sealed class NodeTypeToOpacityConverter : IValueConverter
+{
+    public static readonly NodeTypeToOpacityConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is LibraryNodeType type && type != LibraryNodeType.Folder ? 0.7 : 1.0;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
 }
