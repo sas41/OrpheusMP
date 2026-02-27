@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="AppTitle" xml:space="preserve"><value>Orpheus Музикален плейър</value></data>
+  <data name="AppName" xml:space="preserve"><value>Orpheus</value></data>
+  <data name="LibraryLoading" xml:space="preserve"><value>Зареждане на библиотеката</value></data>
+  <data name="QueueEmpty" xml:space="preserve"><value>Опашката е празна</value></data>
+  <data name="NothingPlaying" xml:space="preserve"><value>Нищо не се възпроизвежда</value></data>
+  <data name="DefaultTime" xml:space="preserve"><value>00:00 / 00:00</value></data>
+  <data name="RepeatAll" xml:space="preserve"><value>Повтори всички</value></data>
+  <data name="RepeatOne" xml:space="preserve"><value>Повтори една</value></data>
+  <data name="Repeat" xml:space="preserve"><value>Повторение</value></data>
+  <data name="FoldersSummary" xml:space="preserve"><value>{0} папки - {1} песни</value></data>
+  <data name="QueuedSummary" xml:space="preserve"><value>{0} в опашката</value></data>
+  <data name="BitrateFmt" xml:space="preserve"><value>{0} кбит/с</value></data>
+  <data name="FolderUnknown" xml:space="preserve"><value>&lt;Неизвестна папка&gt;</value></data>
+  <data name="TitleUnknown" xml:space="preserve"><value>&lt;Неизвестно заглавие&gt;</value></data>
+  <data name="ArtistUnknown" xml:space="preserve"><value>&lt;Неизвестен изпълнител&gt;</value></data>
+  <data name="Missing" xml:space="preserve"><value>Липсва</value></data>
+  <data name="TracksAndPlaylists" xml:space="preserve"><value>{0} песни · {1} плейлисти</value></data>
+  <data name="TrackCount" xml:space="preserve"><value>{0} песни</value></data>
+  <data name="PlaylistCount" xml:space="preserve"><value>{0} плейлисти</value></data>
+  <data name="Empty" xml:space="preserve"><value>Празно</value></data>
+  <data name="SaveQueueAsPlaylist" xml:space="preserve"><value>Запази опашката като плейлист</value></data>
+  <data name="M3UPlaylist" xml:space="preserve"><value>M3U плейлист</value></data>
+  <data name="PLSPlaylist" xml:space="preserve"><value>PLS плейлист</value></data>
+  <data name="UnsavedQueue" xml:space="preserve"><value>Незапазена опашка</value></data>
+  <data name="UnsavedQueueMessage" xml:space="preserve"><value>Опашката за възпроизвеждане е променена.
+Искате ли да я запазите като плейлист, преди да я замените?</value></data>
+  <data name="Save" xml:space="preserve"><value>Запази</value></data>
+  <data name="Discard" xml:space="preserve"><value>Отхвърли</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Отказ</value></data>
+  <data name="ShowOrpheus" xml:space="preserve"><value>Покажи Orpheus</value></data>
+  <data name="Quit" xml:space="preserve"><value>Изход</value></data>
+  <data name="Session" xml:space="preserve"><value>Сесия</value></data>
+  <data name="OfflineLibrary" xml:space="preserve"><value>Офлайн библиотека</value></data>
+  <data name="Equalizer" xml:space="preserve"><value>Еквалайзер</value></data>
+  <data name="Settings" xml:space="preserve"><value>Настройки</value></data>
+  <data name="SearchWatermark" xml:space="preserve"><value>Търсене на песни, изпълнители или плейлисти</value></data>
+  <data name="Stop" xml:space="preserve"><value>Стоп</value></data>
+  <data name="Previous" xml:space="preserve"><value>Предишна</value></data>
+  <data name="PlayPause" xml:space="preserve"><value>Възпроизвеждане / Пауза</value></data>
+  <data name="Next" xml:space="preserve"><value>Следваща</value></data>
+  <data name="Shuffle" xml:space="preserve"><value>Разбъркване</value></data>
+  <data name="MuteUnmute" xml:space="preserve"><value>Без звук / Със звук</value></data>
+  <data name="Library" xml:space="preserve"><value>Библиотека</value></data>
+  <data name="AddLibraryFolder" xml:space="preserve"><value>Добави папка към библиотеката</value></data>
+  <data name="LibraryOptions" xml:space="preserve"><value>Опции на библиотеката</value></data>
+  <data name="ShowFiles" xml:space="preserve"><value>Покажи файлове</value></data>
+  <data name="AddMusicFolder" xml:space="preserve"><value>Добави музикална папка</value></data>
+  <data name="PlayQueue" xml:space="preserve"><value>Опашка за възпроизвеждане</value></data>
+  <data name="QueueOptions" xml:space="preserve"><value>Опции на опашката</value></data>
+  <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>Запази опашката като плейлист...</value></data>
+  <data name="ClearQueue" xml:space="preserve"><value>Изчисти опашката</value></data>
+  <data name="ShowTitle" xml:space="preserve"><value>Покажи заглавие</value></data>
+  <data name="ShowFilename" xml:space="preserve"><value>Покажи име на файл</value></data>
+  <data name="ShowSecondaryText" xml:space="preserve"><value>Покажи допълнителен текст</value></data>
+  <data name="RemoveFromQueue" xml:space="preserve"><value>Премахни от опашката</value></data>
+  <data name="TrackList" xml:space="preserve"><value>Списък с песни</value></data>
+  <data name="CuratedFromPlaylistsAndFolders" xml:space="preserve"><value>Съставено от плейлисти и папки</value></data>
+  <data name="Sort" xml:space="preserve"><value>Сортиране</value></data>
+  <data name="Filter" xml:space="preserve"><value>Филтър</value></data>
+  <data name="ColTitle" xml:space="preserve"><value>Заглавие</value></data>
+  <data name="ColArtist" xml:space="preserve"><value>Изпълнител</value></data>
+  <data name="ColAlbum" xml:space="preserve"><value>Албум</value></data>
+  <data name="ColFilename" xml:space="preserve"><value>Име на файл</value></data>
+  <data name="ColFile" xml:space="preserve"><value>Файл</value></data>
+  <data name="ColTrackNumber" xml:space="preserve"><value>Песен #</value></data>
+  <data name="ColDiscNumber" xml:space="preserve"><value>Диск #</value></data>
+  <data name="ColDisc" xml:space="preserve"><value>Диск</value></data>
+  <data name="ColYear" xml:space="preserve"><value>Година</value></data>
+  <data name="ColGenre" xml:space="preserve"><value>Жанр</value></data>
+  <data name="ColBitrate" xml:space="preserve"><value>Битрейт</value></data>
+  <data name="ColTime" xml:space="preserve"><value>Време</value></data>
+  <data name="ColFormat" xml:space="preserve"><value>Формат</value></data>
+  <data name="ColTrackHash" xml:space="preserve"><value>#</value></data>
+  <data name="SortFileName" xml:space="preserve"><value>Име на файл</value></data>
+  <data name="SortDuration" xml:space="preserve"><value>Продължителност</value></data>
+  <data name="SortDateAdded" xml:space="preserve"><value>Дата на добавяне</value></data>
+  <data name="SortAscending" xml:space="preserve"><value>Възходящ ред</value></data>
+  <data name="FilterHideMissingTitle" xml:space="preserve"><value>Скрий без заглавие</value></data>
+  <data name="FilterHideMissingArtist" xml:space="preserve"><value>Скрий без изпълнител</value></data>
+  <data name="FilterHideMissingAlbum" xml:space="preserve"><value>Скрий без албум</value></data>
+  <data name="FilterHideMissingGenre" xml:space="preserve"><value>Скрий без жанр</value></data>
+  <data name="FilterHideMissingTrackNumber" xml:space="preserve"><value>Скрий без номер на песен</value></data>
+  <data name="Track" xml:space="preserve"><value>Песен</value></data>
+  <data name="General" xml:space="preserve"><value>Общи</value></data>
+  <data name="EnableTrayIcon" xml:space="preserve"><value>Икона в областта за уведомяване (минимизиране при затваряне)</value></data>
+  <data name="Theme" xml:space="preserve"><value>Тема</value></data>
+  <data name="Appearance" xml:space="preserve"><value>Външен вид</value></data>
+  <data name="ColorVariant" xml:space="preserve"><value>Цветови вариант</value></data>
+  <data name="CustomColors" xml:space="preserve"><value>Потребителски цветове</value></data>
+  <data name="EnableCustomColorOverrides" xml:space="preserve"><value>Включи потребителски цветове</value></data>
+  <data name="ApplyColors" xml:space="preserve"><value>Приложи цветове</value></data>
+  <data name="ResetToDefault" xml:space="preserve"><value>Възстанови по подразбиране</value></data>
+  <data name="LayoutsDirectory" xml:space="preserve"><value>Директория с оформления:</value></data>
+  <data name="MusicFolders" xml:space="preserve"><value>Музикални папки</value></data>
+  <data name="AddFolder" xml:space="preserve"><value>Добави папка</value></data>
+  <data name="RemoveSelected" xml:space="preserve"><value>Премахни избраната</value></data>
+  <data name="Database" xml:space="preserve"><value>База данни</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>Нулиране на базата данни за изчистване на всички индексирани песни и папки.</value></data>
+  <data name="ResetLibrary" xml:space="preserve"><value>Нулиране на библиотеката</value></data>
+  <data name="Output" xml:space="preserve"><value>Изход</value></data>
+  <data name="AudioOutput" xml:space="preserve"><value>Аудио изход</value></data>
+  <data name="OutputDevice" xml:space="preserve"><value>Изходно устройство</value></data>
+  <data name="Licenses" xml:space="preserve"><value>Лицензи</value></data>
+  <data name="OpenSourceLicenses" xml:space="preserve"><value>Лицензи с отворен код</value></data>
+  <data name="Default" xml:space="preserve"><value>(По подразбиране)</value></data>
+  <data name="SystemDefault" xml:space="preserve"><value>Системно по подразбиране</value></data>
+  <data name="SelectMusicFolder" xml:space="preserve"><value>Избери музикална папка</value></data>
+  <data name="ScanningFmt" xml:space="preserve"><value>Сканиране на {0}...</value></data>
+  <data name="ScanComplete" xml:space="preserve"><value>Сканирането завърши.</value></data>
+  <data name="ResettingLibrary" xml:space="preserve"><value>Нулиране на библиотеката...</value></data>
+  <data name="LibraryReset" xml:space="preserve"><value>Библиотеката е нулирана.</value></data>
+  <data name="CouldNotReadLicense" xml:space="preserve"><value>(Файлът с лицензa не може да бъде прочетен)</value></data>
+  <data name="EnableEqualizer" xml:space="preserve"><value>Включи еквалайзер</value></data>
+  <data name="Reset" xml:space="preserve"><value>Нулиране</value></data>
+  <data name="Preamp" xml:space="preserve"><value>Предусилвател</value></data>
+  <data name="PreampDefault" xml:space="preserve"><value>0 дБ</value></data>
+  <data name="DecibelFmt" xml:space="preserve"><value>{0} дБ</value></data>
+  <data name="Language" xml:space="preserve"><value>Език</value></data>
+  <data name="PresetFlat" xml:space="preserve"><value>Плосък</value></data>
+  <data name="PresetRock" xml:space="preserve"><value>Рок</value></data>
+  <data name="PresetPop" xml:space="preserve"><value>Поп</value></data>
+  <data name="PresetJazz" xml:space="preserve"><value>Джаз</value></data>
+  <data name="PresetClassical" xml:space="preserve"><value>Класическа</value></data>
+  <data name="PresetElectronic" xml:space="preserve"><value>Електронна</value></data>
+  <data name="PresetHipHop" xml:space="preserve"><value>Хип-хоп</value></data>
+  <data name="PresetVocal" xml:space="preserve"><value>Вокал</value></data>
+  <data name="PresetBassBoost" xml:space="preserve"><value>Усилване на баси</value></data>
+  <data name="PresetTrebleBoost" xml:space="preserve"><value>Усилване на високи</value></data>
+  <data name="PresetLoudness" xml:space="preserve"><value>Сила на звука</value></data>
+  <data name="PresetHeadphones" xml:space="preserve"><value>Слушалки</value></data>
+</root>

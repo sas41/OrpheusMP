@@ -14,7 +14,8 @@
 
          PlayIconSvg, PauseIconSvg, StopIconSvg, PreviousIconSvg,
          NextIconSvg, ShuffleIconSvg, RepeatIconSvg,
-         RepeatOneIconSvg, RepeatNoneIconSvg, VolumeIconSvg
+          RepeatOneIconSvg, RepeatNoneIconSvg,
+          VolumeLowIconSvg, VolumeHighIconSvg
        ═══════════════════════════════════════════════════════ -->
 
   <!-- Example: replace play icon with a custom SVG file -->

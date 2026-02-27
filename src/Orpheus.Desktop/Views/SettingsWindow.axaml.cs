@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
@@ -58,6 +59,219 @@ public partial class SettingsWindow : Window
         ViewModel?.ResetCustomColors();
     }
 
+    public void OnRebindClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (ViewModel is null) return;
+        if (sender is not Button btn) return;
+        if (btn.DataContext is not KeyBindingEntry entry) return;
+
+        if (entry.IsRebinding)
+        {
+            ViewModel.CancelRebind();
+        }
+        else
+        {
+            ViewModel.BeginRebind(entry);
+        }
+    }
+
+    public void OnClearClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (ViewModel is null) return;
+        if (sender is not Button btn) return;
+        if (btn.DataContext is not KeyBindingEntry entry) return;
+
+        ViewModel.CancelRebind();
+        ViewModel.ClearBinding(entry);
+    }
+
+    // ── Rebind capture via window-level Avalonia events ──────
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        var vm = ViewModel;
+        if (vm is null) { base.OnKeyDown(e); return; }
+
+        // Escape always cancels a rebind
+        if (e.Key == Key.Escape)
+        {
+            vm.CancelRebind();
+            e.Handled = true;
+            return;
+        }
+
+        if (vm.RebindTarget is { } entry)
+        {
+            var keyName = MapAvaloniaKeyToSharpHook(e.Key);
+            if (keyName is not null)
+            {
+                var combo = BuildComboString(e.KeyModifiers, keyName);
+                vm.FinishRebind(combo);
+            }
+            e.Handled = true;
+            return;
+        }
+
+        base.OnKeyDown(e);
+    }
+
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        var vm = ViewModel;
+        if (vm?.RebindTarget is not null)
+        {
+            var point = e.GetCurrentPoint(this);
+            var mouseToken = MapPointerButtonToToken(point.Properties);
+
+            if (mouseToken is not null)
+            {
+                var combo = BuildComboString(e.KeyModifiers, mouseToken);
+                vm.FinishRebind(combo);
+                e.Handled = true;
+                return;
+            }
+        }
+
+        base.OnPointerPressed(e);
+    }
+
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+    {
+        var vm = ViewModel;
+        if (vm?.RebindTarget is not null)
+        {
+            var token = MapWheelDeltaToToken(e.Delta);
+            if (token is not null)
+            {
+                var combo = BuildComboString(e.KeyModifiers, token);
+                vm.FinishRebind(combo);
+                e.Handled = true;
+                return;
+            }
+        }
+
+        base.OnPointerWheelChanged(e);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        ViewModel?.CancelRebind();
+        base.OnClosed(e);
+    }
+
+    // ── Mapping helpers (Avalonia → combo string tokens) ─────
+
+    private static string? MapWheelDeltaToToken(Vector delta)
+    {
+        if (Math.Abs(delta.Y) >= Math.Abs(delta.X))
+        {
+            if (delta.Y > 0) return "WheelUp";
+            if (delta.Y < 0) return "WheelDown";
+        }
+        else
+        {
+            if (delta.X > 0) return "WheelRight";
+            if (delta.X < 0) return "WheelLeft";
+        }
+        return null;
+    }
+
+    private static string? MapPointerButtonToToken(PointerPointProperties props)
+    {
+        if (props.IsXButton1Pressed) return "Mouse4";
+        if (props.IsXButton2Pressed) return "Mouse5";
+        if (props.IsMiddleButtonPressed) return "Mouse3";
+        if (props.IsLeftButtonPressed) return "Mouse1";
+        if (props.IsRightButtonPressed) return "Mouse2";
+        return null;
+    }
+
+    private static string BuildComboString(KeyModifiers modifiers, string keyName)
+    {
+        var parts = new List<string>(4);
+        if (modifiers.HasFlag(KeyModifiers.Control)) parts.Add("Ctrl");
+        if (modifiers.HasFlag(KeyModifiers.Alt))     parts.Add("Alt");
+        if (modifiers.HasFlag(KeyModifiers.Shift))   parts.Add("Shift");
+        if (modifiers.HasFlag(KeyModifiers.Meta))    parts.Add("Meta");
+        parts.Add(keyName);
+        return string.Join("+", parts);
+    }
+
+    private static string? MapAvaloniaKeyToSharpHook(Key key) => key switch
+    {
+        // Function keys
+        Key.F1 => "F1", Key.F2 => "F2", Key.F3 => "F3", Key.F4 => "F4",
+        Key.F5 => "F5", Key.F6 => "F6", Key.F7 => "F7", Key.F8 => "F8",
+        Key.F9 => "F9", Key.F10 => "F10", Key.F11 => "F11", Key.F12 => "F12",
+        Key.F13 => "F13", Key.F14 => "F14", Key.F15 => "F15",
+        Key.F16 => "F16", Key.F17 => "F17", Key.F18 => "F18",
+        Key.F19 => "F19", Key.F20 => "F20", Key.F21 => "F21",
+        Key.F22 => "F22", Key.F23 => "F23", Key.F24 => "F24",
+
+        // Letters
+        Key.A => "A", Key.B => "B", Key.C => "C", Key.D => "D",
+        Key.E => "E", Key.F => "F", Key.G => "G", Key.H => "H",
+        Key.I => "I", Key.J => "J", Key.K => "K", Key.L => "L",
+        Key.M => "M", Key.N => "N", Key.O => "O", Key.P => "P",
+        Key.Q => "Q", Key.R => "R", Key.S => "S", Key.T => "T",
+        Key.U => "U", Key.V => "V", Key.W => "W", Key.X => "X",
+        Key.Y => "Y", Key.Z => "Z",
+
+        // Numbers
+        Key.D0 => "0", Key.D1 => "1", Key.D2 => "2", Key.D3 => "3",
+        Key.D4 => "4", Key.D5 => "5", Key.D6 => "6", Key.D7 => "7",
+        Key.D8 => "8", Key.D9 => "9",
+
+        // Numpad digits
+        Key.NumPad0 => "NumPad0", Key.NumPad1 => "NumPad1",
+        Key.NumPad2 => "NumPad2", Key.NumPad3 => "NumPad3",
+        Key.NumPad4 => "NumPad4", Key.NumPad5 => "NumPad5",
+        Key.NumPad6 => "NumPad6", Key.NumPad7 => "NumPad7",
+        Key.NumPad8 => "NumPad8", Key.NumPad9 => "NumPad9",
+
+        // Numpad operators
+        Key.Multiply => "NumPadMultiply",
+        Key.Divide   => "NumPadDivide",
+        Key.Subtract => "NumPadSubtract",
+        Key.Add      => "NumPadAdd",
+        Key.Decimal  => "NumPadDecimal",
+
+        // Navigation
+        Key.Up => "Up", Key.Down => "Down", Key.Left => "Left", Key.Right => "Right",
+        Key.Home => "Home", Key.End => "End",
+        Key.PageUp => "PageUp", Key.PageDown => "PageDown",
+        Key.Insert => "Insert", Key.Delete => "Delete",
+
+        // Common keys
+        Key.Space => "Space", Key.Enter => "Enter", Key.Tab => "Tab",
+        Key.Back => "Backspace", Key.Escape => "Escape",
+        Key.Pause => "Pause", Key.Scroll => "ScrollLock",
+        Key.PrintScreen => "PrintScreen",
+
+        // Media keys
+        Key.MediaPlayPause    => "MediaPlay",
+        Key.MediaStop         => "MediaStop",
+        Key.MediaNextTrack    => "MediaNext",
+        Key.MediaPreviousTrack => "MediaPrevious",
+        Key.VolumeUp          => "VolumeUp",
+        Key.VolumeDown        => "VolumeDown",
+        Key.VolumeMute        => "VolumeMute",
+
+        // Punctuation/symbols
+        Key.OemMinus => "Minus", Key.OemPlus => "Equals",
+        Key.OemOpenBrackets => "OpenBracket", Key.OemCloseBrackets => "CloseBracket",
+        Key.OemBackslash or Key.OemPipe => "Backslash", Key.OemSemicolon => "Semicolon",
+        Key.OemQuotes => "Quote", Key.OemComma => "Comma",
+        Key.OemPeriod => "Period", Key.OemQuestion => "Slash",
+        Key.OemTilde => "BackQuote",
+
+        // Modifier-only keys — skip
+        Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl
+            or Key.LeftAlt or Key.RightAlt or Key.LWin or Key.RWin => null,
+
+        _ => null,
+    };
+
     public void OnLicenseSelected(object? sender, SelectionChangedEventArgs e)
     {
         if (sender is not ListBox list || list.SelectedItem is not LicenseEntry entry)
@@ -106,6 +320,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private readonly IMediaLibrary _library;
     private readonly Func<Task> _onLibraryReset;
     private readonly Func<string, Task> _addLibraryFolder;
+    private readonly GlobalMediaKeyService? _mediaKeyService;
 
     private bool _enableTrayIcon;
     private string _selectedTheme;
@@ -121,7 +336,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         VlcPlayer player,
         IMediaLibrary library,
         Func<Task> onLibraryReset,
-        Func<string, Task> addLibraryFolder)
+        Func<string, Task> addLibraryFolder,
+        GlobalMediaKeyService? mediaKeyService = null)
     {
         _themeManager = themeManager;
         _config = config;
@@ -129,6 +345,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _library = library;
         _onLibraryReset = onLibraryReset;
         _addLibraryFolder = addLibraryFolder;
+        _mediaKeyService = mediaKeyService;
 
         _selectedTheme = _themeManager.ActiveLayout ?? ThemeManager.DefaultLayout;
         _selectedVariant = _themeManager.ActiveVariant ?? Resources.Default;
@@ -146,6 +363,17 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         LanguageOptions = new ObservableCollection<LanguageOption>(GetLanguageOptions());
         _selectedLanguage = LanguageOptions.FirstOrDefault(l => l.Code == (Resources.Culture?.Name ?? "en"))
                             ?? LanguageOptions.First();
+
+        // Key bindings — initialize from config
+        KeyBindings = new ObservableCollection<KeyBindingEntry>
+        {
+            new("play.svg",     _config.KeyPlayPause,     b => { _config.KeyPlayPause = b; SaveAndApplyBindings(); }),
+            new("next.svg",     _config.KeyNextTrack,      b => { _config.KeyNextTrack = b; SaveAndApplyBindings(); }),
+            new("previous.svg", _config.KeyPreviousTrack,  b => { _config.KeyPreviousTrack = b; SaveAndApplyBindings(); }),
+            new("stop.svg",     _config.KeyStop,           b => { _config.KeyStop = b; SaveAndApplyBindings(); }),
+            new("volume-high.svg", _config.KeyVolumeUp,     b => { _config.KeyVolumeUp = b; SaveAndApplyBindings(); }),
+            new("volume-low.svg",  _config.KeyVolumeDown,   b => { _config.KeyVolumeDown = b; SaveAndApplyBindings(); }),
+        };
 
         // Check if user colors file exists to determine initial state
         var layoutName = _themeManager.ActiveLayout ?? ThemeManager.DefaultLayout;
@@ -217,6 +445,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public string LocOutput => Resources.Output;
     public string LocAudioOutput => Resources.AudioOutput;
     public string LocOutputDevice => Resources.OutputDevice;
+    public string LocLicenses => Resources.Licenses;
+    public string LocOpenSourceLicenses => Resources.OpenSourceLicenses;
 
     private static readonly string[] _locPropertyNames =
     [
@@ -229,6 +459,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         nameof(LocRemoveSelected), nameof(LocDatabase),
         nameof(LocResetLibraryDescription), nameof(LocResetLibrary),
         nameof(LocOutput), nameof(LocAudioOutput), nameof(LocOutputDevice),
+        nameof(LocLicenses), nameof(LocOpenSourceLicenses),
     ];
 
     // ── General ──────────────────────────────────────────────
@@ -246,6 +477,114 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             if (Avalonia.Application.Current is App app)
                 app.SetTrayIconEnabled(value);
         }
+    }
+
+    // ── Key Bindings ─────────────────────────────────────────
+
+    /// <summary>
+    /// The rebindable shortcut entries, displayed with action icons.
+    /// </summary>
+    public ObservableCollection<KeyBindingEntry> KeyBindings { get; }
+
+    /// <summary>Keyboard icon for the key bindings section header.</summary>
+    public IImage? KeyboardIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/keyboard.svg", ResolveIconColor());
+
+    private static Color ResolveIconColor()
+    {
+        if (Application.Current!.Resources.TryGetResource(
+                "IconColor", Application.Current.ActualThemeVariant, out var obj)
+            && obj is Color color)
+            return color;
+        return Color.Parse("#D4A843");
+    }
+
+    /// <summary>
+    /// The entry currently being rebound (waiting for input), or null.
+    /// Exposed so the SettingsWindow code-behind can check it in event overrides.
+    /// </summary>
+    public KeyBindingEntry? RebindTarget { get; private set; }
+
+    /// <summary>Raised when shortcuts change so the App can reconfigure the hook.</summary>
+    public event Action<AppConfig>? ShortcutsChanged;
+
+    /// <summary>
+    /// Raised when the rebind listening state changes so the App can suppress/restore
+    /// hotkey matching in the <see cref="GlobalMediaKeyService"/>.
+    /// </summary>
+    public event Action<bool>? ShortcutListeningChanged;
+
+    /// <summary>
+    /// Start listening for input to rebind the given entry.
+    /// </summary>
+    public void BeginRebind(KeyBindingEntry entry)
+    {
+        // Cancel any previous rebind
+        if (RebindTarget is not null)
+        {
+            RebindTarget.IsRebinding = false;
+            RebindTarget.KeyDisplay = GlobalMediaKeyService.FormatCombo(RebindTarget.ComboString);
+        }
+
+        RebindTarget = entry;
+        entry.IsRebinding = true;
+        entry.KeyDisplay = "...";
+
+        // Suppress global hotkeys while rebinding
+        ShortcutListeningChanged?.Invoke(true);
+    }
+
+    /// <summary>
+    /// Complete the rebind with the given combo string (e.g. "Ctrl+Mouse4").
+    /// Called by the SettingsWindow code-behind after capturing input.
+    /// </summary>
+    public void FinishRebind(string combo)
+    {
+        if (RebindTarget is null) return;
+
+        RebindTarget.ComboString = combo; // setter updates KeyDisplay
+        RebindTarget.IsRebinding = false;
+        RebindTarget.OnComboChanged(combo);
+
+        RebindTarget = null;
+        ShortcutListeningChanged?.Invoke(false);
+    }
+
+    /// <summary>
+    /// Cancel the current rebind operation without changing the binding.
+    /// </summary>
+    public void CancelRebind()
+    {
+        if (RebindTarget is not null)
+        {
+            RebindTarget.IsRebinding = false;
+            RebindTarget.KeyDisplay = GlobalMediaKeyService.FormatCombo(RebindTarget.ComboString);
+            RebindTarget = null;
+        }
+
+        ShortcutListeningChanged?.Invoke(false);
+    }
+
+    /// <summary>
+    /// Clear the binding for the given entry (set to empty string = use default).
+    /// </summary>
+    public void ClearBinding(KeyBindingEntry entry)
+    {
+        entry.ComboString = ""; // setter updates KeyDisplay to "(None)"
+        entry.OnComboChanged("");
+    }
+
+    private void SaveAndApplyBindings()
+    {
+        _config.Save();
+        _mediaKeyService?.Configure(
+            _config.KeyPlayPause,
+            _config.KeyNextTrack,
+            _config.KeyPreviousTrack,
+            _config.KeyStop,
+            _config.KeyVolumeUp,
+            _config.KeyVolumeDown);
+        ShortcutsChanged?.Invoke(_config);
     }
 
     // ── Language ─────────────────────────────────────────────
@@ -340,6 +679,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             new LanguageOption("zh-CN", "中文 (简体)"),
             new LanguageOption("ko", "한국어"),
             new LanguageOption("ar", "العربية"),
+            new LanguageOption("bg", "Български"),
+            new LanguageOption("tr", "Türkçe"),
         };
     }
 
@@ -648,6 +989,95 @@ public sealed class PaletteColorEntry : INotifyPropertyChanged
     {
         return Avalonia.Media.Color.TryParse(_hexValue, out color);
     }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+/// <summary>
+/// Represents a single rebindable shortcut row in the settings UI.
+/// Displays an action icon (SVG), the current combo display, a rebind button, and a clear button.
+/// Supports keyboard keys, mouse buttons, scroll wheel, and modifier combinations.
+/// </summary>
+public sealed class KeyBindingEntry : INotifyPropertyChanged
+{
+    private string _comboString;
+    private string _keyDisplay;
+    private bool _isRebinding;
+    private readonly Action<string> _onChanged;
+
+    public KeyBindingEntry(string iconFileName, string comboString, Action<string> onChanged, string? badge = null)
+    {
+        IconPath = $"avares://Orpheus.Desktop/assets/icons/{iconFileName}";
+        _comboString = comboString;
+        _keyDisplay = GlobalMediaKeyService.FormatCombo(comboString);
+        _onChanged = onChanged;
+        Badge = badge;
+    }
+
+    /// <summary>avares:// path to the action icon SVG.</summary>
+    public string IconPath { get; }
+
+    /// <summary>Optional short badge label overlaid on the icon (e.g. "+" / "−").</summary>
+    public string? Badge { get; }
+
+    /// <summary>True when <see cref="Badge"/> is not null or empty.</summary>
+    public bool HasBadge => !string.IsNullOrEmpty(Badge);
+
+    /// <summary>The action icon as an IImage for display in the settings UI.</summary>
+    public IImage? ActionIcon => SvgIconHelper.Load(IconPath, ResolveIconColor());
+
+    private static Color ResolveIconColor()
+    {
+        if (Application.Current!.Resources.TryGetResource(
+                "IconColor", Application.Current.ActualThemeVariant, out var obj)
+            && obj is Color color)
+            return color;
+        return Color.Parse("#D4A843");
+    }
+
+    /// <summary>The raw combo string stored in config (e.g. "Ctrl+WheelUp", "Mouse4", "MediaPlay").</summary>
+    public string ComboString
+    {
+        get => _comboString;
+        set
+        {
+            if (_comboString == value) return;
+            _comboString = value;
+            KeyDisplay = GlobalMediaKeyService.FormatCombo(value);
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ComboString)));
+        }
+    }
+
+    /// <summary>Human-readable label for the currently assigned binding.</summary>
+    public string KeyDisplay
+    {
+        get => _keyDisplay;
+        set
+        {
+            if (_keyDisplay == value) return;
+            _keyDisplay = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KeyDisplay)));
+        }
+    }
+
+    /// <summary>True while waiting for the user to press a new key, mouse button, or scroll wheel.</summary>
+    public bool IsRebinding
+    {
+        get => _isRebinding;
+        set
+        {
+            if (_isRebinding == value) return;
+            _isRebinding = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRebinding)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RebindButtonText)));
+        }
+    }
+
+    /// <summary>Button text: "..." while rebinding, otherwise a keyboard glyph.</summary>
+    public string RebindButtonText => _isRebinding ? "..." : "\u2328";
+
+    /// <summary>Called by the SettingsViewModel when a combo is captured or cleared.</summary>
+    internal void OnComboChanged(string combo) => _onChanged(combo);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 }

@@ -17,21 +17,86 @@
 
     <!-- ── General ────────────────────────────────────────── -->
     <TabItem Header="{Binding LocGeneral}">
-      <StackPanel Spacing="12" Margin="8">
-        <TextBlock Text="{Binding LocGeneral}" Classes="heading" />
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12" Margin="8">
+          <TextBlock Text="{Binding LocGeneral}" Classes="heading" />
 
-        <CheckBox Content="{Binding LocEnableTrayIcon}"
-                  IsChecked="{Binding EnableTrayIcon}" />
+          <CheckBox Content="{Binding LocEnableTrayIcon}"
+                    IsChecked="{Binding EnableTrayIcon}" />
 
-        <Separator Margin="0,8" />
+          <Separator Margin="0,8" />
 
-        <StackPanel Spacing="4">
-          <TextBlock Text="{Binding LocLanguage}" Classes="muted small" />
-          <ComboBox ItemsSource="{Binding LanguageOptions}"
-                    SelectedItem="{Binding SelectedLanguage}"
-                    MinWidth="200" />
+          <StackPanel Spacing="4">
+            <TextBlock Text="{Binding LocLanguage}" Classes="muted small" />
+            <ComboBox ItemsSource="{Binding LanguageOptions}"
+                      SelectedItem="{Binding SelectedLanguage}"
+                      MinWidth="200" />
+          </StackPanel>
+
+          <Separator Margin="0,8" />
+
+          <!-- Key Bindings — icons only, no localized text needed -->
+          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Image Width="18" Height="18"
+                   Source="{Binding KeyboardIcon}" />
+            <TextBlock Text="&#x2328;" FontSize="16" FontWeight="Bold"
+                       VerticalAlignment="Center" IsVisible="False" />
+          </StackPanel>
+
+          <ItemsControl ItemsSource="{Binding KeyBindings}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="views:KeyBindingEntry">
+                <Grid ColumnDefinitions="32,*,Auto,Auto" Margin="0,3" ColumnSpacing="8">
+                  <!-- Action icon with optional badge (e.g. +/− for volume) -->
+                  <Grid Grid.Column="0" Width="28" Height="28"
+                        VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <Image Width="20" Height="20"
+                           Source="{Binding ActionIcon}"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding Badge}"
+                               IsVisible="{Binding HasBadge}"
+                               FontSize="11" FontWeight="Bold"
+                               Foreground="{DynamicResource ForegroundColor}"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Bottom"
+                               Margin="0,0,-2,-2" />
+                  </Grid>
+                  <!-- Current key display -->
+                  <Border Grid.Column="1"
+                          Background="{DynamicResource PanelBackground}"
+                          BorderBrush="{DynamicResource PanelStroke}"
+                          BorderThickness="1" CornerRadius="4"
+                          Padding="10,5" MinWidth="120"
+                          VerticalAlignment="Center">
+                    <TextBlock Text="{Binding KeyDisplay}"
+                               FontSize="12" FontFamily="monospace"
+                               VerticalAlignment="Center" />
+                  </Border>
+                  <!-- Rebind button -->
+                  <Button Grid.Column="2"
+                          Content="{Binding RebindButtonText}"
+                          FontSize="14" MinWidth="36" Padding="6,4"
+                          Click="OnRebindClick"
+                          VerticalAlignment="Center" />
+                  <!-- Clear button -->
+                  <Button Grid.Column="3"
+                          Content="&#x2716;"
+                          FontSize="11" MinWidth="28" MinHeight="28"
+                          Padding="4"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center"
+                          Click="OnClearClick"
+                          ToolTip.Tip="Clear binding"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
         </StackPanel>
-      </StackPanel>
+      </ScrollViewer>
     </TabItem>
 
     <!-- ── Theme ──────────────────────────────────────────── -->
@@ -135,9 +200,9 @@
     </TabItem>
 
     <!-- ── Licenses ───────────────────────────────────────── -->
-    <TabItem Header="Licenses">
+    <TabItem Header="{Binding LocLicenses}">
       <Grid RowDefinitions="Auto,*" Margin="8" RowSpacing="8">
-        <TextBlock Text="Open Source Licenses" Classes="heading" />
+        <TextBlock Text="{Binding LocOpenSourceLicenses}" Classes="heading" />
 
         <ListBox Grid.Row="1"
                  ItemsSource="{Binding Licenses}"

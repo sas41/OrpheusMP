@@ -11,7 +11,8 @@
   <svg:SvgImage x:Key="RepeatIconSvg" Source="avares://Orpheus.Desktop/assets/icons/repeat-all.svg" />
   <svg:SvgImage x:Key="RepeatOneIconSvg" Source="avares://Orpheus.Desktop/assets/icons/repeat-one.svg" />
   <svg:SvgImage x:Key="RepeatNoneIconSvg" Source="avares://Orpheus.Desktop/assets/icons/repeat-none.svg" />
-  <svg:SvgImage x:Key="VolumeIconSvg" Source="avares://Orpheus.Desktop/assets/icons/volume.svg" />
+  <svg:SvgImage x:Key="VolumeLowIconSvg" Source="avares://Orpheus.Desktop/assets/icons/volume-low.svg" />
+  <svg:SvgImage x:Key="VolumeHighIconSvg" Source="avares://Orpheus.Desktop/assets/icons/volume-high.svg" />
   <svg:SvgImage x:Key="SettingsIconSvg" Source="avares://Orpheus.Desktop/assets/icons/settings.svg" />
   <svg:SvgImage x:Key="SearchIconSvg" Source="avares://Orpheus.Desktop/assets/icons/search.svg" />
   <svg:SvgImage x:Key="EqualizerIconSvg" Source="avares://Orpheus.Desktop/assets/icons/equalizer.svg" />

@@ -27,7 +27,16 @@ public partial class HeaderBar : UserControl
     {
         if (DataContext is not MainWindowViewModel vm) return;
 
-        var settingsVm = vm.CreateSettingsViewModel();
+        var mediaKeyService = (VisualRoot as MainWindow)?.MediaKeyService;
+        var settingsVm = vm.CreateSettingsViewModel(mediaKeyService);
+
+        // Suppress/restore global hotkeys while the user is rebinding a shortcut
+        if (mediaKeyService is not null)
+        {
+            settingsVm.ShortcutListeningChanged += listening =>
+                mediaKeyService.IsListening = listening;
+        }
+
         var window = new SettingsWindow { DataContext = settingsVm };
 
         if (VisualRoot is Window parentWindow)

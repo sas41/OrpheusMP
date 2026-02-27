@@ -26,37 +26,74 @@ namespace Orpheus.Desktop;
 
 public partial class MainWindow : Window
 {
+    private GlobalMediaKeyService? _mediaKeyService;
+
+    /// <summary>
+    /// The global media key service, exposed so that the settings UI can
+    /// enter rebind-listening mode and update bindings at runtime.
+    /// </summary>
+    public GlobalMediaKeyService? MediaKeyService => _mediaKeyService;
+
     public MainWindow()
     {
         InitializeComponent();
         DataContext = new MainWindowViewModel();
-        KeyDown += OnGlobalKeyDown;
+        InitializeGlobalMediaKeys();
     }
 
-    private async void OnGlobalKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
+    private void InitializeGlobalMediaKeys()
     {
-        if (DataContext is not MainWindowViewModel vm)
+        var vm = DataContext as MainWindowViewModel;
+        if (vm is null)
             return;
 
-        switch (e.Key)
+        var config = ((App)Avalonia.Application.Current!).Config;
+
+        _mediaKeyService = new GlobalMediaKeyService();
+        _mediaKeyService.Configure(
+            config.KeyPlayPause,
+            config.KeyNextTrack,
+            config.KeyPreviousTrack,
+            config.KeyStop,
+            config.KeyVolumeUp,
+            config.KeyVolumeDown);
+
+        _mediaKeyService.ActionPressed += action =>
         {
-            case Avalonia.Input.Key.MediaPlayPause:
-                await vm.TogglePlayPauseAsync();
-                e.Handled = true;
-                break;
-            case Avalonia.Input.Key.MediaNextTrack:
-                await vm.PlayNextAsync();
-                e.Handled = true;
-                break;
-            case Avalonia.Input.Key.MediaPreviousTrack:
-                await vm.PlayPreviousAsync();
-                e.Handled = true;
-                break;
-            case Avalonia.Input.Key.MediaStop:
-                await vm.StopAsync();
-                e.Handled = true;
-                break;
-        }
+            Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
+            {
+                switch (action)
+                {
+                    case MediaAction.PlayPause:
+                        await vm.TogglePlayPauseAsync();
+                        break;
+                    case MediaAction.NextTrack:
+                        await vm.PlayNextAsync();
+                        break;
+                    case MediaAction.PreviousTrack:
+                        await vm.PlayPreviousAsync();
+                        break;
+                    case MediaAction.Stop:
+                        await vm.StopAsync();
+                        break;
+                    case MediaAction.VolumeUp:
+                        vm.Volume = Math.Min(100, vm.Volume + 5);
+                        break;
+                    case MediaAction.VolumeDown:
+                        vm.Volume = Math.Max(0, vm.Volume - 5);
+                        break;
+                }
+            });
+        };
+
+        _ = _mediaKeyService.StartAsync();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _mediaKeyService?.Dispose();
+        _mediaKeyService = null;
+        base.OnClosed(e);
     }
 }
 
@@ -239,10 +276,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         get => _volume;
         set
         {
+            var oldVolume = _volume;
             if (SetField(ref _volume, value))
             {
                 _controller.SetVolume(value);
                 SaveConfig();
+
+                // Re-tint the volume icon when crossing the low/high threshold
+                if ((oldVolume < 35) != (value < 35))
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VolumeIcon)));
             }
         }
     }
@@ -264,9 +306,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _controller.ToggleMute();
     }
 
-    /// <summary>Volume icon — changes appearance when muted.</summary>
+    /// <summary>Volume icon — switches between low/high at 35%, dims when muted.</summary>
     public IImage? VolumeIcon =>
-        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/volume.svg",
+        SvgIconHelper.Load(
+            _volume >= 35
+                ? "avares://Orpheus.Desktop/assets/icons/volume-high.svg"
+                : "avares://Orpheus.Desktop/assets/icons/volume-low.svg",
             _isMuted ? Color.Parse("#666666") : ResolveIconColor());
 
     public string SearchQuery
@@ -777,7 +822,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     /// Creates a SettingsViewModel wired to this ViewModel's dependencies.
     /// Uses the VLC-specific Player reference for audio device enumeration only.
     /// </summary>
-    public Views.SettingsViewModel CreateSettingsViewModel()
+    public Views.SettingsViewModel CreateSettingsViewModel(GlobalMediaKeyService? mediaKeyService)
     {
         var app = (App)Application.Current!;
         return new Views.SettingsViewModel(
@@ -786,7 +831,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             (VlcPlayer)_controller.Player,
             _library,
             onLibraryReset: RefreshLibraryAsync,
-            addLibraryFolder: AddLibraryFolderAsync);
+            addLibraryFolder: AddLibraryFolderAsync,
+            mediaKeyService: mediaKeyService);
     }
 
     private async Task InitializeAsync()
@@ -1084,8 +1130,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             // Update local state from the controller's authoritative snapshot
             if (Math.Abs(_volume - snap.Volume) > 0.01)
             {
+                var oldVolume = _volume;
                 _volume = snap.Volume;
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Volume)));
+
+                // Re-tint the volume icon when crossing the low/high threshold
+                if ((oldVolume < 35) != (snap.Volume < 35))
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(VolumeIcon)));
             }
             IsMuted = snap.IsMuted;
         });
