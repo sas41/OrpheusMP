@@ -77,7 +77,10 @@ public sealed class VlcPlayer : IPlayer
         set
         {
             _isMuted = value;
-            _mediaPlayer.Mute = value;
+            if (value)
+                _mediaPlayer.SetAudioTrack(-1);
+            else
+                _mediaPlayer.SetAudioTrack(0);
         }
     }
 
@@ -139,8 +142,14 @@ public sealed class VlcPlayer : IPlayer
             _mediaPlayer.EncounteredError += OnError;
 
             Debug.WriteLine($"[VlcPlayer.PlayAsync] Calling _mediaPlayer.Play — uri={source.Uri}");
-            await Task.Run(() => _mediaPlayer.Play(media)).ConfigureAwait(false);
+            await Task.Run(() => {
+                    _mediaPlayer.Play(media);
+                });
             Debug.WriteLine("[VlcPlayer.PlayAsync] _mediaPlayer.Play returned");
+
+            // Re-apply mute state after playback starts (LibVLC resets it).
+            if (savedMute)
+                _mediaPlayer.SetAudioTrack(-1);
 
             // Wait for playback to start or fail, with cancellation support.
             await using (cancellationToken.Register(() =>
@@ -156,11 +165,6 @@ public sealed class VlcPlayer : IPlayer
                 Debug.WriteLine("[VlcPlayer.PlayAsync] Awaiting TCS for Playing/Error...");
                 await tcs.Task.ConfigureAwait(false);
             }
-
-            // Restore mute and volume after playback has started — LibVLC
-            // resets both when new media begins playing.
-            _mediaPlayer.Volume = savedVolume;
-            _mediaPlayer.Mute = savedMute;
 
             Debug.WriteLine($"[VlcPlayer.PlayAsync] Playback started successfully, state={_state}, mute={savedMute}");
         }
@@ -352,9 +356,10 @@ public sealed class VlcPlayer : IPlayer
         }
 
         done:
-        // Re-apply volume after the output switch
+        // Re-apply volume and mute after the output switch
         _mediaPlayer.Volume = savedVolume;
-        _mediaPlayer.Mute = savedMute;
+        if (savedMute)
+            _mediaPlayer.SetAudioTrack(-1);
     }
 
     private void AttachEvents()
@@ -463,5 +468,17 @@ public sealed class VlcPlayer : IPlayer
         _libVlc.Dispose();
         _playbackLock.Dispose();
         Debug.WriteLine("[VlcPlayer.DisposeAsync] DisposeAsync complete");
+    }
+
+    public Task UnmuteAsync()
+    {
+        IsMuted = false;
+        return Task.CompletedTask;
+    }
+
+    public Task MuteAsync()
+    {
+        IsMuted = true;
+        return Task.CompletedTask;
     }
 }

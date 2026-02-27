@@ -34,9 +34,8 @@ public sealed class PlayerController : IAsyncDisposable
     private RepeatMode _repeatMode = RepeatMode.Off;
     private bool _disposed;
 
-    // ── Volume / Mute state (owned by the controller) ─────────────────
+    // ── Volume state (owned by the controller) ───────────────────────
     private double _volume = 72;
-    private bool _isMuted;
 
     // ── Fade configuration ────────────────────────────────────────────
     private const int FadeDurationMs = 300;
@@ -176,18 +175,7 @@ public sealed class PlayerController : IAsyncDisposable
         if (Math.Abs(_volume - volume) < 0.01) return;
         _volume = volume;
         _player.Volume = (int)Math.Round(volume);
-        VolumeChanged?.Invoke(this, new VolumeSnapshot(_volume, _isMuted));
-    }
-
-    /// <summary>
-    /// Set the mute state and notify subscribers.
-    /// </summary>
-    public void SetMuted(bool muted)
-    {
-        if (_isMuted == muted) return;
-        _isMuted = muted;
-        _player.IsMuted = muted;
-        VolumeChanged?.Invoke(this, new VolumeSnapshot(_volume, _isMuted));
+        VolumeChanged?.Invoke(this, new VolumeSnapshot(_volume, _player.IsMuted));
     }
 
     /// <summary>
@@ -195,7 +183,12 @@ public sealed class PlayerController : IAsyncDisposable
     /// </summary>
     public void ToggleMute()
     {
-        SetMuted(!_isMuted);
+        var newMuteState = !_player.IsMuted;
+        if (newMuteState)
+            _player.MuteAsync();
+        else
+            _player.UnmuteAsync();
+        VolumeChanged?.Invoke(this, new VolumeSnapshot(_volume, newMuteState));
     }
 
     /// <summary>
@@ -469,7 +462,7 @@ public sealed class PlayerController : IAsyncDisposable
     private async Task FadeOutAsync()
     {
         // If muted, nothing to fade — audio is already silent.
-        if (_isMuted) return;
+        if (_player.IsMuted) return;
 
         var startVolume = _player.Volume;
         if (startVolume <= 0) return;
@@ -488,10 +481,9 @@ public sealed class PlayerController : IAsyncDisposable
 
         // If muted, restore the volume level silently and ensure mute
         // stays applied.
-        if (_isMuted)
+        if (_player.IsMuted)
         {
             _player.Volume = targetVolume;
-            _player.IsMuted = true;
             return;
         }
 
@@ -520,7 +512,7 @@ public sealed class PlayerController : IAsyncDisposable
     /// </summary>
     private void ReapplyMuteIfNeeded()
     {
-        if (_isMuted)
+        if (_player.IsMuted)
             _player.IsMuted = true;
     }
 

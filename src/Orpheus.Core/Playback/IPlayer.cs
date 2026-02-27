@@ -69,6 +69,16 @@ public interface IPlayer : IAsyncDisposable
     Task SeekAsync(TimeSpan position);
 
     /// <summary>
+    /// Unmute all audio.
+    /// </summary>
+    Task UnmuteAsync();
+
+    /// <summary>
+    /// Mute all audio.
+    /// </summary>
+    Task MuteAsync();
+
+    /// <summary>
     /// Fired when the transport state changes (playing, paused, stopped).
     /// </summary>
     event EventHandler<PlaybackStateChangedEventArgs>? StateChanged;
