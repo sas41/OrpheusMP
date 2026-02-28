@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using LibVLCSharp.Shared;
 using LibVLCSharp.Shared.Structures;
@@ -128,7 +129,6 @@ public sealed class VlcPlayer : IPlayer
                 _mediaPlayer.Playing -= OnPlaying;
                 _mediaPlayer.EncounteredError -= OnError;
                 tcs.TrySetResult(true);
-                _mediaPlayer.SetOutputDevice(_targetAudioDevice);
             }
 
             void OnError(object? sender, EventArgs e)
@@ -139,37 +139,36 @@ public sealed class VlcPlayer : IPlayer
                     $"Failed to play media: {source.Uri}"));
             }
 
-            void InitAudioDeviceChange(object? sender, EventArgs e)
+            if(RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
-                // I have absolutely no clue, how you can make a media playback library
-                // And somehow make a play method and it's callback nearly useless,
-                // But nothing you do immedaitely after a play registers on a mediaplayer
-                // object, pause? no, Change output device? no, are you stupid?
-                // The only way, that's NOT having a timeout, that consistently and
-                // correctly sets the output device is to subscribe to PositionChanged
-                // and unsubscribe sometime afterwards.
-                // Why make something so broken???
-                _mediaPlayer.SetOutputDevice(_targetAudioDevice);
-                if(_auido_device_countdown == 0)
+                void InitAudioDeviceChange(object? sender, EventArgs e)
                 {
-                    _mediaPlayer.PositionChanged -= InitAudioDeviceChange;
-                    return;
+                    _mediaPlayer.SetOutputDevice(_targetAudioDevice);
+                    if(_auido_device_countdown == 0)
+                    {
+                        _mediaPlayer.PositionChanged -= InitAudioDeviceChange;
+                        return;
+                    }
+                    _auido_device_countdown--;
                 }
-                _auido_device_countdown--;
+                _auido_device_countdown = _auido_device_countdown_reset;
+                _mediaPlayer.PositionChanged += InitAudioDeviceChange;
+            }
+            else if(RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                Task.Delay(1500).ContinueWith(_ => {
+                    Console.WriteLine("SetOutputDevice");
+                    _mediaPlayer.SetOutputDevice(_targetAudioDevice);
+                    });
             }
 
             _mediaPlayer.Playing += OnPlaying;
             _mediaPlayer.EncounteredError += OnError;
-            _auido_device_countdown = _auido_device_countdown_reset;
-            //_mediaPlayer.PositionChanged += InitAudioDeviceChange;
 
-            await Task.Run(() => {
-                    if (!string.IsNullOrEmpty(_targetAudioDevice))
-                    {
-                        media.AddOption($"--audio-device={_targetAudioDevice}");
-                    }
-                    _mediaPlayer.Play(media);
-                });
+            _mediaPlayer.Play(media);
+            await Task.Run(async () => {
+                Console.WriteLine("PLAY");
+            });
 
             // Wait for playback to start or fail, with cancellation support.
             await using (cancellationToken.Register(() =>

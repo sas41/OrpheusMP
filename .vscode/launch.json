@@ -6,6 +6,17 @@
       "type": "dotnet",
       "request": "launch",
       "projectPath": "${workspaceFolder}/src/Orpheus.Desktop/Orpheus.Desktop.csproj",
+    },
+    {
+      "name": "Windows",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-desktop",
+      "program": "${workspaceFolder}/src/Orpheus.Desktop/bin/Debug/net10.0/Orpheus.Desktop.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/Orpheus.Desktop",
+      "stopAtEntry": false,
+      "console": "internalConsole"
     }
   ]
 }
