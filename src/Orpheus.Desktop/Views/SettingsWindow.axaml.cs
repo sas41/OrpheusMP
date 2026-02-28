@@ -316,6 +316,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 {
     private readonly ThemeManager _themeManager;
     private readonly AppConfig _config;
+    private readonly AppState _state;
     private readonly VlcPlayer _player;
     private readonly IMediaLibrary _library;
     private readonly Func<Task> _onLibraryReset;
@@ -333,6 +334,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public SettingsViewModel(
         ThemeManager themeManager,
         AppConfig config,
+        AppState state,
         VlcPlayer player,
         IMediaLibrary library,
         Func<Task> onLibraryReset,
@@ -341,6 +343,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         _themeManager = themeManager;
         _config = config;
+        _state = state;
         _player = player;
         _library = library;
         _onLibraryReset = onLibraryReset;
@@ -356,7 +359,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         MusicFolders = new ObservableCollection<string>();
         Licenses = new ObservableCollection<LicenseEntry>(LoadLicenses());
 
-        SelectedAudioDevice = _config.AudioDevice ?? "";
+        SelectedAudioDevice = _state.AudioDevice ?? "";
         _enableTrayIcon = _config.EnableTrayIcon;
 
         // Language selector
@@ -754,7 +757,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         {
             if (!SetField(ref _selectedAudioDevice, value)) return;
             _player.SetAudioDevice(value);
-            _config.AudioDevice = string.IsNullOrEmpty(value) ? null : value;
+            _state.AudioDevice = string.IsNullOrEmpty(value) ? null : value;
+            _state.Save();
             _config.Save();
         }
     }

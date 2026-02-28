@@ -849,6 +849,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         return new Views.SettingsViewModel(
             app.ThemeManager!,
             app.Config,
+            app.State,
             (VlcPlayer)_controller.Player,
             _library,
             onLibraryReset: RefreshLibraryAsync,

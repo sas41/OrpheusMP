@@ -26,10 +26,6 @@ public sealed class AppConfig
     [JsonPropertyName("variant")]
     public string? Variant { get; set; }
 
-    /// <summary>Audio output device identifier, or null/empty for system default.</summary>
-    [JsonPropertyName("audioDevice")]
-    public string? AudioDevice { get; set; }
-
     /// <summary>Language/locale code (e.g. "en", "de", "ja"), or null for English default.</summary>
     [JsonPropertyName("language")]
     public string? Language { get; set; }

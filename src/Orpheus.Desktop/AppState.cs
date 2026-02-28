@@ -32,6 +32,10 @@ public sealed class AppState
     [JsonPropertyName("volume")]
     public double Volume { get; set; } = 72;
 
+    /// <summary>Audio output device identifier, or null/empty for system default.</summary>
+    [JsonPropertyName("audioDevice")]
+    public string? AudioDevice { get; set; }
+
     // ── Play queue restoration ───────────────────────────────
 
     /// <summary>File paths of tracks in the play queue, in order.</summary>
