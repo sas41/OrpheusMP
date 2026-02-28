@@ -34,18 +34,18 @@ public sealed class VlcPlayer : IPlayer
     /// Create a VLC player with custom LibVLC arguments.
     /// Useful for passing options like --no-video, --network-caching, etc.
     /// </summary>
-    public VlcPlayer(string? initialAudioDevice, params string[] parameters)
+    public VlcPlayer(string? initialAudioDevice)
     {
         LibVLCSharp.Shared.Core.Initialize();
-        _libVlc = new LibVLC(parameters);
+        _libVlc = new LibVLC(["--no-video"]);
         _mediaPlayer = new MediaPlayer(_libVlc);
-        SetAudioDevice(initialAudioDevice);
         _positionTimer = new Timer(OnPositionTimerTick, null, Timeout.Infinite, Timeout.Infinite);
         _eventChannel = Channel.CreateUnbounded<Action>(new UnboundedChannelOptions { SingleReader = true });
         _eventCts = new CancellationTokenSource();
         _ = Task.Run(() => ProcessEventsAsync(_eventCts.Token));
 
         AttachEvents();
+        SetAudioDevice(initialAudioDevice);
     }
 
     public PlaybackState State => _state;
@@ -128,6 +128,7 @@ public sealed class VlcPlayer : IPlayer
                 _mediaPlayer.Playing -= OnPlaying;
                 _mediaPlayer.EncounteredError -= OnError;
                 tcs.TrySetResult(true);
+                _mediaPlayer.SetOutputDevice(_targetAudioDevice);
             }
 
             void OnError(object? sender, EventArgs e)
@@ -160,7 +161,7 @@ public sealed class VlcPlayer : IPlayer
             _mediaPlayer.Playing += OnPlaying;
             _mediaPlayer.EncounteredError += OnError;
             _auido_device_countdown = _auido_device_countdown_reset;
-            _mediaPlayer.PositionChanged += InitAudioDeviceChange;
+            //_mediaPlayer.PositionChanged += InitAudioDeviceChange;
 
             await Task.Run(() => {
                     if (!string.IsNullOrEmpty(_targetAudioDevice))

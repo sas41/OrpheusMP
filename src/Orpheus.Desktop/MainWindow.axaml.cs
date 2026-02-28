@@ -742,9 +742,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _scanner = new FolderScanner(_library, new TagLibMetadataReader());
         _scanner.Progress += OnScanProgress;
 
-        var player = new VlcPlayer(config.AudioDevice, "--no-video");
-        if (!string.IsNullOrEmpty(config.AudioDevice))
-            player.SetAudioDevice(config.AudioDevice);
+        var player = new VlcPlayer(config.AudioDevice);
         _controller = new PlayerController(player);
         _controller.Playlist.Changed += OnPlaylistChanged;
         _controller.Playlist.CurrentIndexChanged += OnPlaylistIndexChanged;
