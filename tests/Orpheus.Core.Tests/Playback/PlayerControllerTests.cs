@@ -15,7 +15,7 @@ public class PlayerControllerTests : IAsyncLifetime
         _mockPlayer = Substitute.For<IPlayer>();
         _mockPlayer.PlaybackState.Returns(PlaybackState.Stopped);
         _mockPlayer.LoadState.Returns(LoadState.Complete);
-        _controller = new PlayerController(_mockPlayer);
+        _controller = new PlayerController(_mockPlayer, null, 50);
     }
 
     public Task InitializeAsync() => Task.CompletedTask;

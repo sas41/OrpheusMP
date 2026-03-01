@@ -561,13 +561,22 @@ public sealed class PlayerController : IAsyncDisposable
 
         var currentVolume = _player.Volume;
         var desiredVolumeInt = _desiredMute ? 0 : (int)Math.Round(_desiredVolume);
+        var currentDevice = _player.GetCurrentAudioDevice();
 
-        if (!Equals(_player.GetCurrentAudioDevice(), _desiredAudioDevice) && _player.PlaybackState != PlaybackState.Stopped)
+        // A null/empty desired device means "system default" — no explicit
+        // device switch is needed regardless of what VLC reports as current.
+        var needsDeviceSwitch = !string.IsNullOrEmpty(_desiredAudioDevice)
+                                && !string.Equals(currentDevice, _desiredAudioDevice, StringComparison.Ordinal)
+                                && _player.PlaybackState == PlaybackState.Playing;
+
+        if (needsDeviceSwitch)
         {
             _player.Volume = 0;
-            Console.WriteLine($"B - {_player.GetCurrentAudioDevice()} --> {_desiredAudioDevice}");
-            _player.SetAudioDevice(_desiredAudioDevice);
-            Console.WriteLine($"A - {_player.GetCurrentAudioDevice()} --> {_desiredAudioDevice}");
+           var success = _player.SetAudioDevice(_desiredAudioDevice);
+           if (success)
+            {
+                _player.Volume = desiredVolumeInt;
+            }
         }
         else if (currentVolume != desiredVolumeInt)
         {

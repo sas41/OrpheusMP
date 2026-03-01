@@ -1,8 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
-using LibVLCSharp.Shared;
-using LibVLCSharp.Shared.Structures;
+using LibVLCSharp;
 using Orpheus.Core.Effects;
 using Orpheus.Core.Media;
 
@@ -16,6 +15,7 @@ public sealed class VlcPlayer : IPlayer
 {
     private int _auido_device_countdown = 0;
     private readonly int _auido_device_countdown_reset = 1;
+    private volatile bool _stoppingIntentionally;
     private readonly LibVLC _libVlc;
     private readonly MediaPlayer _mediaPlayer;
     private readonly SemaphoreSlim _playbackLock = new(1, 1);
@@ -36,7 +36,7 @@ public sealed class VlcPlayer : IPlayer
     /// </summary>
     public VlcPlayer()
     {
-        LibVLCSharp.Shared.Core.Initialize();
+        LibVLCSharp.Core.Initialize();
         _libVlc = new LibVLC(["--no-video", "network-caching=3000"]);
         _mediaPlayer = new MediaPlayer(_libVlc);
         _positionTimer = new Timer(OnPositionTimerTick, null, Timeout.Infinite, Timeout.Infinite);
@@ -76,7 +76,7 @@ public sealed class VlcPlayer : IPlayer
         set
         {
             targetVolume = Math.Clamp(value, 0, 100);
-            _mediaPlayer.Volume = targetVolume;
+            _mediaPlayer.SetVolume(targetVolume);
         }
     }
 
@@ -95,7 +95,7 @@ public sealed class VlcPlayer : IPlayer
 
             _currentSource = source;
 
-            using var media = new LibVLCSharp.Shared.Media(_libVlc, source.Uri);
+            using var media = new LibVLCSharp.Media(source.Uri);
 
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -125,6 +125,7 @@ public sealed class VlcPlayer : IPlayer
                 _mediaPlayer.Playing -= OnPlaying;
                 _mediaPlayer.EncounteredError -= OnError;
                 // Run Stop on thread pool to avoid deadlock from cancellation context.
+                _stoppingIntentionally = true;
                 ThreadPool.QueueUserWorkItem(_ => _mediaPlayer.Stop());
                 tcs.TrySetCanceled(cancellationToken);
             }))
@@ -202,6 +203,7 @@ public sealed class VlcPlayer : IPlayer
 
         return Task.Run(() =>
         {
+            _stoppingIntentionally = true;
             _mediaPlayer.Stop();
             _currentSource = null;
         });
@@ -241,42 +243,49 @@ public sealed class VlcPlayer : IPlayer
     /// Each entry is (id, description) where id can be passed to <see cref="SetAudioDevice"/>.
     /// The first entry is always ("", "System Default").
     /// </summary>
-    public IReadOnlyList<(string Id, string Description)> GetAudioOutputDevices()
+    public IReadOnlyList<(string? Id, string Description)> GetAudioOutputDevices()
     {
-        var devices = new List<(string, string)> { ("", "System Default") };
-
-        // Null for default module. Ex: Pulse in Linux
-        _mediaPlayer.SetOutputDevice(null);
+        var devices = new List<(string?, string)> { (null, "System Default") };
         var enumerated = _mediaPlayer.AudioOutputDeviceEnum;
-
         foreach (var dev in enumerated)
         {
-            if (!string.IsNullOrEmpty(dev.DeviceIdentifier))
-                devices.Add((dev.DeviceIdentifier, dev.Description));
+            devices.Add((dev.DeviceIdentifier, dev.Description));
         }
-
         return devices;
     }
 
     /// <summary>
     /// Selects an audio output device by its identifier.
-    /// Pass an empty string or null to use the system default.
+    /// Pass null to use the system default (resets VLC's explicit device selection).
+    /// Returns true if the device was set successfully.
     /// </summary>
-    public void SetAudioDevice(string? deviceId)
+    /// <remarks>
+    /// libvlc_audio_output_device_set requires an active audio output.
+    /// This call will fail if nothing is playing or the audio pipeline
+    /// hasn't finished initializing yet.  The caller should retry via
+    /// the sync timer when it returns false.
+    /// </remarks>
+    public bool SetAudioDevice(string? deviceId)
     {
-        _mediaPlayer.SetOutputDevice(deviceId);
+        if (deviceId is null || deviceId.Length == 0)
+        {
+            // VLC 4.0 rejects NULL devid (returns -1). There is no
+            // "reset to default" API.  Passing null is a no-op that
+            // means "keep using whatever the default already is."
+            return true;
+        }
+
+        return _mediaPlayer.SetOutputDevice(deviceId);
     }
 
-    // private async void OnAudioDeviceChanged(object? sender, MediaPlayerAudioDeviceEventArgs e)
-    // {
-    //     Console.WriteLine($"AUDIO DEVICE CHANGED TO: {e.AudioDevice}");
-    //     _currentAudioDevice = e.AudioDevice;
-    // }
+    private async void OnAudioDeviceChanged(object? sender, MediaPlayerAudioDeviceEventArgs e)
+    {
+        Console.WriteLine($"AUDIO DEVICE CHANGED TO: {e.AudioDevice}");
+    }
 
     private void AttachEvents()
     {
-        // Hooking onto this event even with an empty method, crashes the player.
-        //_mediaPlayer.AudioDevice += OnAudioDeviceChanged;
+        _mediaPlayer.AudioDevice += OnAudioDeviceChanged;
         _mediaPlayer.Playing += (_, _) =>
         {
             ThreadPool.QueueUserWorkItem(_ =>
@@ -297,9 +306,16 @@ public sealed class VlcPlayer : IPlayer
         {
             ThreadPool.QueueUserWorkItem(_ =>
             {
+                var naturalEnd = !_stoppingIntentionally;
+                _stoppingIntentionally = false;
                 SetPlaybackState(PlaybackState.Stopped);
                 SetLoadState(LoadState.Complete);
                 _positionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                if (naturalEnd)
+                {
+                    _currentSource = null;
+                    MediaEnded?.Invoke(this, EventArgs.Empty);
+                }
             });
         };
         _mediaPlayer.Opening += (_, _) =>
@@ -310,17 +326,6 @@ public sealed class VlcPlayer : IPlayer
         {
             if (e.Cache < 100f)
                 ThreadPool.QueueUserWorkItem(_ => SetLoadState(LoadState.Buffering));
-        };
-
-        _mediaPlayer.EndReached += (_, _) =>
-        {
-            ThreadPool.QueueUserWorkItem(_ =>
-            {
-                SetLoadState(LoadState.Complete);
-                SetPlaybackState(PlaybackState.Stopped);
-                _currentSource = null;
-                MediaEnded?.Invoke(this, EventArgs.Empty);
-            });
         };
 
         _mediaPlayer.EncounteredError += (_, _) =>
@@ -411,6 +416,7 @@ public sealed class VlcPlayer : IPlayer
         _positionTimer?.Dispose();
         _eventCts.Cancel();
         _eventChannel.Writer.Complete();
+        _stoppingIntentionally = true;
         await Task.Run(() => _mediaPlayer.Stop());
         _mediaPlayer.Dispose();
         _libVlc.Dispose();

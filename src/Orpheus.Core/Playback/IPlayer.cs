@@ -71,8 +71,9 @@ public interface IPlayer : IAsyncDisposable
     /// <summary>
     /// Set the audio output device by its identifier.
     /// Pass null or empty to use the system default.
+    /// Returns true if the device was set (or null was a no-op), false if VLC rejected the call.
     /// </summary>
-    void SetAudioDevice(string? deviceId);
+    bool SetAudioDevice(string? deviceId);
 
     /// <summary>
     /// Get all audio output devices.
