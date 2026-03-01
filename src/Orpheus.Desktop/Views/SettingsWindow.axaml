@@ -191,10 +191,16 @@
 
         <StackPanel Spacing="4">
           <TextBlock Text="{Binding LocOutputDevice}" Classes="muted small" />
-          <ComboBox ItemsSource="{Binding AudioDevices}"
-                    SelectedValue="{Binding SelectedAudioDevice}"
-                    SelectedValueBinding="{Binding Id}"
-                    MinWidth="300" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <ComboBox ItemsSource="{Binding AudioDevices}"
+                      SelectedValue="{Binding SelectedAudioDevice}"
+                      SelectedValueBinding="{Binding Id}"
+                      MinWidth="300" />
+            <Button Classes="icon" Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
+                    Click="OnRefreshAudioDevicesClick" ToolTip.Tip="Refresh audio devices">
+              <Image Source="{Binding RefreshIcon}" Width="14" Height="14" />
+            </Button>
+          </StackPanel>
         </StackPanel>
       </StackPanel>
     </TabItem>

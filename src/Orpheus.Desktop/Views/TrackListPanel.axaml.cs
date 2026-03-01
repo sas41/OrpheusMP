@@ -41,11 +41,31 @@ public partial class TrackListPanel : UserControl
 
     private void OnGridPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (e.GetCurrentPoint(TracksGrid).Properties.IsLeftButtonPressed)
+        if (!e.GetCurrentPoint(TracksGrid).Properties.IsLeftButtonPressed)
+            return;
+
+        var source = e.Source as Visual;
+        if (source is null)
+            return;
+
+        var visual = source;
+        while (visual is not null)
         {
-            _dragStartPoint = e.GetPosition(TracksGrid);
-            _isDragPending = true;
+            if (visual is DataGridRow)
+                break;
+            if (visual == TracksGrid)
+            {
+                visual = null;
+                break;
+            }
+            visual = visual.GetVisualParent();
         }
+
+        if (visual is not DataGridRow)
+            return;
+
+        _dragStartPoint = e.GetPosition(TracksGrid);
+        _isDragPending = true;
     }
 
     private void OnGridPointerMoved(object? sender, PointerEventArgs e)

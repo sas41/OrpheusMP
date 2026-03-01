@@ -34,14 +34,19 @@ public sealed class PlayerController : IAsyncDisposable
     private RepeatMode _repeatMode = RepeatMode.Off;
     private bool _disposed;
 
-    // ── Volume state (owned by the controller) ───────────────────────
-    private double _volume = 72;
+    // ── Desired state (owned by the controller) ───────────────────────
+    private const int SyncIntervalMs = 1;
+    private double _desiredVolume = 72;
+    private bool _desiredMute;
+    private string? _desiredAudioDevice;
+    private readonly Timer? _syncTimer;
+    private IReadOnlyList<(string? Id, string Description)> _cachedAudioDevices = [];
 
     // ── Fade configuration ────────────────────────────────────────────
     private const int FadeDurationMs = 300;
     private const int FadeSteps = 15;
 
-    public PlayerController(IPlayer player)
+    public PlayerController(IPlayer player, string? desiredAudioDevice, double desiredVolume)
     {
         ArgumentNullException.ThrowIfNull(player);
         _player = player;
@@ -50,6 +55,14 @@ public sealed class PlayerController : IAsyncDisposable
         _player.LoadStateChanged += OnPlayerLoadStateChanged;
         _player.PositionChanged += OnPlayerPositionChanged;
         _player.ErrorOccurred += OnPlayerErrorOccurred;
+
+        RefreshAudioDevices();
+        ValidateDesiredAudioDevice(desiredAudioDevice);
+
+        _desiredVolume = Math.Clamp(desiredVolume, 0, 100);
+        _player.Volume = (int)Math.Round(_desiredVolume);
+
+        _syncTimer = new Timer(SyncDesiredState, null, SyncIntervalMs, SyncIntervalMs);
     }
 
     /// <summary>
@@ -105,6 +118,11 @@ public sealed class PlayerController : IAsyncDisposable
     /// Fired when a playback error occurs.
     /// </summary>
     public event EventHandler<string>? ErrorOccurred;
+
+    /// <summary>
+    /// Fired when the list of available audio devices changes.
+    /// </summary>
+    public event EventHandler<IReadOnlyList<(string Id, string Description)>>? AudioDevicesChanged;
 
     // ══════════════════════════════════════════════════════════════════
     //  Repeat
@@ -172,10 +190,10 @@ public sealed class PlayerController : IAsyncDisposable
     public void SetVolume(double volume)
     {
         volume = Math.Clamp(volume, 0, 100);
-        if (Math.Abs(_volume - volume) < 0.01) return;
-        _volume = volume;
+        if (Math.Abs(_desiredVolume - volume) < 0.01) return;
+        _desiredVolume = volume;
         _player.Volume = (int)Math.Round(volume);
-        VolumeChanged?.Invoke(this, new VolumeSnapshot(_volume, _player.IsMuted));
+        VolumeChanged?.Invoke(this, new VolumeSnapshot(_desiredVolume, _desiredMute));
     }
 
     /// <summary>
@@ -183,22 +201,56 @@ public sealed class PlayerController : IAsyncDisposable
     /// </summary>
     public void ToggleMute()
     {
-        var newMuteState = !_player.IsMuted;
-        if (newMuteState)
-            _player.MuteAsync();
-        else
-            _player.UnmuteAsync();
-        VolumeChanged?.Invoke(this, new VolumeSnapshot(_volume, newMuteState));
+        SetMute(!_desiredMute);
     }
 
     /// <summary>
-    /// Initialize volume from persisted state (called once at startup).
-    /// Does NOT fire VolumeChanged to avoid triggering a save cycle.
+    /// Set the mute state.
     /// </summary>
-    public void InitializeVolume(double volume)
+    public void SetMute(bool muted)
     {
-        _volume = Math.Clamp(volume, 0, 100);
-        _player.Volume = (int)Math.Round(_volume);
+        if (_desiredMute == muted) return;
+        _desiredMute = muted;
+        _player.Volume = muted ? 0 : (int)Math.Round(_desiredVolume);
+        VolumeChanged?.Invoke(this, new VolumeSnapshot(_desiredVolume, _desiredMute));
+    }
+
+    /// <summary>
+    /// Set the audio output device.
+    /// </summary>
+    public void SetAudioDevice(string? deviceId)
+    {
+        _desiredAudioDevice = deviceId;
+        _player.SetAudioDevice(deviceId);
+    }
+
+    /// <summary>
+    /// Refresh the cached list of available audio devices.
+    /// </summary>
+    public void RefreshAudioDevices()
+    {
+        _cachedAudioDevices = _player.GetAudioOutputDevices();
+        AudioDevicesChanged?.Invoke(this, _cachedAudioDevices);
+    }
+
+    /// <summary>
+    /// Get the cached list of available audio devices.
+    /// </summary>
+    public IReadOnlyList<(string? Id, string Description)> GetAudioDevices() => _cachedAudioDevices;
+
+    /// <summary>
+    /// Check if the desired audio device is still available.
+    /// If not, reset to system default.
+    /// </summary>
+    public void ValidateDesiredAudioDevice(string? desiredAudioDevice)
+    {
+        _desiredAudioDevice = desiredAudioDevice;
+        var availableIds = _cachedAudioDevices.Select(d => d.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!availableIds.Contains(_desiredAudioDevice))
+        {
+            var default_device = _player.GetCurrentAudioDevice();
+            SetAudioDevice(default_device);
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -236,7 +288,6 @@ public sealed class PlayerController : IAsyncDisposable
 
         await FadeOutAsync();
         await _player.PlayAsync(Playlist[index].Source, cancellationToken);
-        ReapplyMuteIfNeeded();
         await FadeInAsync();
 
         FireStateSnapshot();
@@ -261,7 +312,6 @@ public sealed class PlayerController : IAsyncDisposable
 
         await FadeOutAsync();
         await _player.PlayAsync(item.Source, cancellationToken);
-        ReapplyMuteIfNeeded();
         await FadeInAsync();
 
         FireStateSnapshot();
@@ -282,7 +332,6 @@ public sealed class PlayerController : IAsyncDisposable
                 Playlist.CurrentIndex = nextIndex.Value;
                 await FadeOutAsync();
                 await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken);
-                ReapplyMuteIfNeeded();
                 await FadeInAsync();
             }
             else
@@ -313,7 +362,7 @@ public sealed class PlayerController : IAsyncDisposable
         try
         {
             // If we're more than 3 seconds in, restart the current track.
-            if (_player.Position > TimeSpan.FromSeconds(3))
+            if (_player.PlaybackPosition > TimeSpan.FromSeconds(3))
             {
                 await _player.SeekAsync(TimeSpan.Zero);
             }
@@ -325,7 +374,6 @@ public sealed class PlayerController : IAsyncDisposable
                     Playlist.CurrentIndex = prevIndex.Value;
                     await FadeOutAsync();
                     await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken);
-                    ReapplyMuteIfNeeded();
                     await FadeInAsync();
                 }
                 else
@@ -378,7 +426,7 @@ public sealed class PlayerController : IAsyncDisposable
     /// </summary>
     public async Task TogglePlayPauseAsync(CancellationToken cancellationToken = default)
     {
-        switch (_player.State)
+        switch (_player.PlaybackState)
         {
             case PlaybackState.Playing:
                 await PauseAsync();
@@ -462,7 +510,7 @@ public sealed class PlayerController : IAsyncDisposable
     private async Task FadeOutAsync()
     {
         // If muted, nothing to fade — audio is already silent.
-        if (_player.IsMuted) return;
+        if (_desiredMute) return;
 
         var startVolume = _player.Volume;
         if (startVolume <= 0) return;
@@ -477,13 +525,13 @@ public sealed class PlayerController : IAsyncDisposable
 
     private async Task FadeInAsync()
     {
-        var targetVolume = (int)Math.Round(_volume);
+        var targetVolume = (int)Math.Round(_desiredVolume);
 
         // If muted, restore the volume level silently and ensure mute
         // stays applied.
-        if (_player.IsMuted)
+        if (_desiredMute)
         {
-            _player.Volume = targetVolume;
+            _player.Volume = 0;
             return;
         }
 
@@ -504,16 +552,27 @@ public sealed class PlayerController : IAsyncDisposable
     /// </summary>
     private void RestoreVolume()
     {
-        _player.Volume = (int)Math.Round(_volume);
+        _player.Volume = (int)Math.Round(_desiredVolume);
     }
 
-    /// <summary>
-    /// LibVLC resets mute when new media starts. Re-apply if needed.
-    /// </summary>
-    private void ReapplyMuteIfNeeded()
+    private void SyncDesiredState(object? state)
     {
-        if (_player.IsMuted)
-            _player.IsMuted = true;
+        if (_disposed) return;
+
+        var currentVolume = _player.Volume;
+        var desiredVolumeInt = _desiredMute ? 0 : (int)Math.Round(_desiredVolume);
+
+        if (!Equals(_player.GetCurrentAudioDevice(), _desiredAudioDevice) && _player.PlaybackState != PlaybackState.Stopped)
+        {
+            _player.Volume = 0;
+            Console.WriteLine($"B - {_player.GetCurrentAudioDevice()} --> {_desiredAudioDevice}");
+            _player.SetAudioDevice(_desiredAudioDevice);
+            Console.WriteLine($"A - {_player.GetCurrentAudioDevice()} --> {_desiredAudioDevice}");
+        }
+        else if (currentVolume != desiredVolumeInt)
+        {
+            _player.Volume = desiredVolumeInt;
+        }
     }
 
     // ══════════════════════════════════════════════════════════════════
@@ -525,10 +584,10 @@ public sealed class PlayerController : IAsyncDisposable
         var handler = StateChanged;
         if (handler is null) return;
 
-        var state = _player.State;
+        var state = _player.PlaybackState;
         var loadState = _player.LoadState;
-        var position = state == PlaybackState.Stopped ? TimeSpan.Zero : _player.Position;
-        var duration = _player.Duration ?? TimeSpan.Zero;
+        var position = state == PlaybackState.Stopped ? TimeSpan.Zero : _player.PlaybackPosition;
+        var duration = _player.MediaDuration ?? TimeSpan.Zero;
         var currentItem = Playlist.CurrentItem;
         var currentIndex = Playlist.CurrentIndex;
 
@@ -543,8 +602,8 @@ public sealed class PlayerController : IAsyncDisposable
         var handler = PositionChanged;
         if (handler is null) return;
 
-        var position = _player.Position;
-        var duration = _player.Duration ?? TimeSpan.Zero;
+        var position = _player.PlaybackPosition;
+        var duration = _player.MediaDuration ?? TimeSpan.Zero;
 
         handler.Invoke(this, new PositionSnapshot(position, duration));
     }
@@ -579,7 +638,7 @@ public sealed class PlayerController : IAsyncDisposable
         var handler = PositionChanged;
         if (handler is null) return;
 
-        var duration = _player.Duration ?? TimeSpan.Zero;
+        var duration = _player.MediaDuration ?? TimeSpan.Zero;
         handler.Invoke(this, new PositionSnapshot(position, duration));
     }
 
@@ -700,6 +759,7 @@ public sealed class PlayerController : IAsyncDisposable
         if (_disposed) return;
         _disposed = true;
 
+        _syncTimer?.Dispose();
         _player.MediaEnded -= OnMediaEnded;
         _player.StateChanged -= OnPlayerStateChanged;
         _player.LoadStateChanged -= OnPlayerLoadStateChanged;

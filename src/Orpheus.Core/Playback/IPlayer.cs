@@ -11,7 +11,7 @@ public interface IPlayer : IAsyncDisposable
     /// <summary>
     /// Current transport state (playing, paused, stopped).
     /// </summary>
-    PlaybackState State { get; }
+    PlaybackState PlaybackState { get; }
 
     /// <summary>
     /// Current media loading state (opening, buffering, complete, error).
@@ -21,22 +21,17 @@ public interface IPlayer : IAsyncDisposable
     /// <summary>
     /// Current playback position.
     /// </summary>
-    TimeSpan Position { get; }
+    TimeSpan PlaybackPosition { get; }
 
     /// <summary>
     /// Total duration of the current media. Null for live streams.
     /// </summary>
-    TimeSpan? Duration { get; }
+    TimeSpan? MediaDuration { get; }
 
     /// <summary>
     /// Volume level from 0 (muted) to 100 (maximum).
     /// </summary>
     int Volume { get; set; }
-
-    /// <summary>
-    /// Whether audio output is muted (independent of volume level).
-    /// </summary>
-    bool IsMuted { get; set; }
 
     /// <summary>
     /// The currently loaded media source, or null if nothing is loaded.
@@ -69,14 +64,20 @@ public interface IPlayer : IAsyncDisposable
     Task SeekAsync(TimeSpan position);
 
     /// <summary>
-    /// Unmute all audio.
+    /// Gets the current audio output device identifier, or null for system default.
     /// </summary>
-    Task UnmuteAsync();
+    string? GetCurrentAudioDevice();
 
     /// <summary>
-    /// Mute all audio.
+    /// Set the audio output device by its identifier.
+    /// Pass null or empty to use the system default.
     /// </summary>
-    Task MuteAsync();
+    void SetAudioDevice(string? deviceId);
+
+    /// <summary>
+    /// Get all audio output devices.
+    /// </summary>
+    IReadOnlyList<(string Id, string Description)> GetAudioOutputDevices();
 
     /// <summary>
     /// Fired when the transport state changes (playing, paused, stopped).

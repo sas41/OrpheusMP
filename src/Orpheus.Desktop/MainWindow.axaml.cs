@@ -742,8 +742,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _scanner = new FolderScanner(_library, new TagLibMetadataReader());
         _scanner.Progress += OnScanProgress;
 
-        var player = new VlcPlayer(state.AudioDevice);
-        _controller = new PlayerController(player);
+        var player = new VlcPlayer();
+        _controller = new PlayerController(player, state.AudioDevice, _volume);
         _controller.Playlist.Changed += OnPlaylistChanged;
         _controller.Playlist.CurrentIndexChanged += OnPlaylistIndexChanged;
         _controller.ShufflePlayChanged += OnShufflePlayChanged;
@@ -752,7 +752,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _controller.PositionChanged += OnControllerPositionChanged;
         _controller.VolumeChanged += OnControllerVolumeChanged;
 
-        _controller.InitializeVolume(_volume);
 
         // Re-tint all icons when the theme/variant changes.
         var app = (App)Application.Current!;
@@ -841,7 +840,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     /// <summary>
     /// Creates a SettingsViewModel wired to this ViewModel's dependencies.
-    /// Uses the VLC-specific Player reference for audio device enumeration only.
     /// </summary>
     public Views.SettingsViewModel CreateSettingsViewModel(GlobalMediaKeyService? mediaKeyService)
     {
@@ -850,7 +848,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             app.ThemeManager!,
             app.Config,
             app.State,
-            (VlcPlayer)_controller.Player,
+            _controller,
             _library,
             onLibraryReset: RefreshLibraryAsync,
             addLibraryFolder: AddLibraryFolderAsync,

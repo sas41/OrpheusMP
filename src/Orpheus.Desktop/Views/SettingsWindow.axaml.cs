@@ -85,6 +85,11 @@ public partial class SettingsWindow : Window
         ViewModel.ClearBinding(entry);
     }
 
+    public void OnRefreshAudioDevicesClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        ViewModel?.RefreshAudioDevices();
+    }
+
     // ── Rebind capture via window-level Avalonia events ──────
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -317,7 +322,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private readonly ThemeManager _themeManager;
     private readonly AppConfig _config;
     private readonly AppState _state;
-    private readonly VlcPlayer _player;
+    private readonly PlayerController _controller;
     private readonly IMediaLibrary _library;
     private readonly Func<Task> _onLibraryReset;
     private readonly Func<string, Task> _addLibraryFolder;
@@ -335,7 +340,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         ThemeManager themeManager,
         AppConfig config,
         AppState state,
-        VlcPlayer player,
+        PlayerController controller,
         IMediaLibrary library,
         Func<Task> onLibraryReset,
         Func<string, Task> addLibraryFolder,
@@ -344,7 +349,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _themeManager = themeManager;
         _config = config;
         _state = state;
-        _player = player;
+        _controller = controller;
         _library = library;
         _onLibraryReset = onLibraryReset;
         _addLibraryFolder = addLibraryFolder;
@@ -357,6 +362,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         Variants = new ObservableCollection<string>(GetVariantsWithDefault());
         AudioDevices = new ObservableCollection<AudioDeviceItem>(GetAudioDevices());
         MusicFolders = new ObservableCollection<string>();
+
+        _controller.AudioDevicesChanged += OnAudioDevicesChanged;
         Licenses = new ObservableCollection<LicenseEntry>(LoadLicenses());
 
         SelectedAudioDevice = _state.AudioDevice ?? "";
@@ -492,6 +499,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     /// <summary>Keyboard icon for the key bindings section header.</summary>
     public IImage? KeyboardIcon =>
         SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/keyboard.svg", ResolveIconColor());
+
+    /// <summary>Refresh icon for audio devices.</summary>
+    public IImage? RefreshIcon =>
+        SvgIconHelper.Load("avares://Orpheus.Desktop/assets/icons/repeat-none.svg", ResolveIconColor());
 
     private static Color ResolveIconColor()
     {
@@ -756,7 +767,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         set
         {
             if (!SetField(ref _selectedAudioDevice, value)) return;
-            _player.SetAudioDevice(value);
+            _controller.SetAudioDevice(value);
             _state.AudioDevice = string.IsNullOrEmpty(value) ? null : value;
             _state.Save();
             _config.Save();
@@ -765,15 +776,32 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     private IEnumerable<AudioDeviceItem> GetAudioDevices()
     {
-        try
+        var devices = _controller.GetAudioDevices();
+        if (devices.Count > 0)
         {
-            return _player.GetAudioOutputDevices()
-                .Select(d => new AudioDeviceItem(d.Id, d.Description));
+            return devices.Select(d => new AudioDeviceItem(d.Id, d.Description));
         }
-        catch
+        return new[] { new AudioDeviceItem("", Resources.SystemDefault) };
+    }
+
+    private void OnAudioDevicesChanged(object? sender, IReadOnlyList<(string Id, string Description)> devices)
+    {
+        Dispatcher.UIThread.Post(() =>
         {
-            return new[] { new AudioDeviceItem("", Resources.SystemDefault) };
-        }
+            var savedDevice = _selectedAudioDevice;
+            AudioDevices.Clear();
+            foreach (var d in devices)
+            {
+                AudioDevices.Add(new AudioDeviceItem(d.Id, d.Description));
+            }
+            _selectedAudioDevice = savedDevice;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedAudioDevice)));
+        });
+    }
+
+    public void RefreshAudioDevices()
+    {
+        _controller.RefreshAudioDevices();
     }
 
     // ── Music Library Folders ────────────────────────────────

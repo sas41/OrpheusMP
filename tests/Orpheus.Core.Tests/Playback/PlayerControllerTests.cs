@@ -13,7 +13,7 @@ public class PlayerControllerTests : IAsyncLifetime
     public PlayerControllerTests()
     {
         _mockPlayer = Substitute.For<IPlayer>();
-        _mockPlayer.State.Returns(PlaybackState.Stopped);
+        _mockPlayer.PlaybackState.Returns(PlaybackState.Stopped);
         _mockPlayer.LoadState.Returns(LoadState.Complete);
         _controller = new PlayerController(_mockPlayer);
     }
@@ -104,7 +104,7 @@ public class PlayerControllerTests : IAsyncLifetime
     [Fact]
     public async Task TogglePlayPauseAsync_PausesWhenPlaying()
     {
-        _mockPlayer.State.Returns(PlaybackState.Playing);
+        _mockPlayer.PlaybackState.Returns(PlaybackState.Playing);
         await _controller.TogglePlayPauseAsync();
         await _mockPlayer.Received(1).PauseAsync();
     }
@@ -112,7 +112,7 @@ public class PlayerControllerTests : IAsyncLifetime
     [Fact]
     public async Task TogglePlayPauseAsync_ResumesWhenPaused()
     {
-        _mockPlayer.State.Returns(PlaybackState.Paused);
+        _mockPlayer.PlaybackState.Returns(PlaybackState.Paused);
         await _controller.TogglePlayPauseAsync();
         await _mockPlayer.Received(1).ResumeAsync();
     }
@@ -120,7 +120,7 @@ public class PlayerControllerTests : IAsyncLifetime
     [Fact]
     public async Task TogglePlayPauseAsync_PlaysWhenStopped()
     {
-        _mockPlayer.State.Returns(PlaybackState.Stopped);
+        _mockPlayer.PlaybackState.Returns(PlaybackState.Stopped);
         _controller.Playlist.Add(MakeItem("a"));
 
         await _controller.TogglePlayPauseAsync();
@@ -172,7 +172,7 @@ public class PlayerControllerTests : IAsyncLifetime
     [Fact]
     public async Task RepeatOff_PreviousAsync_RestartsTrackIfPast3Seconds()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(5));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(5));
         LoadPlaylist(3);
         _controller.Playlist.CurrentIndex = 1;
 
@@ -185,7 +185,7 @@ public class PlayerControllerTests : IAsyncLifetime
     [Fact]
     public async Task RepeatOff_PreviousAsync_GoesBackIfEarlyInTrack()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(1));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(1));
         LoadPlaylist(3);
         _controller.Playlist.CurrentIndex = 1;
 
@@ -197,7 +197,7 @@ public class PlayerControllerTests : IAsyncLifetime
     [Fact]
     public async Task RepeatOff_PreviousAsync_RestartsAtStart()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(1));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(1));
         LoadPlaylist(3);
         _controller.Playlist.CurrentIndex = 0;
 
@@ -225,7 +225,7 @@ public class PlayerControllerTests : IAsyncLifetime
     [Fact]
     public async Task RepeatOne_PreviousAsync_StaysOnSameTrack()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(0));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(0));
         LoadPlaylist(3);
         _controller.SetRepeatMode(RepeatMode.One);
         _controller.Playlist.CurrentIndex = 1;
@@ -252,7 +252,7 @@ public class PlayerControllerTests : IAsyncLifetime
     [Fact]
     public async Task RepeatAll_PreviousAsync_WrapsToEnd()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(0));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(0));
         LoadPlaylist(3);
         _controller.SetRepeatMode(RepeatMode.All);
         _controller.Playlist.CurrentIndex = 0;
@@ -366,7 +366,7 @@ public class PlayerControllerTests : IAsyncLifetime
     [Fact]
     public async Task ShufflePlay_PreviousAsync_GoesBackInShuffleOrder()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(0));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(0));
         LoadPlaylist(5);
         _controller.SetShufflePlay(true);
 
