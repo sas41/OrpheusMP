@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
-using LibVLCSharp;
+using LibVLCSharp.Shared;
 using Orpheus.Core.Effects;
 using Orpheus.Core.Media;
 
@@ -13,8 +13,6 @@ namespace Orpheus.Core.Playback;
 /// </summary>
 public sealed class VlcPlayer : IPlayer
 {
-    private int _auido_device_countdown = 0;
-    private readonly int _auido_device_countdown_reset = 1;
     private volatile bool _stoppingIntentionally;
     private readonly LibVLC _libVlc;
     private readonly MediaPlayer _mediaPlayer;
@@ -36,8 +34,8 @@ public sealed class VlcPlayer : IPlayer
     /// </summary>
     public VlcPlayer()
     {
-        LibVLCSharp.Core.Initialize();
-        _libVlc = new LibVLC(["--no-video", "network-caching=3000"]);
+        LibVLCSharp.Shared.Core.Initialize();
+        _libVlc = new LibVLC("--no-video", "--network-caching=3000");
         _mediaPlayer = new MediaPlayer(_libVlc);
         _positionTimer = new Timer(OnPositionTimerTick, null, Timeout.Infinite, Timeout.Infinite);
         _eventChannel = Channel.CreateUnbounded<Action>(new UnboundedChannelOptions { SingleReader = true });
@@ -76,7 +74,7 @@ public sealed class VlcPlayer : IPlayer
         set
         {
             targetVolume = Math.Clamp(value, 0, 100);
-            _mediaPlayer.SetVolume(targetVolume);
+            _mediaPlayer.Volume = targetVolume;
         }
     }
 
@@ -95,7 +93,7 @@ public sealed class VlcPlayer : IPlayer
 
             _currentSource = source;
 
-            using var media = new LibVLCSharp.Media(source.Uri);
+            using var media = new LibVLCSharp.Shared.Media(_libVlc, source.Uri);
 
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -134,7 +132,7 @@ public sealed class VlcPlayer : IPlayer
             }
 
         }
-        catch (Exception ex)
+        catch
         {
             throw;
         }
@@ -261,31 +259,24 @@ public sealed class VlcPlayer : IPlayer
     /// </summary>
     /// <remarks>
     /// libvlc_audio_output_device_set requires an active audio output.
-    /// This call will fail if nothing is playing or the audio pipeline
-    /// hasn't finished initializing yet.  The caller should retry via
-    /// the sync timer when it returns false.
+    /// This call may have no effect if nothing is playing or the audio
+    /// pipeline hasn't finished initializing yet.
     /// </remarks>
     public bool SetAudioDevice(string? deviceId)
     {
-        if (deviceId is null || deviceId.Length == 0)
-        {
-            // VLC 4.0 rejects NULL devid (returns -1). There is no
-            // "reset to default" API.  Passing null is a no-op that
-            // means "keep using whatever the default already is."
-            return true;
-        }
-
-        return _mediaPlayer.SetOutputDevice(deviceId);
+        _mediaPlayer.SetOutputDevice(deviceId);
+        return true;
     }
 
-    private async void OnAudioDeviceChanged(object? sender, MediaPlayerAudioDeviceEventArgs e)
-    {
-        Console.WriteLine($"AUDIO DEVICE CHANGED TO: {e.AudioDevice}");
-    }
+    // private async void OnAudioDeviceChanged(object? sender, MediaPlayerAudioDeviceEventArgs e)
+    // {
+    //     Console.WriteLine($"AUDIO DEVICE CHANGED TO: {e.AudioDevice}");
+    // }
 
     private void AttachEvents()
     {
-        _mediaPlayer.AudioDevice += OnAudioDeviceChanged;
+        // Broken in libVLC 3.x
+        //_mediaPlayer.AudioDevice += OnAudioDeviceChanged;
         _mediaPlayer.Playing += (_, _) =>
         {
             ThreadPool.QueueUserWorkItem(_ =>

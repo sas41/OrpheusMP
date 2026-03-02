@@ -54,36 +54,36 @@ public sealed class AppConfig
 
     // ── Shortcut bindings ────────────────────────────────────
     // Stored as human-readable combo strings: "MediaPlay", "Ctrl+Mouse4",
-    // "WheelUp", etc.  Empty string = use default (the service picks a
-    // sensible fallback per action).  The LegacyShortcutConverter reads
-    // old ushort / JSON-object formats and converts them to strings.
+    // "WheelUp", etc.  Empty string = disabled (no binding).
+    // The LegacyShortcutConverter reads old ushort / JSON-object formats
+    // and converts them to strings.
 
-    /// <summary>Binding for Play/Pause. Default: empty (service uses MediaPlay).</summary>
+    /// <summary>Binding for Play/Pause. Default: empty (disabled).</summary>
     [JsonPropertyName("keyPlayPause")]
     [JsonConverter(typeof(LegacyShortcutConverter))]
     public string KeyPlayPause { get; set; } = "";
 
-    /// <summary>Binding for Next Track. Default: empty (service uses MediaNext).</summary>
+    /// <summary>Binding for Next Track. Default: empty (disabled).</summary>
     [JsonPropertyName("keyNextTrack")]
     [JsonConverter(typeof(LegacyShortcutConverter))]
     public string KeyNextTrack { get; set; } = "";
 
-    /// <summary>Binding for Previous Track. Default: empty (service uses MediaPrevious).</summary>
+    /// <summary>Binding for Previous Track. Default: empty (disabled).</summary>
     [JsonPropertyName("keyPreviousTrack")]
     [JsonConverter(typeof(LegacyShortcutConverter))]
     public string KeyPreviousTrack { get; set; } = "";
 
-    /// <summary>Binding for Stop. Default: empty (service uses MediaStop).</summary>
+    /// <summary>Binding for Stop. Default: empty (disabled).</summary>
     [JsonPropertyName("keyStop")]
     [JsonConverter(typeof(LegacyShortcutConverter))]
     public string KeyStop { get; set; } = "";
 
-    /// <summary>Binding for Volume Up. Default: empty (service uses VolumeUp).</summary>
+    /// <summary>Binding for Volume Up. Default: empty (disabled).</summary>
     [JsonPropertyName("keyVolumeUp")]
     [JsonConverter(typeof(LegacyShortcutConverter))]
     public string KeyVolumeUp { get; set; } = "";
 
-    /// <summary>Binding for Volume Down. Default: empty (service uses VolumeDown).</summary>
+    /// <summary>Binding for Volume Down. Default: empty (disabled).</summary>
     [JsonPropertyName("keyVolumeDown")]
     [JsonConverter(typeof(LegacyShortcutConverter))]
     public string KeyVolumeDown { get; set; } = "";

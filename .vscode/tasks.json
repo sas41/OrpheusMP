@@ -59,6 +59,21 @@
       }
     },
     {
+      "label": "build-ios",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/src/Orpheus.iOS/Orpheus.iOS.slnx",
+        "--framework",
+        "net10.0-ios",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary;ForceNoAlign"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": "build"
+    },
+    {
       "label": "test",
       "command": "dotnet",
       "type": "process",
@@ -107,9 +122,7 @@
       "type": "process",
       "args": [
         "build",
-        "${workspaceFolder}/src/Orpheus.Android/Orpheus.Android.csproj",
-        "--framework",
-        "net10.0-android",
+        "${workspaceFolder}/src/Orpheus.Android/Orpheus.Android.slnx",
         "/property:GenerateFullPaths=true",
         "/consoleloggerparameters:NoSummary;ForceNoAlign"
       ],
@@ -121,21 +134,7 @@
       "problemMatcher": "$msCompile",
       "group": "build"
     },
-    {
-      "label": "build-ios",
-      "command": "dotnet",
-      "type": "process",
-      "args": [
-        "build",
-        "${workspaceFolder}/src/Orpheus.iOS/Orpheus.iOS.csproj",
-        "--framework",
-        "net10.0-ios",
-        "/property:GenerateFullPaths=true",
-        "/consoleloggerparameters:NoSummary;ForceNoAlign"
-      ],
-      "problemMatcher": "$msCompile",
-      "group": "build"
-    },
+
     {
       "label": "android-emulator",
       "command": "fish",

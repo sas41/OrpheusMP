@@ -779,12 +779,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         var devices = _controller.GetAudioDevices();
         if (devices.Count > 0)
         {
-            return devices.Select(d => new AudioDeviceItem(d.Id, d.Description));
+            return devices.Select(d => new AudioDeviceItem(d.Id ?? "", d.Description));
         }
         return new[] { new AudioDeviceItem("", Resources.SystemDefault) };
     }
 
-    private void OnAudioDevicesChanged(object? sender, IReadOnlyList<(string Id, string Description)> devices)
+    private void OnAudioDevicesChanged(object? sender, IReadOnlyList<(string? Id, string Description)> devices)
     {
         Dispatcher.UIThread.Post(() =>
         {
@@ -792,7 +792,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             AudioDevices.Clear();
             foreach (var d in devices)
             {
-                AudioDevices.Add(new AudioDeviceItem(d.Id, d.Description));
+                AudioDevices.Add(new AudioDeviceItem(d.Id ?? "", d.Description));
             }
             _selectedAudioDevice = savedDevice;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedAudioDevice)));

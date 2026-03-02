@@ -78,7 +78,7 @@ public interface IPlayer : IAsyncDisposable
     /// <summary>
     /// Get all audio output devices.
     /// </summary>
-    IReadOnlyList<(string Id, string Description)> GetAudioOutputDevices();
+    IReadOnlyList<(string? Id, string Description)> GetAudioOutputDevices();
 
     /// <summary>
     /// Fired when the transport state changes (playing, paused, stopped).

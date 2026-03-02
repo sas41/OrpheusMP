@@ -62,7 +62,7 @@ public sealed class PlayerController : IAsyncDisposable
         _desiredVolume = Math.Clamp(desiredVolume, 0, 100);
         _player.Volume = (int)Math.Round(_desiredVolume);
 
-        //_syncTimer = new Timer(SyncDesiredState, null, SyncIntervalMs, SyncIntervalMs);
+        _syncTimer = new Timer(SyncDesiredState, null, SyncIntervalMs, SyncIntervalMs);
     }
 
     /// <summary>
@@ -122,7 +122,7 @@ public sealed class PlayerController : IAsyncDisposable
     /// <summary>
     /// Fired when the list of available audio devices changes.
     /// </summary>
-    public event EventHandler<IReadOnlyList<(string Id, string Description)>>? AudioDevicesChanged;
+    public event EventHandler<IReadOnlyList<(string? Id, string Description)>>? AudioDevicesChanged;
 
     // ══════════════════════════════════════════════════════════════════
     //  Repeat
@@ -554,34 +554,28 @@ public sealed class PlayerController : IAsyncDisposable
         _player.Volume = (int)Math.Round(_desiredVolume);
     }
 
-    // private void SyncDesiredState(object? state)
-    // {
-    //     if (_disposed) return;
+    private void SyncDesiredState(object? state)
+    {
+        if (_disposed) return;
 
-    //     var currentVolume = _player.Volume;
-    //     var desiredVolumeInt = _desiredMute ? 0 : (int)Math.Round(_desiredVolume);
-    //     var currentDevice = _player.GetCurrentAudioDevice();
+        var currentVolume = _player.Volume;
+        var desiredVolumeInt = _desiredMute ? 0 : (int)Math.Round(_desiredVolume);
+        var currentDevice = _player.GetCurrentAudioDevice();
 
-    //     // A null/empty desired device means "system default" — no explicit
-    //     // device switch is needed regardless of what VLC reports as current.
-    //     var needsDeviceSwitch = !string.IsNullOrEmpty(_desiredAudioDevice)
-    //                             && !string.Equals(currentDevice, _desiredAudioDevice, StringComparison.Ordinal)
-    //                             && _player.PlaybackState == PlaybackState.Playing;
-
-    //     if (needsDeviceSwitch)
-    //     {
-    //         _player.Volume = 0;
-    //        var success = _player.SetAudioDevice(_desiredAudioDevice);
-    //        if (success)
-    //         {
-    //             _player.Volume = desiredVolumeInt;
-    //         }
-    //     }
-    //     else if (currentVolume != desiredVolumeInt)
-    //     {
-    //         _player.Volume = desiredVolumeInt;
-    //     }
-    // }
+        if (currentDevice != _desiredAudioDevice)
+        {
+            _player.Volume = 0;
+            _player.SetAudioDevice(_desiredAudioDevice);
+            if (_player.GetCurrentAudioDevice() == _desiredAudioDevice)
+            {
+                _player.Volume = desiredVolumeInt;
+            }
+        }
+        else if (currentVolume != desiredVolumeInt)
+        {
+            _player.Volume = desiredVolumeInt;
+        }
+    }
 
     // ══════════════════════════════════════════════════════════════════
     //  Private — Snapshot builders & event firing

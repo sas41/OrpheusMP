@@ -52,7 +52,9 @@
   <!-- Top-level shared assets — icons (SVG + AXAML) and themes -->
   <ItemGroup>
     <AvaloniaResource Include="../../assets/icons/**/*" Link="assets/icons/%(RecursiveDir)%(Filename)%(Extension)" />
-    <AvaloniaResource Include="../../assets/themes/**/*.axaml" Link="assets/themes/%(RecursiveDir)%(Filename)%(Extension)" />
+    <AvaloniaResource Include="../../assets/themes/**/*.axaml"
+                      Exclude="../../assets/themes/**/*.mobile.axaml"
+                      Link="assets/themes/%(RecursiveDir)%(Filename)%(Extension)" />
     <AvaloniaResource Include="../../assets/icon.png" Link="assets/icon.png" />
     <AvaloniaResource Include="../../assets/icon-256.png" Link="assets/icon-256.png" />
     <AvaloniaResource Include="../../assets/icon.svg" Link="assets/icon.svg" />

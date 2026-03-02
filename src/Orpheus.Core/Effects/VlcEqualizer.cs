@@ -1,4 +1,4 @@
-using LibVLCSharp;
+using LibVLCSharp.Shared;
 
 namespace Orpheus.Core.Effects;
 
