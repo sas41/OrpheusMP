@@ -96,6 +96,7 @@ public sealed class ThemeManager
         "avares://Orpheus.Desktop/assets/themes/Muse/Muse.Ember.axaml",
         "avares://Orpheus.Desktop/assets/themes/Muse/Muse.Berry.axaml",
         "avares://Orpheus.Desktop/assets/themes/Muse/Muse.Midnight.axaml",
+        "avares://Orpheus.Desktop/assets/themes/Muse/Muse.Plum.axaml",
     };
 
     /// <summary>
@@ -499,7 +500,7 @@ public sealed class ThemeManager
             // Try known built-in variant files
             var knownVariants = layoutName switch
             {
-                "Muse" => new[] { "Ember", "Berry", "Midnight" },
+                "Muse" => new[] { "Ember", "Berry", "Midnight", "Plum" },
                 _ => Array.Empty<string>()
             };
 

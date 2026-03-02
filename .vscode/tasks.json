@@ -102,6 +102,62 @@
       "isBackground": true
     },
     {
+      "label": "build-android",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/src/Orpheus.Android/Orpheus.Android.csproj",
+        "--framework",
+        "net10.0-android",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary;ForceNoAlign"
+      ],
+      "options": {
+        "env": {
+          "JAVA_HOME": "/usr/lib/jvm/java-21-openjdk"
+        }
+      },
+      "problemMatcher": "$msCompile",
+      "group": "build"
+    },
+    {
+      "label": "build-ios",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/src/Orpheus.iOS/Orpheus.iOS.csproj",
+        "--framework",
+        "net10.0-ios",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary;ForceNoAlign"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": "build"
+    },
+    {
+      "label": "android-emulator",
+      "command": "fish",
+      "type": "process",
+      "args": [
+        "${workspaceFolder}/scripts/android-emulator.fish"
+      ],
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "android-emulator-cold",
+      "command": "fish",
+      "type": "process",
+      "args": [
+        "${workspaceFolder}/scripts/android-emulator.fish",
+        "--cold"
+      ],
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
       "label": "clean",
       "command": "dotnet",
       "type": "process",

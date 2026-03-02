@@ -1,0 +1,8 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Orpheus.Android.MainView"
+             x:CompileBindings="False">
+
+  <ContentControl ContentTemplate="{DynamicResource MobileMainLayout}" />
+
+</UserControl>
