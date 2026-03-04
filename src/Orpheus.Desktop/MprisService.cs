@@ -128,8 +128,12 @@ public sealed class MprisService : IDisposable
         {
             _connection = new DBusConnection(DBusAddress.Session!);
             await _connection.ConnectAsync();
-            await _connection.RequestNameAsync(BusName, RequestNameOptions.Default);
+            // Register the object handler BEFORE requesting the bus name so that
+            // any client (plasmashell, kded) whose QDBusServiceWatcher fires on
+            // NameOwnerChanged immediately gets a valid GetAll response rather than
+            // an UnknownObject error that causes them to permanently drop the player.
             _connection.AddMethodHandler(new MprisHandler(this));
+            await _connection.RequestNameAsync(BusName, RequestNameOptions.Default);
         }
         catch (Exception ex)
         {
@@ -188,6 +192,11 @@ public sealed class MprisService : IDisposable
             }
         }
 
+        bool newCanSeek = newState.IsActive && newState.DurationSeconds > 0;
+        bool oldCanSeek = old.IsActive     && old.DurationSeconds     > 0;
+        if (newCanSeek != oldCanSeek)
+            changed["CanSeek"] = VariantValue.Bool(newCanSeek);
+
         bool metaChanged =
             newState.Title           != old.Title  ||
             newState.Artist          != old.Artist ||
@@ -204,7 +213,6 @@ public sealed class MprisService : IDisposable
         try
         {
             var keys = string.Join(", ", changed.Keys);
-            Console.WriteLine($"[MPRIS] properties changed: {keys}; newState playing={newState.IsPlaying}, active={newState.IsActive}, vol={newState.Volume}, pos={newState.PositionSeconds}");
         }
         catch { /* ignore logging failures in release */ }
         SendPropertiesChanged(PlayerIface, changed);
@@ -216,7 +224,6 @@ public sealed class MprisService : IDisposable
         if (_connection is null || _disposed) return;
 
         long us = (long)(positionSeconds * 1_000_000);
-        Console.WriteLine($"[MPRIS] EmitSeeked signal queued: PositionSeconds={positionSeconds}, us={us}");
         using var w = _connection.GetMessageWriter();
         w.WriteSignalHeader(
             path:       MprisObjectPath,
@@ -312,8 +319,8 @@ public sealed class MprisService : IDisposable
         WriteKV(ref w, "HasTrackList",        VariantValue.Bool(false));
         WriteKV(ref w, "Identity",            VariantValue.String("OrpheusMP"));
         WriteKV(ref w, "DesktopEntry",        VariantValue.String("orpheusmp"));
-        WriteKV(ref w, "SupportedUriSchemes", VariantValue.Array(Array.Empty<string>()));
-        WriteKV(ref w, "SupportedMimeTypes",  VariantValue.Array(Array.Empty<string>()));
+        WriteKV(ref w, "SupportedUriSchemes", ((IVariantValueConvertable)new Array<string>()).AsVariantValue());
+        WriteKV(ref w, "SupportedMimeTypes",  ((IVariantValueConvertable)new Array<string>()).AsVariantValue());
         w.WriteDictionaryEnd(ds);
     }
 
@@ -353,8 +360,8 @@ public sealed class MprisService : IDisposable
         "HasTrackList"        => VariantValue.Bool(false),
         "Identity"            => VariantValue.String("OrpheusMP"),
         "DesktopEntry"        => VariantValue.String("orpheusmp"),
-        "SupportedUriSchemes" => VariantValue.Array(Array.Empty<string>()),
-        "SupportedMimeTypes"  => VariantValue.Array(Array.Empty<string>()),
+        "SupportedUriSchemes" => ((IVariantValueConvertable)new Array<string>()).AsVariantValue(),
+        "SupportedMimeTypes"  => ((IVariantValueConvertable)new Array<string>()).AsVariantValue(),
         _                     => (VariantValue?)null
     };
 
@@ -465,9 +472,7 @@ public sealed class MprisService : IDisposable
                         _svc.OnSeekTo?.Invoke(newPos);
                         // Also emit Seeked signal so clients can update UI immediately
                         // when a seek occurs.
-                        Console.WriteLine($"[MPRIS] Seek to {newPos}s");
                         _svc.EmitSeeked(newPos);
-                        Console.WriteLine($"[MPRIS] EmitSeeked emitted for {newPos}s");
                         return ValueTask.CompletedTask;
                     }
 
