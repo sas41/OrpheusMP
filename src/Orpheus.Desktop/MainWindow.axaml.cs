@@ -131,6 +131,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private long _seekSuppressUntilTicks;
     private double _volume = 72;
     private string _searchQuery = string.Empty;
+    private bool _isSearchActive;
     private int _selectedTrackIndex = -1;
     private int _currentQueueIndex = -1;
     private TrackSortField _sortField = TrackSortField.Title;
@@ -328,6 +329,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
                     _ = LoadLibraryAsync(_searchQuery);
             }
         }
+    }
+
+    /// <summary>
+    /// True while a search query is active. Sort and filter controls are
+    /// disabled during search — results are ordered by relevance instead.
+    /// </summary>
+    public bool IsSearchActive
+    {
+        get => _isSearchActive;
+        private set => SetField(ref _isSearchActive, value);
     }
 
     public SessionMode SessionMode
@@ -829,6 +840,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     }
 
     /// <summary>
+    /// Re-scan all watched folders and refresh the library UI.
+    /// </summary>
+    public async Task RescanAllFoldersAsync()
+    {
+        await _scanner.ScanAsync();
+        await LoadLibraryAsync();
+    }
+
+    /// <summary>
     /// Returns the shared VlcEqualizer instance, creating it on first access.
     /// Uses the VLC-specific Player reference for equalizer creation only.
     /// </summary>
@@ -851,6 +871,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             _controller,
             _library,
             onLibraryReset: RefreshLibraryAsync,
+            onRescanAll: RescanAllFoldersAsync,
             addLibraryFolder: AddLibraryFolderAsync,
             mediaKeyService: mediaKeyService);
     }
@@ -880,6 +901,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     {
         IReadOnlyList<LibraryTrack> tracks;
         var isSearch = !string.IsNullOrWhiteSpace(query);
+
+        IsSearchActive = isSearch;
 
         if (isSearch)
         {
@@ -1236,11 +1259,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         var counts = BuildTrackCounts(tracks);
         var nodes = new List<LibraryNode>();
 
+        // Build a set of matched file paths so PruneEmptyNodes can filter
+        // File/Playlist leaf nodes to only those that are in the search results.
+        HashSet<string>? matchedPaths = pruneEmpty
+            ? new HashSet<string>(tracks.Select(t => t.FilePath), StringComparer.OrdinalIgnoreCase)
+            : null;
+
         foreach (var folder in folders.OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
             var node = BuildFolderNode(folder, counts, showFiles);
             if (pruneEmpty)
-                node = PruneEmptyNodes(node);
+                node = PruneEmptyNodes(node, matchedPaths!);
             if (node is not null)
             {
                 node.IsExpanded = true;
@@ -1252,25 +1281,37 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     }
 
     /// <summary>
-    /// Recursively remove child nodes with no matching tracks.
+    /// Recursively remove nodes that have no matching tracks.
+    /// <para>
+    /// File and Playlist leaf nodes are kept only if their path is in
+    /// <paramref name="matchedPaths"/> (the search result set).
+    /// Folder nodes are kept only if they have a non-zero track count
+    /// (i.e. at least one matched track lives beneath them) or at least
+    /// one surviving child.
+    /// </para>
     /// Returns null if this node itself should be removed.
     /// </summary>
-    private static LibraryNode? PruneEmptyNodes(LibraryNode node)
+    private static LibraryNode? PruneEmptyNodes(LibraryNode node, HashSet<string> matchedPaths)
     {
+        // Leaf nodes (File / Playlist): keep only if they are in the result set.
+        if (node.NodeType != LibraryNodeType.Folder)
+            return matchedPaths.Contains(node.Path) ? node : null;
+
+        // Folder nodes: recurse first, then decide.
         var prunedChildren = new List<LibraryNode>();
         foreach (var child in node.Children)
         {
-            var pruned = PruneEmptyNodes(child);
+            var pruned = PruneEmptyNodes(child, matchedPaths);
             if (pruned is not null)
                 prunedChildren.Add(pruned);
         }
 
-        // Keep this node if it has matching tracks directly or surviving children.
-        var hasOwnTracks = node.Meta != Resources.Empty && node.Meta != Resources.Missing;
-        if (!hasOwnTracks && prunedChildren.Count == 0)
+        // Keep this folder only if it has matched tracks beneath it
+        // (Meta != "Empty" / "Missing") OR has surviving children after pruning.
+        var hasMatchedTracks = node.Meta != Resources.Empty && node.Meta != Resources.Missing;
+        if (!hasMatchedTracks && prunedChildren.Count == 0)
             return null;
 
-        // Return a new node with only the surviving children.
         return new LibraryNode(node.Name, node.Meta, node.Path, prunedChildren);
     }
 
@@ -2375,18 +2416,23 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     {
         IEnumerable<LibraryTrack> query = source;
 
-        if (HideMissingTitle)
-            query = query.Where(t => !string.IsNullOrWhiteSpace(t.Title));
-        if (HideMissingArtist)
-            query = query.Where(t => !string.IsNullOrWhiteSpace(t.Artist));
-        if (HideMissingAlbum)
-            query = query.Where(t => !string.IsNullOrWhiteSpace(t.Album));
-        if (HideMissingGenre)
-            query = query.Where(t => !string.IsNullOrWhiteSpace(t.Genre));
-        if (HideMissingTrackNumber)
-            query = query.Where(t => t.TrackNumber.HasValue && t.TrackNumber.Value > 0);
+        // Filters and sort are suppressed during search — results are already
+        // ordered by relevance and filters would hide valid matches.
+        if (!IsSearchActive)
+        {
+            if (HideMissingTitle)
+                query = query.Where(t => !string.IsNullOrWhiteSpace(t.Title));
+            if (HideMissingArtist)
+                query = query.Where(t => !string.IsNullOrWhiteSpace(t.Artist));
+            if (HideMissingAlbum)
+                query = query.Where(t => !string.IsNullOrWhiteSpace(t.Album));
+            if (HideMissingGenre)
+                query = query.Where(t => !string.IsNullOrWhiteSpace(t.Genre));
+            if (HideMissingTrackNumber)
+                query = query.Where(t => t.TrackNumber.HasValue && t.TrackNumber.Value > 0);
 
-        query = ApplySort(query);
+            query = ApplySort(query);
+        }
 
         var list = query.ToList();
         var rows = list.Select(ToTrackRow).ToList();

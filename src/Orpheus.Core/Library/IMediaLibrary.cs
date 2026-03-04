@@ -29,7 +29,8 @@ public interface IMediaLibrary : IDisposable
     Task<LibraryTrack?> GetTrackByPathAsync(string filePath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Search tracks by a query string (matches title, artist, album).
+    /// Search tracks by a query string. Matches against title, artist, album,
+    /// album artist, and file path using full-text search with prefix matching.
     /// </summary>
     Task<IReadOnlyList<LibraryTrack>> SearchAsync(
         string query,
@@ -111,7 +112,8 @@ public interface IMediaLibrary : IDisposable
     Task RemoveWatchedFolderAsync(string folderPath, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Delete all tracks and watched folders, resetting the library to an empty state.
+    /// Delete all indexed tracks, resetting the library to an empty state.
+    /// Watched folders are preserved.
     /// </summary>
     Task ClearAsync(CancellationToken cancellationToken = default);
 }

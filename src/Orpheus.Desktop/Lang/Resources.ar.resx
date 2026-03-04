@@ -149,8 +149,9 @@
   <data name="AddFolder" xml:space="preserve"><value>إضافة مجلد</value></data>
   <data name="RemoveSelected" xml:space="preserve"><value>إزالة المحدد</value></data>
   <data name="Database" xml:space="preserve"><value>قاعدة البيانات</value></data>
-  <data name="ResetLibraryDescription" xml:space="preserve"><value>إعادة تعيين قاعدة البيانات لمسح جميع المقطوعات والمجلدات المفهرسة.</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>يحذف الإعادة جميع المقطوعات المفهرسة مع الاحتفاظ بقائمة المجلدات. يعيد إعادة الفحص فهرسة جميع المجلدات المراقبة.</value></data>
   <data name="ResetLibrary" xml:space="preserve"><value>إعادة تعيين المكتبة</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>إعادة فحص الكل</value></data>
   <data name="Output" xml:space="preserve"><value>الإخراج</value></data>
   <data name="AudioOutput" xml:space="preserve"><value>إخراج الصوت</value></data>
   <data name="OutputDevice" xml:space="preserve"><value>جهاز الإخراج</value></data>
@@ -162,6 +163,7 @@
   <data name="ScanningFmt" xml:space="preserve"><value>جاري فحص {0}...</value></data>
   <data name="ScanComplete" xml:space="preserve"><value>اكتمل الفحص.</value></data>
   <data name="ResettingLibrary" xml:space="preserve"><value>جاري إعادة تعيين المكتبة...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>جاري فحص المكتبة...</value></data>
   <data name="LibraryReset" xml:space="preserve"><value>تم إعادة تعيين المكتبة.</value></data>
   <data name="CouldNotReadLicense" xml:space="preserve"><value>(تعذر قراءة ملف الترخيص)</value></data>
   <data name="EnableEqualizer" xml:space="preserve"><value>تفعيل المعادل</value></data>

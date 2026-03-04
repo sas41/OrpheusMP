@@ -149,8 +149,9 @@ Değiştirmeden önce çalma listesi olarak kaydetmek ister misiniz?</value></da
   <data name="AddFolder" xml:space="preserve"><value>Klasör Ekle</value></data>
   <data name="RemoveSelected" xml:space="preserve"><value>Seçileni Kaldır</value></data>
   <data name="Database" xml:space="preserve"><value>Veritabanı</value></data>
-  <data name="ResetLibraryDescription" xml:space="preserve"><value>Tüm dizinlenmiş parçaları ve klasörleri temizlemek için kütüphane veritabanını sıfırlayın.</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>Sıfırlama tüm dizinlenmiş parçaları siler ancak klasör listesini korur. Yeniden tara, tüm izlenen klasörleri yeniden dizinler.</value></data>
   <data name="ResetLibrary" xml:space="preserve"><value>Kütüphaneyi Sıfırla</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>Tümünü Yeniden Tara</value></data>
   <data name="Output" xml:space="preserve"><value>Çıkış</value></data>
   <data name="AudioOutput" xml:space="preserve"><value>Ses Çıkışı</value></data>
   <data name="OutputDevice" xml:space="preserve"><value>Çıkış Aygıtı</value></data>
@@ -162,6 +163,7 @@ Değiştirmeden önce çalma listesi olarak kaydetmek ister misiniz?</value></da
   <data name="ScanningFmt" xml:space="preserve"><value>{0} taranıyor...</value></data>
   <data name="ScanComplete" xml:space="preserve"><value>Tarama tamamlandı.</value></data>
   <data name="ResettingLibrary" xml:space="preserve"><value>Kütüphane sıfırlanıyor...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>Kütüphane taranıyor...</value></data>
   <data name="LibraryReset" xml:space="preserve"><value>Kütüphane sıfırlandı.</value></data>
   <data name="CouldNotReadLicense" xml:space="preserve"><value>(Lisans dosyası okunamadı)</value></data>
   <data name="EnableEqualizer" xml:space="preserve"><value>Ekolayzırı Etkinleştir</value></data>

@@ -149,8 +149,9 @@
   <data name="AddFolder" xml:space="preserve"><value>添加文件夹</value></data>
   <data name="RemoveSelected" xml:space="preserve"><value>删除已选</value></data>
   <data name="Database" xml:space="preserve"><value>数据库</value></data>
-  <data name="ResetLibraryDescription" xml:space="preserve"><value>重置数据库以清除所有已索引的曲目和文件夹。</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>重置将清除所有已索引的曲目，但保留文件夹列表。重新扫描将重新索引所有监视文件夹。</value></data>
   <data name="ResetLibrary" xml:space="preserve"><value>重置音乐库</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>全部重新扫描</value></data>
   <data name="Output" xml:space="preserve"><value>输出</value></data>
   <data name="AudioOutput" xml:space="preserve"><value>音频输出</value></data>
   <data name="OutputDevice" xml:space="preserve"><value>输出设备</value></data>
@@ -162,6 +163,7 @@
   <data name="ScanningFmt" xml:space="preserve"><value>正在扫描 {0}...</value></data>
   <data name="ScanComplete" xml:space="preserve"><value>扫描完成。</value></data>
   <data name="ResettingLibrary" xml:space="preserve"><value>正在重置音乐库...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>正在扫描音乐库...</value></data>
   <data name="LibraryReset" xml:space="preserve"><value>音乐库已重置。</value></data>
   <data name="CouldNotReadLicense" xml:space="preserve"><value>(无法读取许可证文件)</value></data>
   <data name="EnableEqualizer" xml:space="preserve"><value>启用均衡器</value></data>

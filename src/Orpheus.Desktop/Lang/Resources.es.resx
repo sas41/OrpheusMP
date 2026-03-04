@@ -149,8 +149,9 @@
   <data name="AddFolder" xml:space="preserve"><value>Añadir carpeta</value></data>
   <data name="RemoveSelected" xml:space="preserve"><value>Eliminar seleccionada</value></data>
   <data name="Database" xml:space="preserve"><value>Base de datos</value></data>
-  <data name="ResetLibraryDescription" xml:space="preserve"><value>Restablecer la base de datos para borrar todas las pistas y carpetas indexadas.</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>Restablecer borra todas las pistas indexadas pero conserva la lista de carpetas. Reescanear vuelve a indexar todas las carpetas vigiladas.</value></data>
   <data name="ResetLibrary" xml:space="preserve"><value>Restablecer biblioteca</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>Reescanear todo</value></data>
   <data name="Output" xml:space="preserve"><value>Salida</value></data>
   <data name="AudioOutput" xml:space="preserve"><value>Salida de audio</value></data>
   <data name="OutputDevice" xml:space="preserve"><value>Dispositivo de salida</value></data>
@@ -162,6 +163,7 @@
   <data name="ScanningFmt" xml:space="preserve"><value>Escaneando {0}...</value></data>
   <data name="ScanComplete" xml:space="preserve"><value>Escaneo completado.</value></data>
   <data name="ResettingLibrary" xml:space="preserve"><value>Restableciendo biblioteca...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>Escaneando biblioteca...</value></data>
   <data name="LibraryReset" xml:space="preserve"><value>Biblioteca restablecida.</value></data>
   <data name="CouldNotReadLicense" xml:space="preserve"><value>(No se pudo leer el archivo de licencia)</value></data>
   <data name="EnableEqualizer" xml:space="preserve"><value>Activar ecualizador</value></data>

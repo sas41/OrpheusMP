@@ -149,8 +149,9 @@
   <data name="AddFolder" xml:space="preserve"><value>Добавить папку</value></data>
   <data name="RemoveSelected" xml:space="preserve"><value>Удалить выбранную</value></data>
   <data name="Database" xml:space="preserve"><value>База данных</value></data>
-  <data name="ResetLibraryDescription" xml:space="preserve"><value>Сбросить базу данных для удаления всех проиндексированных треков и папок.</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>Сброс удаляет все проиндексированные треки, но сохраняет список папок. Пересканирование повторно индексирует все отслеживаемые папки.</value></data>
   <data name="ResetLibrary" xml:space="preserve"><value>Сбросить библиотеку</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>Пересканировать всё</value></data>
   <data name="Output" xml:space="preserve"><value>Выход</value></data>
   <data name="AudioOutput" xml:space="preserve"><value>Аудиовыход</value></data>
   <data name="OutputDevice" xml:space="preserve"><value>Устройство вывода</value></data>
@@ -162,6 +163,7 @@
   <data name="ScanningFmt" xml:space="preserve"><value>Сканирование {0}...</value></data>
   <data name="ScanComplete" xml:space="preserve"><value>Сканирование завершено.</value></data>
   <data name="ResettingLibrary" xml:space="preserve"><value>Сброс библиотеки...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>Сканирование библиотеки...</value></data>
   <data name="LibraryReset" xml:space="preserve"><value>Библиотека сброшена.</value></data>
   <data name="CouldNotReadLicense" xml:space="preserve"><value>(Не удалось прочитать файл лицензии)</value></data>
   <data name="EnableEqualizer" xml:space="preserve"><value>Включить эквалайзер</value></data>

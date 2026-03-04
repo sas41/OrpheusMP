@@ -178,7 +178,10 @@
         <TextBlock Text="{Binding LocDatabase}" Classes="subheading" />
         <TextBlock Text="{Binding LocResetLibraryDescription}"
                    TextWrapping="Wrap" Classes="muted small" />
-        <Button Content="{Binding LocResetLibrary}" Click="OnResetLibrary" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Content="{Binding LocResetLibrary}" Click="OnResetLibrary" />
+          <Button Content="{Binding LocRescanLibrary}" Click="OnRescanLibrary" />
+        </StackPanel>
 
         <TextBlock Text="{Binding StatusMessage}" Classes="muted small" />
       </StackPanel>

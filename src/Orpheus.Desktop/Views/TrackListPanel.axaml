@@ -52,11 +52,13 @@
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
           <Button Classes="icon" Click="OnSortButtonClick" ContextMenu="{StaticResource TrackSortMenu}"
-                  ToolTip.Tip="{x:Static lang:Resources.Sort}" Width="28" Height="28" Padding="4">
+                  ToolTip.Tip="{x:Static lang:Resources.Sort}" Width="28" Height="28" Padding="4"
+                  IsEnabled="{Binding !IsSearchActive}">
             <Image Source="{Binding SortIcon}" Width="14" Height="14" />
           </Button>
           <Button Classes="icon" Click="OnFilterButtonClick" ContextMenu="{StaticResource TrackFilterMenu}"
-                  ToolTip.Tip="{x:Static lang:Resources.Filter}" Width="28" Height="28" Padding="4">
+                  ToolTip.Tip="{x:Static lang:Resources.Filter}" Width="28" Height="28" Padding="4"
+                  IsEnabled="{Binding !IsSearchActive}">
             <Image Source="{Binding FilterIcon}" Width="14" Height="14" />
           </Button>
         </StackPanel>

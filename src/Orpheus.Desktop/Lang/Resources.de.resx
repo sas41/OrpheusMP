@@ -149,8 +149,9 @@ Möchten Sie sie als Playlist speichern, bevor sie ersetzt wird?</value></data>
   <data name="AddFolder" xml:space="preserve"><value>Ordner hinzufügen</value></data>
   <data name="RemoveSelected" xml:space="preserve"><value>Ausgewählten entfernen</value></data>
   <data name="Database" xml:space="preserve"><value>Datenbank</value></data>
-  <data name="ResetLibraryDescription" xml:space="preserve"><value>Datenbank zurücksetzen, um alle indexierten Titel und Ordner zu löschen.</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>Zurücksetzen löscht alle indizierten Titel, behält jedoch die Ordnerliste. Neu scannen indiziert alle überwachten Ordner erneut.</value></data>
   <data name="ResetLibrary" xml:space="preserve"><value>Bibliothek zurücksetzen</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>Alles neu scannen</value></data>
   <data name="Output" xml:space="preserve"><value>Ausgabe</value></data>
   <data name="AudioOutput" xml:space="preserve"><value>Audioausgabe</value></data>
   <data name="OutputDevice" xml:space="preserve"><value>Ausgabegerät</value></data>
@@ -162,6 +163,7 @@ Möchten Sie sie als Playlist speichern, bevor sie ersetzt wird?</value></data>
   <data name="ScanningFmt" xml:space="preserve"><value>Scanne {0}...</value></data>
   <data name="ScanComplete" xml:space="preserve"><value>Scan abgeschlossen.</value></data>
   <data name="ResettingLibrary" xml:space="preserve"><value>Bibliothek wird zurückgesetzt...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>Bibliothek wird gescannt...</value></data>
   <data name="LibraryReset" xml:space="preserve"><value>Bibliothek zurückgesetzt.</value></data>
   <data name="CouldNotReadLicense" xml:space="preserve"><value>(Lizenzdatei konnte nicht gelesen werden)</value></data>
   <data name="EnableEqualizer" xml:space="preserve"><value>Equalizer aktivieren</value></data>

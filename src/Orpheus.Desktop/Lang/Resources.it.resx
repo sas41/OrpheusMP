@@ -149,8 +149,9 @@ Vuoi salvarla come playlist prima di sostituirla?</value></data>
   <data name="AddFolder" xml:space="preserve"><value>Aggiungi cartella</value></data>
   <data name="RemoveSelected" xml:space="preserve"><value>Rimuovi selezionata</value></data>
   <data name="Database" xml:space="preserve"><value>Database</value></data>
-  <data name="ResetLibraryDescription" xml:space="preserve"><value>Reimposta il database per cancellare tutti i brani e le cartelle indicizzate.</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>Reimposta elimina tutti i brani indicizzati ma conserva l'elenco delle cartelle. Riscansiona reindicizza tutte le cartelle monitorate.</value></data>
   <data name="ResetLibrary" xml:space="preserve"><value>Reimposta libreria</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>Riscansiona tutto</value></data>
   <data name="Output" xml:space="preserve"><value>Uscita</value></data>
   <data name="AudioOutput" xml:space="preserve"><value>Uscita audio</value></data>
   <data name="OutputDevice" xml:space="preserve"><value>Dispositivo di uscita</value></data>
@@ -162,6 +163,7 @@ Vuoi salvarla come playlist prima di sostituirla?</value></data>
   <data name="ScanningFmt" xml:space="preserve"><value>Scansione di {0}...</value></data>
   <data name="ScanComplete" xml:space="preserve"><value>Scansione completata.</value></data>
   <data name="ResettingLibrary" xml:space="preserve"><value>Reimpostazione libreria...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>Scansione libreria...</value></data>
   <data name="LibraryReset" xml:space="preserve"><value>Libreria reimpostata.</value></data>
   <data name="CouldNotReadLicense" xml:space="preserve"><value>(Impossibile leggere il file di licenza)</value></data>
   <data name="EnableEqualizer" xml:space="preserve"><value>Abilita equalizzatore</value></data>

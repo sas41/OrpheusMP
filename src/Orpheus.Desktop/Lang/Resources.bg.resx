@@ -149,8 +149,9 @@
   <data name="AddFolder" xml:space="preserve"><value>Добави папка</value></data>
   <data name="RemoveSelected" xml:space="preserve"><value>Премахни избраната</value></data>
   <data name="Database" xml:space="preserve"><value>База данни</value></data>
-  <data name="ResetLibraryDescription" xml:space="preserve"><value>Нулиране на базата данни за изчистване на всички индексирани песни и папки.</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>Нулирането изчиства всички индексирани песни, но запазва списъка с папки. Повторното сканиране преиндексира всички наблюдавани папки.</value></data>
   <data name="ResetLibrary" xml:space="preserve"><value>Нулиране на библиотеката</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>Повторно сканиране</value></data>
   <data name="Output" xml:space="preserve"><value>Изход</value></data>
   <data name="AudioOutput" xml:space="preserve"><value>Аудио изход</value></data>
   <data name="OutputDevice" xml:space="preserve"><value>Изходно устройство</value></data>
@@ -162,6 +163,7 @@
   <data name="ScanningFmt" xml:space="preserve"><value>Сканиране на {0}...</value></data>
   <data name="ScanComplete" xml:space="preserve"><value>Сканирането завърши.</value></data>
   <data name="ResettingLibrary" xml:space="preserve"><value>Нулиране на библиотеката...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>Сканиране на библиотеката...</value></data>
   <data name="LibraryReset" xml:space="preserve"><value>Библиотеката е нулирана.</value></data>
   <data name="CouldNotReadLicense" xml:space="preserve"><value>(Файлът с лицензa не може да бъде прочетен)</value></data>
   <data name="EnableEqualizer" xml:space="preserve"><value>Включи еквалайзер</value></data>

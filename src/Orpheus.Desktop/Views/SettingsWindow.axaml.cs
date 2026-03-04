@@ -49,6 +49,12 @@ public partial class SettingsWindow : Window
         await ViewModel.ResetLibraryAsync();
     }
 
+    public async void OnRescanLibrary(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (ViewModel is null) return;
+        await ViewModel.RescanAllAsync();
+    }
+
     public void OnApplyColors(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         ViewModel?.ApplyCustomColors();
@@ -325,6 +331,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private readonly PlayerController _controller;
     private readonly IMediaLibrary _library;
     private readonly Func<Task> _onLibraryReset;
+    private readonly Func<Task> _onRescanAll;
     private readonly Func<string, Task> _addLibraryFolder;
     private readonly GlobalMediaKeyService? _mediaKeyService;
 
@@ -343,6 +350,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         PlayerController controller,
         IMediaLibrary library,
         Func<Task> onLibraryReset,
+        Func<Task> onRescanAll,
         Func<string, Task> addLibraryFolder,
         GlobalMediaKeyService? mediaKeyService = null)
     {
@@ -352,6 +360,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _controller = controller;
         _library = library;
         _onLibraryReset = onLibraryReset;
+        _onRescanAll = onRescanAll;
         _addLibraryFolder = addLibraryFolder;
         _mediaKeyService = mediaKeyService;
 
@@ -452,6 +461,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public string LocDatabase => Resources.Database;
     public string LocResetLibraryDescription => Resources.ResetLibraryDescription;
     public string LocResetLibrary => Resources.ResetLibrary;
+    public string LocRescanLibrary => Resources.RescanLibrary;
     public string LocOutput => Resources.Output;
     public string LocAudioOutput => Resources.AudioOutput;
     public string LocOutputDevice => Resources.OutputDevice;
@@ -467,7 +477,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         nameof(LocResetToDefault), nameof(LocLayoutsDirectory),
         nameof(LocLibrary), nameof(LocMusicFolders), nameof(LocAddFolder),
         nameof(LocRemoveSelected), nameof(LocDatabase),
-        nameof(LocResetLibraryDescription), nameof(LocResetLibrary),
+        nameof(LocResetLibraryDescription), nameof(LocResetLibrary), nameof(LocRescanLibrary),
         nameof(LocOutput), nameof(LocAudioOutput), nameof(LocOutputDevice),
         nameof(LocLicenses), nameof(LocOpenSourceLicenses),
     ];
@@ -855,9 +865,15 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         StatusMessage = Resources.ResettingLibrary;
         await _library.ClearAsync();
-        MusicFolders.Clear();
         await _onLibraryReset();
         StatusMessage = Resources.LibraryReset;
+    }
+
+    public async Task RescanAllAsync()
+    {
+        StatusMessage = Resources.ScanningLibrary;
+        await _onRescanAll();
+        StatusMessage = Resources.ScanComplete;
     }
 
     // ── Licenses ─────────────────────────────────────────────

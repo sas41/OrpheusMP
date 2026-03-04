@@ -354,10 +354,13 @@ Do you want to save it as a playlist before replacing it?</value>
     <value>Database</value>
   </data>
   <data name="ResetLibraryDescription" xml:space="preserve">
-    <value>Reset the library database to clear all indexed tracks and folders.</value>
+    <value>Reset clears all indexed tracks but keeps your folder list. Rescan re-indexes all watched folders.</value>
   </data>
   <data name="ResetLibrary" xml:space="preserve">
     <value>Reset Library</value>
+  </data>
+  <data name="RescanLibrary" xml:space="preserve">
+    <value>Rescan All</value>
   </data>
   <data name="Output" xml:space="preserve">
     <value>Output</value>
@@ -391,6 +394,9 @@ Do you want to save it as a playlist before replacing it?</value>
   </data>
   <data name="ResettingLibrary" xml:space="preserve">
     <value>Resetting library...</value>
+  </data>
+  <data name="ScanningLibrary" xml:space="preserve">
+    <value>Scanning library...</value>
   </data>
   <data name="LibraryReset" xml:space="preserve">
     <value>Library reset.</value>

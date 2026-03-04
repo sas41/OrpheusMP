@@ -149,8 +149,9 @@ Deseja salvá-la como playlist antes de substituí-la?</value></data>
   <data name="AddFolder" xml:space="preserve"><value>Adicionar pasta</value></data>
   <data name="RemoveSelected" xml:space="preserve"><value>Remover selecionada</value></data>
   <data name="Database" xml:space="preserve"><value>Banco de dados</value></data>
-  <data name="ResetLibraryDescription" xml:space="preserve"><value>Redefinir o banco de dados para limpar todas as faixas e pastas indexadas.</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>Redefinir limpa todas as faixas indexadas mas mantém a lista de pastas. Reescanear reindexa todas as pastas monitoradas.</value></data>
   <data name="ResetLibrary" xml:space="preserve"><value>Redefinir biblioteca</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>Reescanear tudo</value></data>
   <data name="Output" xml:space="preserve"><value>Saída</value></data>
   <data name="AudioOutput" xml:space="preserve"><value>Saída de áudio</value></data>
   <data name="OutputDevice" xml:space="preserve"><value>Dispositivo de saída</value></data>
@@ -162,6 +163,7 @@ Deseja salvá-la como playlist antes de substituí-la?</value></data>
   <data name="ScanningFmt" xml:space="preserve"><value>Escaneando {0}...</value></data>
   <data name="ScanComplete" xml:space="preserve"><value>Escaneamento concluído.</value></data>
   <data name="ResettingLibrary" xml:space="preserve"><value>Redefinindo biblioteca...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>Escaneando biblioteca...</value></data>
   <data name="LibraryReset" xml:space="preserve"><value>Biblioteca redefinida.</value></data>
   <data name="CouldNotReadLicense" xml:space="preserve"><value>(Não foi possível ler o arquivo de licença)</value></data>
   <data name="EnableEqualizer" xml:space="preserve"><value>Ativar equalizador</value></data>

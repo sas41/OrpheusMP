@@ -149,8 +149,9 @@
   <data name="AddFolder" xml:space="preserve"><value>フォルダーを追加</value></data>
   <data name="RemoveSelected" xml:space="preserve"><value>選択を削除</value></data>
   <data name="Database" xml:space="preserve"><value>データベース</value></data>
-  <data name="ResetLibraryDescription" xml:space="preserve"><value>データベースをリセットして、すべてのインデックス済みトラックとフォルダーをクリアします。</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>リセットはすべてのインデックス済みトラックを削除しますが、フォルダーリストは保持されます。再スキャンは監視対象フォルダーをすべて再インデックスします。</value></data>
   <data name="ResetLibrary" xml:space="preserve"><value>ライブラリをリセット</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>すべて再スキャン</value></data>
   <data name="Output" xml:space="preserve"><value>出力</value></data>
   <data name="AudioOutput" xml:space="preserve"><value>オーディオ出力</value></data>
   <data name="OutputDevice" xml:space="preserve"><value>出力デバイス</value></data>
@@ -162,6 +163,7 @@
   <data name="ScanningFmt" xml:space="preserve"><value>{0} をスキャン中...</value></data>
   <data name="ScanComplete" xml:space="preserve"><value>スキャン完了。</value></data>
   <data name="ResettingLibrary" xml:space="preserve"><value>ライブラリをリセット中...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>ライブラリをスキャン中...</value></data>
   <data name="LibraryReset" xml:space="preserve"><value>ライブラリがリセットされました。</value></data>
   <data name="CouldNotReadLicense" xml:space="preserve"><value>(ライセンスファイルを読み取れませんでした)</value></data>
   <data name="EnableEqualizer" xml:space="preserve"><value>イコライザーを有効にする</value></data>

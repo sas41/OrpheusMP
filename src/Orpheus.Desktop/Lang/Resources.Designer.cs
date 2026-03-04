@@ -950,9 +950,18 @@ namespace Orpheus.Desktop.Lang {
         /// <summary>
         ///   Looks up a localized string similar to Reset Library.
         /// </summary>
-        public static string ResetLibrary {
+         public static string ResetLibrary {
             get {
                 return ResourceManager.GetString("ResetLibrary", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Rescan All.
+        /// </summary>
+        public static string RescanLibrary {
+            get {
+                return ResourceManager.GetString("RescanLibrary", resourceCulture);
             }
         }
         
@@ -1049,9 +1058,18 @@ namespace Orpheus.Desktop.Lang {
         /// <summary>
         ///   Looks up a localized string similar to Resetting library....
         /// </summary>
-        public static string ResettingLibrary {
+         public static string ResettingLibrary {
             get {
                 return ResourceManager.GetString("ResettingLibrary", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Scanning library....
+        /// </summary>
+        public static string ScanningLibrary {
+            get {
+                return ResourceManager.GetString("ScanningLibrary", resourceCulture);
             }
         }
         

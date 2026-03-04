@@ -149,8 +149,9 @@ Voulez-vous l'enregistrer comme playlist avant de la remplacer ?</value></data>
   <data name="AddFolder" xml:space="preserve"><value>Ajouter un dossier</value></data>
   <data name="RemoveSelected" xml:space="preserve"><value>Supprimer la sélection</value></data>
   <data name="Database" xml:space="preserve"><value>Base de données</value></data>
-  <data name="ResetLibraryDescription" xml:space="preserve"><value>Réinitialiser la base de données pour effacer toutes les pistes et dossiers indexés.</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>La réinitialisation efface toutes les pistes indexées mais conserve la liste des dossiers. Rescanner réindexe tous les dossiers surveillés.</value></data>
   <data name="ResetLibrary" xml:space="preserve"><value>Réinitialiser la bibliothèque</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>Tout rescanner</value></data>
   <data name="Output" xml:space="preserve"><value>Sortie</value></data>
   <data name="AudioOutput" xml:space="preserve"><value>Sortie audio</value></data>
   <data name="OutputDevice" xml:space="preserve"><value>Périphérique de sortie</value></data>
@@ -162,6 +163,7 @@ Voulez-vous l'enregistrer comme playlist avant de la remplacer ?</value></data>
   <data name="ScanningFmt" xml:space="preserve"><value>Analyse de {0}...</value></data>
   <data name="ScanComplete" xml:space="preserve"><value>Analyse terminée.</value></data>
   <data name="ResettingLibrary" xml:space="preserve"><value>Réinitialisation de la bibliothèque...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>Analyse de la bibliothèque...</value></data>
   <data name="LibraryReset" xml:space="preserve"><value>Bibliothèque réinitialisée.</value></data>
   <data name="CouldNotReadLicense" xml:space="preserve"><value>(Impossible de lire le fichier de licence)</value></data>
   <data name="EnableEqualizer" xml:space="preserve"><value>Activer l'égaliseur</value></data>
