@@ -28,6 +28,9 @@ namespace Orpheus.Desktop;
 public partial class MainWindow : Window
 {
     private GlobalMediaKeyService? _mediaKeyService;
+#if LINUX
+    private MprisService? _mprisService;
+#endif
 
     /// <summary>
     /// The global media key service, exposed so that the settings UI can
@@ -40,6 +43,9 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = new MainWindowViewModel();
         InitializeGlobalMediaKeys();
+#if LINUX
+        InitializeMpris();
+#endif
     }
 
     private void InitializeGlobalMediaKeys()
@@ -90,10 +96,168 @@ public partial class MainWindow : Window
         _ = _mediaKeyService.StartAsync();
     }
 
+#if LINUX
+    private void InitializeMpris()
+    {
+        if (!OperatingSystem.IsLinux())
+            return;
+
+        var vm = DataContext as MainWindowViewModel;
+        if (vm is null)
+            return;
+
+        _mprisService = new MprisService();
+
+        // Wire callbacks: MPRIS D-Bus commands → ViewModel methods.
+        // The Tmds.DBus handler runs on a thread-pool thread, so dispatch
+        // to the UI thread where the ViewModel methods are safe to call.
+        _mprisService.Configure(
+            playPause: () =>
+            {
+                var tcs = new TaskCompletionSource();
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    try   { await vm.TogglePlayPauseAsync(); tcs.SetResult(); }
+                    catch (Exception ex) { tcs.SetException(ex); }
+                });
+                return tcs.Task;
+            },
+            next: () =>
+            {
+                var tcs = new TaskCompletionSource();
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    try   { await vm.PlayNextAsync(); tcs.SetResult(); }
+                    catch (Exception ex) { tcs.SetException(ex); }
+                });
+                return tcs.Task;
+            },
+            previous: () =>
+            {
+                var tcs = new TaskCompletionSource();
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    try   { await vm.PlayPreviousAsync(); tcs.SetResult(); }
+                    catch (Exception ex) { tcs.SetException(ex); }
+                });
+                return tcs.Task;
+            },
+            stop: () =>
+            {
+                var tcs = new TaskCompletionSource();
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    try   { await vm.StopAsync(); tcs.SetResult(); }
+                    catch (Exception ex) { tcs.SetException(ex); }
+                });
+                return tcs.Task;
+            },
+            play: () =>
+            {
+                // Play = if not active, start playback; otherwise resume
+                var tcs = new TaskCompletionSource();
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    try
+                    {
+                        if (!vm.IsPlaying)
+                            await vm.TogglePlayPauseAsync();
+                        tcs.SetResult();
+                    }
+                    catch (Exception ex) { tcs.SetException(ex); }
+                });
+                return tcs.Task;
+            },
+            pause: () =>
+            {
+                var tcs = new TaskCompletionSource();
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    try
+                    {
+                        if (vm.IsPlaying)
+                            await vm.TogglePlayPauseAsync();
+                        tcs.SetResult();
+                    }
+                    catch (Exception ex) { tcs.SetException(ex); }
+                });
+                return tcs.Task;
+            },
+            seekTo: posSeconds =>
+                Dispatcher.UIThread.Post(() =>
+                {
+                    vm.PlaybackPosition = posSeconds;
+                }),
+            setVolume: vol =>
+                Dispatcher.UIThread.Post(() =>
+                {
+                    vm.Volume = vol;
+                }),
+            setShuffle: enabled =>
+                Dispatcher.UIThread.Post(() =>
+                {
+                    vm.SetShuffle(enabled);
+                }),
+            setLoopStatus: loopStatus =>
+                Dispatcher.UIThread.Post(() =>
+                {
+                    vm.SetLoopStatus(loopStatus);
+                }));
+
+        // Push the initial state and keep MPRIS in sync via PropertyChanged.
+        _mprisService.UpdateState(vm.BuildMprisState());
+        vm.PropertyChanged += OnViewModelPropertyChangedForMpris;
+
+        _ = _mprisService.StartAsync();
+    }
+
+    /// <summary>
+    /// Called on the UI thread whenever a ViewModel property changes.
+    /// Pushes an updated <see cref="MprisPlayerState"/> to the D-Bus service.
+    /// </summary>
+#pragma warning disable CA1416 // All callers of this method are inside #if LINUX
+    private void OnViewModelPropertyChangedForMpris(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_mprisService is null) return;
+        var vm = sender as MainWindowViewModel;
+        if (vm is null) return;
+
+        // Only re-push for properties that MPRIS cares about.
+        // PlaybackPosition is included so MprisService can throttle-emit
+        // Position at 1 Hz while playing (KDE uses it to drive the progress bar).
+        switch (e.PropertyName)
+        {
+            case nameof(MainWindowViewModel.IsPlaying):
+            case nameof(MainWindowViewModel.IsActive):
+            case nameof(MainWindowViewModel.IsShuffleEnabled):
+            case nameof(MainWindowViewModel.RepeatMode):
+            case nameof(MainWindowViewModel.Volume):
+            case nameof(MainWindowViewModel.PlaybackPosition):
+            case nameof(MainWindowViewModel.PlaybackDuration):
+            case nameof(MainWindowViewModel.NowPlayingTitle):
+            case nameof(MainWindowViewModel.NowPlayingArtist):
+            case nameof(MainWindowViewModel.NowPlayingAlbum):
+            case nameof(MainWindowViewModel.NowPlayingPrimary):
+            case nameof(MainWindowViewModel.NowPlayingSecondary):
+                _mprisService.UpdateState(vm.BuildMprisState());
+                break;
+        }
+    }
+#pragma warning restore CA1416
+#endif
+
     protected override void OnClosed(EventArgs e)
     {
         _mediaKeyService?.Dispose();
         _mediaKeyService = null;
+#if LINUX
+        if (DataContext is MainWindowViewModel vm)
+            vm.PropertyChanged -= OnViewModelPropertyChangedForMpris;
+#pragma warning disable CA1416
+        _mprisService?.Dispose();
+#pragma warning restore CA1416
+        _mprisService = null;
+#endif
         base.OnClosed(e);
     }
 }
@@ -1627,9 +1791,29 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _controller.ToggleShufflePlay();
     }
 
+    public void SetShuffle(bool enabled)
+    {
+        _controller.SetShufflePlay(enabled);
+    }
+
     public void CycleRepeat()
     {
         _controller.CycleRepeatMode();
+    }
+
+    /// <summary>
+    /// Sets the repeat mode from an MPRIS LoopStatus string
+    /// ("None", "Track", or "Playlist").
+    /// </summary>
+    public void SetLoopStatus(string loopStatus)
+    {
+        var mode = loopStatus switch
+        {
+            "Track"    => Orpheus.Core.Playlist.RepeatMode.One,
+            "Playlist" => Orpheus.Core.Playlist.RepeatMode.All,
+            _          => Orpheus.Core.Playlist.RepeatMode.Off,
+        };
+        _controller.SetRepeatMode(mode);
     }
 
     public async Task PlaySelectedAsync()
@@ -2395,6 +2579,47 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         await _controller.DisposeAsync().ConfigureAwait(false);
         _library.Dispose();
     }
+
+#if LINUX
+    /// <summary>
+    /// Builds an <see cref="MprisPlayerState"/> snapshot from the current
+    /// ViewModel state, used to push updates to the MPRIS D-Bus service.
+    /// </summary>
+    internal MprisPlayerState BuildMprisState()
+    {
+        // Convert the OrpheusMP RepeatMode enum to the MPRIS LoopStatus string.
+        string loopStatus = _repeatMode switch
+        {
+            Orpheus.Core.Playlist.RepeatMode.One => "Track",
+            Orpheus.Core.Playlist.RepeatMode.All => "Playlist",
+            _                                    => "None",
+        };
+
+        // Build a stable object path from the queue index so MPRIS clients
+        // can track individual tracks.
+        string? trackId = _currentQueueIndex >= 0
+            ? $"/org/orpheusmp/track/{_currentQueueIndex}"
+            : null;
+
+        return new MprisPlayerState
+        {
+            IsPlaying        = _isPlaying,
+            IsActive         = _isActive,
+            IsShuffleEnabled = _isShuffleEnabled,
+            RepeatMode       = loopStatus,
+            Volume           = _volume,
+            PositionSeconds  = _playbackPosition,
+            DurationSeconds  = _playbackDuration,
+            // Use the display-mode-aware primary/secondary text so that when the
+            // user has "Show Filename" enabled, MPRIS clients (KDE widget, etc.)
+            // see the filename stem rather than the raw (possibly empty) metadata title.
+            Title            = _nowPlayingPrimary == Lang.Resources.NothingPlaying ? null : _nowPlayingPrimary,
+            Artist           = string.IsNullOrEmpty(_nowPlayingSecondary) ? null : _nowPlayingSecondary,
+            Album            = string.IsNullOrEmpty(_nowPlayingAlbum)     ? null : _nowPlayingAlbum,
+            TrackId          = trackId,
+        };
+    }
+#endif
 
     private async Task RefreshTrackViewAsync(bool resetSelection = false)
     {

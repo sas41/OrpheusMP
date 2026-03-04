@@ -7,6 +7,11 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
   </PropertyGroup>
 
+  <!-- Define LINUX constant on Linux so #if LINUX guards compile correctly. -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <DefineConstants>$(DefineConstants);LINUX</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.12" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
@@ -23,6 +28,8 @@
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
+    <!-- MPRIS D-Bus server for Linux media key integration (session bus) -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.90.3" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
   </ItemGroup>
 
   <ItemGroup>
@@ -52,9 +59,7 @@
   <!-- Top-level shared assets — icons (SVG + AXAML) and themes -->
   <ItemGroup>
     <AvaloniaResource Include="../../assets/icons/**/*" Link="assets/icons/%(RecursiveDir)%(Filename)%(Extension)" />
-    <AvaloniaResource Include="../../assets/themes/**/*.axaml"
-                      Exclude="../../assets/themes/**/*.mobile.axaml"
-                      Link="assets/themes/%(RecursiveDir)%(Filename)%(Extension)" />
+    <AvaloniaResource Include="../../assets/themes/**/*.axaml" Exclude="../../assets/themes/**/*.mobile.axaml" Link="assets/themes/%(RecursiveDir)%(Filename)%(Extension)" />
     <AvaloniaResource Include="../../assets/icon.png" Link="assets/icon.png" />
     <AvaloniaResource Include="../../assets/icon-256.png" Link="assets/icon-256.png" />
     <AvaloniaResource Include="../../assets/icon.svg" Link="assets/icon.svg" />
