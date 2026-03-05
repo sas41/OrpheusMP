@@ -92,12 +92,45 @@ public class SqliteMediaLibraryTests : IDisposable
     }
 
     [Fact]
-    public async Task Search_FindsByTitle()
+    public async Task Search_FindsByTitle_ExactWord()
     {
         await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Bohemian Rhapsody", "Queen"));
         await _library.UpsertTrackAsync(MakeTrack("/music/b.mp3", "Stairway to Heaven", "Led Zeppelin"));
 
         var results = await _library.SearchAsync("Bohemian");
+        Assert.Single(results);
+        Assert.Equal("Bohemian Rhapsody", results[0].Title);
+    }
+
+    [Fact]
+    public async Task Search_FindsByTitle_PrefixMatch()
+    {
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Bohemian Rhapsody", "Queen"));
+        await _library.UpsertTrackAsync(MakeTrack("/music/b.mp3", "Stairway to Heaven", "Led Zeppelin"));
+
+        // "Rhaps" is a prefix of "Rhapsody" and should match
+        var results = await _library.SearchAsync("Rhaps");
+        Assert.Single(results);
+        Assert.Equal("Bohemian Rhapsody", results[0].Title);
+    }
+
+    [Fact]
+    public async Task Search_FindsByTitle_CaseInsensitive()
+    {
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Bohemian Rhapsody", "Queen"));
+
+        var results = await _library.SearchAsync("bohemian");
+        Assert.Single(results);
+    }
+
+    [Fact]
+    public async Task Search_FindsByTitle_MultiToken()
+    {
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Bohemian Rhapsody", "Queen"));
+        await _library.UpsertTrackAsync(MakeTrack("/music/b.mp3", "Stairway to Heaven", "Led Zeppelin"));
+
+        // Both tokens must be present (FTS5 AND semantics)
+        var results = await _library.SearchAsync("bohemian rhap");
         Assert.Single(results);
         Assert.Equal("Bohemian Rhapsody", results[0].Title);
     }
@@ -110,6 +143,102 @@ public class SqliteMediaLibraryTests : IDisposable
 
         var results = await _library.SearchAsync("Radiohead");
         Assert.Single(results);
+    }
+
+    [Fact]
+    public async Task Search_FindsByArtist_Prefix()
+    {
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Song", "Radiohead"));
+        await _library.UpsertTrackAsync(MakeTrack("/music/b.mp3", "Other", "Coldplay"));
+
+        var results = await _library.SearchAsync("Radio");
+        Assert.Single(results);
+        Assert.Equal("Radiohead", results[0].Artist);
+    }
+
+    [Fact]
+    public async Task Search_FindsByAlbum()
+    {
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Song", "Queen", "A Night at the Opera"));
+
+        var results = await _library.SearchAsync("opera");
+        Assert.Single(results);
+    }
+
+    [Fact]
+    public async Task Search_ReturnsEmpty_WhenNoMatch()
+    {
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Bohemian Rhapsody", "Queen"));
+
+        var results = await _library.SearchAsync("zzznomatch");
+        Assert.Empty(results);
+    }
+
+    // ── Fuzzy (typo-tolerant) search ─────────────────────────────────────────
+
+    [Fact]
+    public async Task Search_Fuzzy_FindsArtistWithTypo()
+    {
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Creep", "Radiohead"));
+        await _library.UpsertTrackAsync(MakeTrack("/music/b.mp3", "Yellow", "Coldplay"));
+
+        // One char off: "Radiohed" → "Radiohead"
+        var results = await _library.SearchAsync("Radiohed");
+        Assert.Single(results);
+        Assert.Equal("Radiohead", results[0].Artist);
+    }
+
+    [Fact]
+    public async Task Search_Fuzzy_FindsTitleWordWithTypo()
+    {
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Bohemian Rhapsody", "Queen"));
+        await _library.UpsertTrackAsync(MakeTrack("/music/b.mp3", "Stairway to Heaven", "Led Zeppelin"));
+
+        // "Bohemien" is 1 edit from "Bohemian"
+        var results = await _library.SearchAsync("Bohemien");
+        Assert.Single(results);
+        Assert.Equal("Bohemian Rhapsody", results[0].Title);
+    }
+
+    [Fact]
+    public async Task Search_FtsResultsRankAboveFuzzyResults()
+    {
+        // "Radiohead" is an exact FTS match; "Radioheed" is a fuzzy-only match.
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Creep", "Radiohead"));
+        await _library.UpsertTrackAsync(MakeTrack("/music/b.mp3", "Song", "Radioheed"));
+
+        // Querying the correct spelling — FTS hit should come first.
+        var results = await _library.SearchAsync("Radiohead");
+        Assert.Equal(2, results.Count);
+        Assert.Equal("Radiohead", results[0].Artist);  // exact FTS match first
+        Assert.Equal("Radioheed", results[1].Artist);  // fuzzy match second
+    }
+
+    [Fact]
+    public async Task Search_Fuzzy_DoesNotReturnUnrelatedTracks()
+    {
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Creep", "Radiohead"));
+        await _library.UpsertTrackAsync(MakeTrack("/music/b.mp3", "Yellow", "Coldplay"));
+
+        // "zzz" is far from every word in every field — nothing should match
+        var results = await _library.SearchAsync("zzz");
+        Assert.Empty(results);
+    }
+
+    // ── LevenshteinDistance unit tests ───────────────────────────────────────
+
+    [Theory]
+    [InlineData("", "",          0)]
+    [InlineData("abc", "",       3)]
+    [InlineData("", "abc",       3)]
+    [InlineData("abc", "abc",    0)]
+    [InlineData("abc", "ab",     1)]
+    [InlineData("kitten", "sitting", 3)]
+    [InlineData("radiohead", "radiohed", 1)]
+    [InlineData("bohemian", "bohemien", 1)]
+    public void LevenshteinDistance_ReturnsCorrectDistance(string a, string b, int expected)
+    {
+        Assert.Equal(expected, SqliteMediaLibrary.LevenshteinDistance(a, b));
     }
 
     [Fact]
@@ -262,5 +391,37 @@ public class SqliteMediaLibraryTests : IDisposable
 
         Assert.NotNull(track.Duration);
         Assert.Equal(TimeSpan.FromMinutes(3), track.Duration.Value);
+    }
+
+    [Fact]
+    public async Task ClearAsync_RemovesTracksAndLeavesWatchedFolders()
+    {
+        await _library.AddWatchedFolderAsync(_tempDir);
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "A", "Queen"));
+        await _library.UpsertTrackAsync(MakeTrack("/music/b.mp3", "B", "Radiohead"));
+
+        await _library.ClearAsync();
+
+        Assert.Equal(0, await _library.GetTrackCountAsync());
+
+        var folders = await _library.GetWatchedFoldersAsync();
+        Assert.Single(folders); // watched folder must survive
+    }
+
+    [Fact]
+    public async Task ClearAsync_SearchStillWorksAfterClear()
+    {
+        // Regression test: ClearAsync used to corrupt the FTS index, causing
+        // "database disk image is malformed" on subsequent operations.
+        await _library.UpsertTrackAsync(MakeTrack("/music/a.mp3", "Bohemian Rhapsody", "Queen"));
+        await _library.UpsertTrackAsync(MakeTrack("/music/b.mp3", "Stairway to Heaven", "Led Zeppelin"));
+
+        await _library.ClearAsync();
+
+        // Insert new data and verify search works correctly post-clear.
+        await _library.UpsertTrackAsync(MakeTrack("/music/c.mp3", "Back in Black", "AC/DC"));
+        var results = await _library.SearchAsync("Black");
+        Assert.Single(results);
+        Assert.Equal("Back in Black", results[0].Title);
     }
 }

@@ -1,0 +1,236 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="clr-namespace:Orpheus.Desktop.Views"
+        mc:Ignorable="d" d:DesignWidth="560" d:DesignHeight="620"
+        x:Class="Orpheus.Desktop.Views.SettingsWindow"
+        x:DataType="views:SettingsViewModel"
+        x:CompileBindings="False"
+        Width="560" Height="620"
+        MinWidth="420" MinHeight="480"
+        Title="{Binding LocSettings}"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+  <TabControl Margin="8">
+
+    <!-- ── General ────────────────────────────────────────── -->
+    <TabItem Header="{Binding LocGeneral}">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12" Margin="8">
+          <TextBlock Text="{Binding LocGeneral}" Classes="heading" />
+
+          <CheckBox Content="{Binding LocEnableTrayIcon}"
+                    IsChecked="{Binding EnableTrayIcon}" />
+
+          <Separator Margin="0,8" />
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="{Binding LocLanguage}" Classes="muted small" />
+            <ComboBox ItemsSource="{Binding LanguageOptions}"
+                      SelectedItem="{Binding SelectedLanguage}"
+                      MinWidth="200" />
+          </StackPanel>
+
+          <Separator Margin="0,8" />
+
+          <!-- Key Bindings — icons only, no localized text needed -->
+          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Image Width="18" Height="18"
+                   Source="{Binding KeyboardIcon}" />
+            <TextBlock Text="&#x2328;" FontSize="16" FontWeight="Bold"
+                       VerticalAlignment="Center" IsVisible="False" />
+          </StackPanel>
+
+          <ItemsControl ItemsSource="{Binding KeyBindings}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="views:KeyBindingEntry">
+                <Grid ColumnDefinitions="32,*,Auto,Auto" Margin="0,3" ColumnSpacing="8">
+                  <!-- Action icon with optional badge (e.g. +/− for volume) -->
+                  <Grid Grid.Column="0" Width="28" Height="28"
+                        VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <Image Width="20" Height="20"
+                           Source="{Binding ActionIcon}"
+                           VerticalAlignment="Center"
+                           HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding Badge}"
+                               IsVisible="{Binding HasBadge}"
+                               FontSize="11" FontWeight="Bold"
+                               Foreground="{DynamicResource ForegroundColor}"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Bottom"
+                               Margin="0,0,-2,-2" />
+                  </Grid>
+                  <!-- Current key display -->
+                  <Border Grid.Column="1"
+                          Background="{DynamicResource PanelBackground}"
+                          BorderBrush="{DynamicResource PanelStroke}"
+                          BorderThickness="1" CornerRadius="4"
+                          Padding="10,5" MinWidth="120"
+                          VerticalAlignment="Center">
+                    <TextBlock Text="{Binding KeyDisplay}"
+                               FontSize="12" FontFamily="monospace"
+                               VerticalAlignment="Center" />
+                  </Border>
+                  <!-- Rebind button -->
+                  <Button Grid.Column="2"
+                          Content="{Binding RebindButtonText}"
+                          FontSize="14" MinWidth="36" Padding="6,4"
+                          Click="OnRebindClick"
+                          VerticalAlignment="Center" />
+                  <!-- Clear button -->
+                  <Button Grid.Column="3"
+                          Content="&#x2716;"
+                          FontSize="11" MinWidth="28" MinHeight="28"
+                          Padding="4"
+                          HorizontalContentAlignment="Center"
+                          VerticalContentAlignment="Center"
+                          Click="OnClearClick"
+                          ToolTip.Tip="Clear binding"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+        </StackPanel>
+      </ScrollViewer>
+    </TabItem>
+
+    <!-- ── Theme ──────────────────────────────────────────── -->
+    <TabItem Header="{Binding LocTheme}">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12" Margin="8">
+          <TextBlock Text="{Binding LocAppearance}" Classes="heading" />
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="{Binding LocTheme}" Classes="muted small" />
+            <ComboBox ItemsSource="{Binding Themes}"
+                      SelectedItem="{Binding SelectedTheme}"
+                      MinWidth="200" />
+          </StackPanel>
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="{Binding LocColorVariant}" Classes="muted small" />
+            <ComboBox ItemsSource="{Binding Variants}"
+                      SelectedItem="{Binding SelectedVariant}"
+                      MinWidth="200" />
+          </StackPanel>
+
+          <Separator Margin="0,8" />
+
+          <TextBlock Text="{Binding LocCustomColors}" Classes="subheading" />
+          <CheckBox Content="{Binding LocEnableCustomColorOverrides}"
+                    IsChecked="{Binding CustomColorsEnabled}" />
+
+          <ItemsControl ItemsSource="{Binding PaletteEntries}"
+                        IsVisible="{Binding CustomColorsEnabled}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="views:PaletteColorEntry">
+                <Grid ColumnDefinitions="140,*,Auto" Margin="0,2" ColumnSpacing="8">
+                  <TextBlock Text="{Binding Key}" Classes="muted small"
+                             VerticalAlignment="Center" />
+                  <TextBox Grid.Column="1" Text="{Binding HexValue, Mode=TwoWay}"
+                           FontSize="11" MinWidth="80" MaxWidth="100"
+                           VerticalAlignment="Center" />
+                  <Border Grid.Column="2" Width="24" Height="24" CornerRadius="3"
+                          BorderBrush="{DynamicResource PanelStroke}" BorderThickness="1"
+                          Background="{Binding PreviewBrush}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <StackPanel Orientation="Horizontal" Spacing="8"
+                      IsVisible="{Binding CustomColorsEnabled}">
+            <Button Content="{Binding LocApplyColors}" Click="OnApplyColors" />
+            <Button Content="{Binding LocResetToDefault}" Click="OnResetColors" />
+          </StackPanel>
+
+          <Separator Margin="0,8" IsVisible="{Binding CustomColorsEnabled}" />
+
+          <StackPanel Spacing="4">
+            <TextBlock Text="{Binding LocLayoutsDirectory}" Classes="muted small" />
+            <TextBox IsReadOnly="True" Text="{Binding UserLayoutsDirectory}" FontSize="11" />
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </TabItem>
+
+    <!-- ── Library ────────────────────────────────────────── -->
+    <TabItem Header="{Binding LocLibrary}">
+      <StackPanel Spacing="12" Margin="8">
+        <TextBlock Text="{Binding LocMusicFolders}" Classes="heading" />
+
+        <ListBox ItemsSource="{Binding MusicFolders}"
+                 x:Name="FolderList"
+                 MinHeight="100" MaxHeight="200" />
+
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Content="{Binding LocAddFolder}" Click="OnAddFolder" />
+          <Button Content="{Binding LocRemoveSelected}" Click="OnRemoveFolder" />
+        </StackPanel>
+
+        <Separator Margin="0,8" />
+
+        <TextBlock Text="{Binding LocDatabase}" Classes="subheading" />
+        <TextBlock Text="{Binding LocResetLibraryDescription}"
+                   TextWrapping="Wrap" Classes="muted small" />
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <Button Content="{Binding LocResetLibrary}" Click="OnResetLibrary" />
+          <Button Content="{Binding LocRescanLibrary}" Click="OnRescanLibrary" />
+        </StackPanel>
+
+        <TextBlock Text="{Binding StatusMessage}" Classes="muted small" />
+      </StackPanel>
+    </TabItem>
+
+    <!-- ── Output ─────────────────────────────────────────── -->
+    <TabItem Header="{Binding LocOutput}">
+      <StackPanel Spacing="12" Margin="8">
+        <TextBlock Text="{Binding LocAudioOutput}" Classes="heading" />
+
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding LocOutputDevice}" Classes="muted small" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <ComboBox ItemsSource="{Binding AudioDevices}"
+                      SelectedValue="{Binding SelectedAudioDevice}"
+                      SelectedValueBinding="{Binding Id}"
+                      MinWidth="300" />
+            <Button Classes="icon" Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
+                    Click="OnRefreshAudioDevicesClick" ToolTip.Tip="Refresh audio devices">
+              <Image Source="{Binding RefreshIcon}" Width="14" Height="14" />
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </StackPanel>
+    </TabItem>
+
+    <!-- ── Licenses ───────────────────────────────────────── -->
+    <TabItem Header="{Binding LocLicenses}">
+      <Grid RowDefinitions="Auto,*" Margin="8" RowSpacing="8">
+        <TextBlock Text="{Binding LocOpenSourceLicenses}" Classes="heading" />
+
+        <ListBox Grid.Row="1"
+                 ItemsSource="{Binding Licenses}"
+                 x:Name="LicenseList"
+                 SelectionChanged="OnLicenseSelected">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="views:LicenseEntry">
+              <StackPanel Spacing="1">
+                <TextBlock Text="{Binding DisplayName}" />
+                <TextBlock Text="{Binding Url}" FontSize="10"
+                           Foreground="{DynamicResource SystemAccentColor}"
+                           IsVisible="{Binding Url, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Grid>
+    </TabItem>
+
+  </TabControl>
+
+</Window>

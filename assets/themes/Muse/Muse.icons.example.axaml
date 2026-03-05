@@ -1,0 +1,24 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:svg="clr-namespace:Avalonia.Svg.Skia;assembly=Avalonia.Svg.Skia">
+
+  <!-- ═══════════════════════════════════════════════════════
+       Muse — Custom icon overrides
+
+       Rename this file to Muse.icons.axaml to activate it.
+       Only include the icons you want to replace. Any key you
+       omit keeps the built-in default from PlaybackIcons.axaml.
+
+       Override the SvgImage used by Image controls. Point to
+       your own SVG files or use avares:// URIs.
+
+         PlayIconSvg, PauseIconSvg, StopIconSvg, PreviousIconSvg,
+         NextIconSvg, ShuffleIconSvg, RepeatIconSvg,
+          RepeatOneIconSvg, RepeatNoneIconSvg,
+          VolumeLowIconSvg, VolumeHighIconSvg
+       ═══════════════════════════════════════════════════════ -->
+
+  <!-- Example: replace play icon with a custom SVG file -->
+  <!-- <svg:SvgImage x:Key="PlayIconSvg" Source="avares://Orpheus.Desktop/assets/icons/play.svg" /> -->
+
+</ResourceDictionary>

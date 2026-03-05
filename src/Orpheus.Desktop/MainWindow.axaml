@@ -1,0 +1,26 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Orpheus.Desktop"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="760"
+        x:Class="Orpheus.Desktop.MainWindow"
+        Width="1200"
+        Height="740"
+        MinWidth="940"
+        MinHeight="600"
+        Background="Transparent"
+        x:DataType="local:MainWindowViewModel"
+        Icon="avares://Orpheus.Desktop/assets/icon-256.png"
+        Title="{Binding AppTitle}">
+
+  <!-- The window is a thin shell. Layout, styles, and colors are all
+       provided by the active theme via ThemeManager.
+       
+       The ContentControl displays the DataTemplate keyed as "MainLayout"
+       from the merged theme resources. Its Content is set to the
+       MainWindowViewModel so the template receives it as DataContext. -->
+
+  <ContentControl Content="{Binding}"
+                  ContentTemplate="{DynamicResource MainLayout}" />
+</Window>

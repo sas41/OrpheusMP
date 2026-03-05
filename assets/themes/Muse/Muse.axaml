@@ -1,0 +1,236 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:svg="clr-namespace:Avalonia.Svg.Skia;assembly=Avalonia.Svg.Skia"
+                    xmlns:views="clr-namespace:Orpheus.Desktop.Views"
+                    xmlns:local="clr-namespace:Orpheus.Desktop"
+                    x:CompileBindings="False">
+
+  <!-- ═══════════════════════════════════════════════════════
+       OrpheusMP — Muse Layout
+       A dark gray theme with warm gold trim.
+
+       File structure:
+         Muse.axaml                — this file (layout + default colors)
+         Muse.<variant>.axaml      — color variants (optional)
+         Muse.usercolors.axaml     — user color overrides (optional)
+       ═══════════════════════════════════════════════════════ -->
+
+
+  <!-- ── Default palette ─────────────────────────────────── -->
+
+  <Color x:Key="AccentColor">#D4A843</Color>
+  <Color x:Key="AccentSoft">#2E2718</Color>
+  <Color x:Key="AccentText">#FFFFFF</Color>
+  <Color x:Key="PanelFill">#1E1E1E</Color>
+  <Color x:Key="PanelStroke">#333333</Color>
+  <Color x:Key="TextPrimary">#E8E4DD</Color>
+  <Color x:Key="TextMuted">#9A9488</Color>
+  <Color x:Key="RowHover">#2A2A2A</Color>
+  <Color x:Key="RowSelected">#3A3122</Color>
+  <Color x:Key="ButtonFill">#282828</Color>
+  <Color x:Key="ButtonHover">#363636</Color>
+  <Color x:Key="ButtonPressed">#1A1A1A</Color>
+  <Color x:Key="IconColor">#D4A843</Color>
+  <Color x:Key="IconActiveColor">#FFFFFF</Color>
+
+  <!-- ── Icon CSS strings ───────────────────────────────── -->
+  <!--
+    SVG icons use fill/stroke="currentColor".  These CSS strings
+    set the SVG color property so icons render in the theme accent
+    by default and switch to white when a button is pressed/toggled.
+    Theme variants override IconCss / IconActiveCss alongside colors.
+  -->
+  <x:String x:Key="IconCss">svg { color: #D4A843 !important; }</x:String>
+  <x:String x:Key="IconActiveCss">svg { color: #FFFFFF !important; }</x:String>
+
+  <!-- ── Custom TreeViewItem ControlTheme ──────────────── -->
+  <!--
+    Replaces the entire Fluent TreeViewItem template so we have full
+    control over chevron size, spacing, and indentation.  The Fluent
+    template's StaticResource bindings (margin, size) cannot be
+    reliably overridden via style selectors, so we provide our own.
+  -->
+
+  <!-- Chevron ToggleButton theme — uses our SVG icon -->
+  <ControlTheme x:Key="MuseTreeViewExpandCollapseChevron" TargetType="ToggleButton">
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Width" Value="10" />
+    <Setter Property="Height" Value="10" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="Transparent"
+                Width="{TemplateBinding Width}"
+                Height="{TemplateBinding Height}"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center">
+          <Image x:Name="ChevronImage" Width="10" Height="10"
+                 RenderTransformOrigin="50%,50%">
+            <Image.Source>
+              <svg:SvgImage Source="avares://Orpheus.Desktop/assets/icons/chevron.svg"
+                            Css="* { stroke: #9A9488 !important; fill: none !important; }" />
+            </Image.Source>
+          </Image>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+    <Style Selector="^:checked /template/ Image#ChevronImage">
+      <Setter Property="RenderTransform" Value="rotate(90deg)" />
+    </Style>
+  </ControlTheme>
+
+  <!-- Full TreeViewItem ControlTheme -->
+  <ControlTheme x:Key="{x:Type TreeViewItem}" TargetType="TreeViewItem">
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Margin" Value="0" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <StackPanel>
+          <Border Name="PART_LayoutRoot"
+                  Classes="TreeViewItemLayoutRoot"
+                  Focusable="True"
+                  Background="{TemplateBinding Background}"
+                  BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}"
+                  CornerRadius="{TemplateBinding CornerRadius}"
+                  MinHeight="{TemplateBinding MinHeight}"
+                  Padding="0"
+                  TemplatedControl.IsTemplateFocusTarget="True">
+              <Grid Name="PART_Header"
+                    ColumnDefinitions="Auto, *">
+                <Panel Name="PART_ExpandCollapseChevronContainer"
+                       Margin="0,0,2,0">
+                  <ToggleButton Name="PART_ExpandCollapseChevron"
+                                Theme="{StaticResource MuseTreeViewExpandCollapseChevron}"
+                                Focusable="False"
+                                IsChecked="{TemplateBinding IsExpanded, Mode=TwoWay}" />
+                </Panel>
+                <!-- Intentionally NOT named PART_HeaderPresenter so that
+                     TreeViewItem.OnApplyTemplate does not subscribe its
+                     DoubleTapped handler (which toggles IsExpanded).
+                     We handle double-click ourselves in LibraryPanel. -->
+                <ContentPresenter Name="PART_ContentPresenter"
+                                  Grid.Column="1"
+                                  Focusable="False"
+                                  Background="Transparent"
+                                  Content="{TemplateBinding Header}"
+                                  ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                  HorizontalAlignment="{TemplateBinding HorizontalAlignment}"
+                                  VerticalAlignment="{TemplateBinding VerticalAlignment}"
+                                  Margin="0" />
+              </Grid>
+          </Border>
+          <ItemsPresenter Name="PART_ItemsPresenter"
+                          IsVisible="{TemplateBinding IsExpanded}"
+                          ItemsPanel="{TemplateBinding ItemsPanel}"
+                          Margin="12,0,0,0" />
+        </StackPanel>
+      </ControlTemplate>
+    </Setter>
+
+    <!-- Hover -->
+    <Style Selector="^ /template/ Border#PART_LayoutRoot:pointerover">
+      <Setter Property="Background" Value="{DynamicResource RowHover}" />
+    </Style>
+
+    <!-- Selected -->
+    <Style Selector="^:selected /template/ Border#PART_LayoutRoot">
+      <Setter Property="Background" Value="{DynamicResource RowSelected}" />
+    </Style>
+
+    <!-- Hide chevron for leaf nodes but keep the space so siblings align -->
+    <Style Selector="^:empty /template/ ToggleButton#PART_ExpandCollapseChevron">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+  </ControlTheme>
+
+  <!-- ── Fluent Slider overrides ────────────────────────── -->
+
+  <SolidColorBrush x:Key="SliderThumbBackground" Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderThumbBackgroundDisabled" Color="{DynamicResource TextMuted}" />
+  <SolidColorBrush x:Key="SliderTrackValueFill" Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderTrackValueFillDisabled" Color="{DynamicResource TextMuted}" />
+  <SolidColorBrush x:Key="SliderTrackFill" Color="{DynamicResource PanelStroke}" />
+  <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="{DynamicResource PanelStroke}" />
+  <SolidColorBrush x:Key="SliderTrackFillPressed" Color="{DynamicResource PanelStroke}" />
+
+  <!-- ── Fluent ToggleButton overrides ───────────────────── -->
+
+  <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="{DynamicResource AccentSoft}" />
+  <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="{DynamicResource AccentSoft}" />
+  <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="{DynamicResource AccentSoft}" />
+  <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="{DynamicResource AccentText}" />
+  <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="{DynamicResource AccentText}" />
+  <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="{DynamicResource AccentText}" />
+  <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPressed" Color="{DynamicResource AccentColor}" />
+
+  <LinearGradientBrush x:Key="AppSurfaceBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+    <GradientStop Color="#141414" Offset="0" />
+    <GradientStop Color="#1C1C1C" Offset="1" />
+  </LinearGradientBrush>
+
+  <LinearGradientBrush x:Key="SheenBrush" StartPoint="0%,0%" EndPoint="100%,0%">
+    <GradientStop Color="#2E2718" Offset="0" />
+    <GradientStop Color="Transparent" Offset="1" />
+  </LinearGradientBrush>
+
+
+  <!-- ── Layout template ─────────────────────────────────── -->
+  <!--
+    Theme authors: this DataTemplate defines the arrangement of the main
+    window content.  You can move, resize, hide, or reorder the five
+    built-in view controls:
+
+      views:HeaderBar       — app title bar and search
+      views:LibraryPanel    — folder tree browser
+      views:TrackListPanel  — track data grid
+      views:QueuePanel      — play queue
+      views:TransportBar    — playback transport controls
+
+    The DataTemplate receives MainWindowViewModel as its DataContext.
+  -->
+
+  <DataTemplate x:Key="MainLayout" x:DataType="local:MainWindowViewModel">
+    <Border Padding="6" Background="{DynamicResource AppSurfaceBrush}">
+      <Grid>
+        <!-- Ambient decoration layer -->
+        <Canvas IsHitTestVisible="False" Panel.ZIndex="0">
+          <Ellipse Classes="ambient-1" Width="380" Height="380"
+                   Canvas.Left="-120" Canvas.Top="-140" />
+          <Ellipse Classes="ambient-2" Width="460" Height="460"
+                   Canvas.Left="680" Canvas.Top="-160" />
+          <Rectangle Classes="ambient-sheen" Width="260" Height="520"
+                     Canvas.Left="420" Canvas.Top="140" />
+        </Canvas>
+
+        <!-- Main content -->
+        <Grid RowDefinitions="Auto,*,Auto" RowSpacing="4" Panel.ZIndex="1">
+          <views:HeaderBar />
+
+          <Grid Grid.Row="1" ColumnDefinitions="240,Auto,*,Auto,260">
+            <views:LibraryPanel  Grid.Column="0" />
+            <GridSplitter Grid.Column="1" Width="4" ResizeDirection="Columns"
+                          Background="Transparent" />
+            <views:TrackListPanel Grid.Column="2" />
+            <GridSplitter Grid.Column="3" Width="4" ResizeDirection="Columns"
+                          Background="Transparent" />
+            <views:QueuePanel    Grid.Column="4" />
+          </Grid>
+
+          <views:TransportBar Grid.Row="2" />
+        </Grid>
+      </Grid>
+    </Border>
+  </DataTemplate>
+
+</ResourceDictionary>

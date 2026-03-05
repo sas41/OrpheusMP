@@ -1,0 +1,36 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ═══════════════════════════════════════════════════════
+       Muse — Plum color variant
+       A deep purple palette with violet accent trim.
+       Only redefines colors; layout and styles are inherited.
+       ═══════════════════════════════════════════════════════ -->
+
+  <Color x:Key="AccentColor">#A855F7</Color>
+  <Color x:Key="AccentSoft">#2D1A44</Color>
+  <Color x:Key="PanelFill">#1A1624</Color>
+  <Color x:Key="PanelStroke">#2E2540</Color>
+  <Color x:Key="TextPrimary">#EDE8F5</Color>
+  <Color x:Key="TextMuted">#A89BBE</Color>
+  <Color x:Key="RowHover">#241E34</Color>
+  <Color x:Key="RowSelected">#32204E</Color>
+  <Color x:Key="ButtonFill">#221C30</Color>
+  <Color x:Key="ButtonHover">#2E2640</Color>
+  <Color x:Key="ButtonPressed">#16121E</Color>
+  <Color x:Key="IconColor">#A855F7</Color>
+  <Color x:Key="IconActiveColor">#FFFFFF</Color>
+  <x:String x:Key="IconCss">svg { color: #A855F7 !important; }</x:String>
+  <x:String x:Key="IconActiveCss">svg { color: #FFFFFF !important; }</x:String>
+
+  <LinearGradientBrush x:Key="AppSurfaceBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+    <GradientStop Color="#100E18" Offset="0" />
+    <GradientStop Color="#1A1624" Offset="1" />
+  </LinearGradientBrush>
+
+  <LinearGradientBrush x:Key="SheenBrush" StartPoint="0%,0%" EndPoint="100%,0%">
+    <GradientStop Color="#2D1A44" Offset="0" />
+    <GradientStop Color="Transparent" Offset="1" />
+  </LinearGradientBrush>
+
+</ResourceDictionary>

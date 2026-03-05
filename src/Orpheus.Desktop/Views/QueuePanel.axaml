@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Orpheus.Desktop"
+             xmlns:lang="clr-namespace:Orpheus.Desktop.Lang"
+             mc:Ignorable="d" d:DesignWidth="260" d:DesignHeight="520"
+             x:Class="Orpheus.Desktop.Views.QueuePanel"
+             x:DataType="local:MainWindowViewModel">
+  <Border Classes="panel tight reveal-2">
+    <Grid RowDefinitions="Auto,*" RowSpacing="10">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <StackPanel>
+          <TextBlock Text="{x:Static lang:Resources.PlayQueue}" Classes="subheading" />
+          <TextBlock Text="{Binding QueueSummary}" Classes="muted small" />
+        </StackPanel>
+        <Button Grid.Column="1" x:Name="QueueOptionsButton"
+                Classes="icon" Width="28" Height="28"
+                Click="OnQueueOptionsClick" ToolTip.Tip="{x:Static lang:Resources.QueueOptions}"
+                VerticalAlignment="Top" Padding="4">
+          <Image Source="{Binding EllipsisIcon}" Width="14" Height="14" />
+          <Button.ContextMenu>
+            <ContextMenu x:Name="QueueOptionsMenu" Opened="OnQueueOptionsMenuOpened">
+              <MenuItem Header="{x:Static lang:Resources.SaveQueueAsPlaylistMenu}" Click="OnSaveQueueClick" />
+              <MenuItem Header="{x:Static lang:Resources.ClearQueue}" Click="OnClearQueueClick" />
+              <Separator />
+              <MenuItem Header="{x:Static lang:Resources.ShowTitleAlbum}" Tag="TitleAlbum" ToggleType="Radio" Click="OnSetDisplayMode" />
+              <MenuItem Header="{x:Static lang:Resources.ShowFileNameFolder}" Tag="FileNameFolder" ToggleType="Radio" Click="OnSetDisplayMode" />
+              <MenuItem Header="{x:Static lang:Resources.ShowTitleAlbumWithFallback}" Tag="TitleAlbumWithFallback" ToggleType="Radio" Click="OnSetDisplayMode" />
+              <Separator />
+              <MenuItem Header="{x:Static lang:Resources.ShowSecondaryText}" Tag="SecondaryText" ToggleType="CheckBox" Click="OnToggleSecondaryText" />
+            </ContextMenu>
+          </Button.ContextMenu>
+        </Button>
+      </Grid>
+      <ListBox Grid.Row="1"
+               x:Name="QueueList"
+               ItemsSource="{Binding Queue}"
+               SelectedIndex="{Binding CurrentQueueIndex, Mode=OneWay}"
+                >
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="local:QueueItem">
+            <Panel>
+              <!-- Normal item content -->
+              <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
+                    IsVisible="{Binding IsPlaceholder, Converter={x:Static BoolConverters.Not}}">
+                <Grid.ContextMenu>
+                  <ContextMenu>
+                    <MenuItem Header="{x:Static lang:Resources.RemoveFromQueue}" Click="OnRemoveQueueItemClick" />
+                  </ContextMenu>
+                </Grid.ContextMenu>
+                <TextBlock Text="&#x2261;" FontSize="16" Classes="muted"
+                           VerticalAlignment="Center" Cursor="Hand"
+                           Tag="DragHandle" />
+                <StackPanel Grid.Column="1">
+                  <TextBlock Text="{Binding PrimaryText}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Text="{Binding SecondaryText}" Classes="muted small" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <TextBlock Grid.Column="2" Text="{Binding Length}" Classes="muted" VerticalAlignment="Center" />
+              </Grid>
+              <!-- Placeholder (empty drop target) -->
+              <Border IsVisible="{Binding IsPlaceholder}"
+                      BorderBrush="{DynamicResource AccentColor}"
+                      BorderThickness="1"
+                      CornerRadius="4"
+                      Background="{DynamicResource AccentSoft}"
+                      Opacity="0.5"
+                      MinHeight="28" />
+            </Panel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Grid>
+  </Border>
+</UserControl>

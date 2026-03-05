@@ -93,6 +93,20 @@ public sealed class Playlist : IReadOnlyList<PlaylistItem>
     }
 
     /// <summary>
+    /// Insert multiple items starting at the specified index.
+    /// </summary>
+    public void InsertRange(int index, IReadOnlyList<PlaylistItem> items)
+    {
+        ArgumentNullException.ThrowIfNull(items);
+        if (items.Count == 0) return;
+
+        _items.InsertRange(index, items);
+
+        if (_currentIndex >= index) _currentIndex += items.Count;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
     /// Remove the item at the specified index.
     /// </summary>
     public void RemoveAt(int index)

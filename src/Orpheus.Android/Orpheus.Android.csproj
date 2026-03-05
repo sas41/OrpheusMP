@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ApplicationId>net.orpheusmp.android</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <!-- Embed all managed assemblies directly into the APK so it is self-contained
+         and can be installed with adb install without Fast Deployment side-loading. -->
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <AndroidManifest>Properties/AndroidManifest.xml</AndroidManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AndroidResource Include="Resources/**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="VideoLAN.LibVLC.Android" Version="3.6.5" />
+    <PackageReference Include="Avalonia" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Android" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Svg.Skia" Version="11.3.0" />
+    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="11.3.12" />
+    <PackageReference Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.0.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Orpheus.Core/Orpheus.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Shared top-level assets: icons + themes -->
+  <ItemGroup>
+    <AvaloniaResource Include="../../assets/icons/**/*" Link="assets/icons/%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Include only mobile-safe theme files: palette, mobile layout, and color variants.
+         Exclude Muse.axaml (references desktop Views) and Muse.styles.axaml (references DataGrid). -->
+    <AvaloniaResource Include="../../assets/themes/Muse/Muse.mobile.axaml" Link="assets/themes/Muse/Muse.mobile.axaml" />
+    <AvaloniaResource Include="../../assets/themes/Muse/Muse.Ember.axaml" Link="assets/themes/Muse/Muse.Ember.axaml" />
+    <AvaloniaResource Include="../../assets/themes/Muse/Muse.Berry.axaml" Link="assets/themes/Muse/Muse.Berry.axaml" />
+    <AvaloniaResource Include="../../assets/themes/Muse/Muse.Midnight.axaml" Link="assets/themes/Muse/Muse.Midnight.axaml" />
+    <AvaloniaResource Include="../../assets/themes/Muse/Muse.Plum.axaml" Link="assets/themes/Muse/Muse.Plum.axaml" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,68 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <!-- Define LINUX constant on Linux so #if LINUX guards compile correctly. -->
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <DefineConstants>$(DefineConstants);LINUX</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Markup.Xaml.Loader" Version="11.3.12" />
+    <PackageReference Include="Avalonia.Svg.Skia" Version="11.3.0" />
+    <!-- Pin native SkiaSharp to match managed 3.116.1 — Avalonia.Svg.Skia
+         transitively pulls 2.88.9 for Linux which is incompatible -->
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.116.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.12" />
+    <PackageReference Include="SharpHook" Version="7.1.1" />
+    <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.12">
+      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+    </PackageReference>
+    <!-- MPRIS D-Bus server for Linux media key integration (session bus) -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.90.3" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Orpheus.Core/Orpheus.Core.csproj" />
+  </ItemGroup>
+
+  <!-- License files — copied to output for the Licenses settings tab -->
+  <ItemGroup>
+    <Content Include="LICENSES\*.txt" CopyToOutputDirectory="PreserveNewest" Link="LICENSES/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <!-- ResX localization files -->
+  <ItemGroup>
+    <EmbeddedResource Update="Lang\Resources.resx">
+      <Generator>PublicResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Update="Lang\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <!-- Top-level shared assets — icons (SVG + AXAML) and themes -->
+  <ItemGroup>
+    <AvaloniaResource Include="../../assets/icons/**/*" Link="assets/icons/%(RecursiveDir)%(Filename)%(Extension)" />
+    <AvaloniaResource Include="../../assets/themes/**/*.axaml" Exclude="../../assets/themes/**/*.mobile.axaml" Link="assets/themes/%(RecursiveDir)%(Filename)%(Extension)" />
+    <AvaloniaResource Include="../../assets/icon.png" Link="assets/icon.png" />
+    <AvaloniaResource Include="../../assets/icon-256.png" Link="assets/icon-256.png" />
+    <AvaloniaResource Include="../../assets/icon.svg" Link="assets/icon.svg" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="../Orpheus.Core/Orpheus.Core.csproj" />
+    <Project Path="Orpheus.iOS.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="../../tests/Orpheus.Core.Tests/Orpheus.Core.Tests.csproj" />
+  </Folder>
+</Solution>

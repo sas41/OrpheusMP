@@ -1,0 +1,36 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ═══════════════════════════════════════════════════════
+       Muse — User color overrides
+       
+       Copy this file to your config directory as:
+         Linux:   ~/.config/OrpheusMP/layouts/Muse/Muse.usercolors.axaml
+         macOS:   ~/Library/Application Support/OrpheusMP/layouts/Muse/Muse.usercolors.axaml
+         Windows: %APPDATA%\OrpheusMP\layouts\Muse\Muse.usercolors.axaml
+
+       Only include the keys you want to change. Any key you omit
+       keeps its value from the base theme or active color variant.
+
+       Available palette keys:
+         AccentColor      — primary accent (buttons, highlights, indicators)
+         AccentSoft       — muted accent (checked states, column headers)
+         AccentText       — text on accent backgrounds
+         PanelFill        — panel / card background
+         PanelStroke      — panel / card border
+         TextPrimary      — main text color
+         TextMuted        — secondary / dimmed text
+         RowHover         — list / grid row hover background
+         RowSelected      — list / grid row selected background
+         ButtonFill       — default button background
+         ButtonHover      — button hover background
+         ButtonPressed    — button pressed background
+         AppSurfaceBrush  — window background (LinearGradientBrush)
+         SheenBrush       — ambient sheen overlay (LinearGradientBrush)
+       ═══════════════════════════════════════════════════════ -->
+
+  <!-- Example: change accent to purple -->
+  <!-- <Color x:Key="AccentColor">#7C3AED</Color> -->
+  <!-- <Color x:Key="AccentSoft">#1E1533</Color> -->
+
+</ResourceDictionary>

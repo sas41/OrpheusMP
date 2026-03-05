@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="AppTitle" xml:space="preserve"><value>Orpheus Музыкальный плеер</value></data>
+  <data name="AppName" xml:space="preserve"><value>Orpheus</value></data>
+  <data name="LibraryLoading" xml:space="preserve"><value>Загрузка библиотеки</value></data>
+  <data name="QueueEmpty" xml:space="preserve"><value>Очередь пуста</value></data>
+  <data name="NothingPlaying" xml:space="preserve"><value>Ничего не воспроизводится</value></data>
+  <data name="DefaultTime" xml:space="preserve"><value>00:00 / 00:00</value></data>
+  <data name="RepeatAll" xml:space="preserve"><value>Повторять все</value></data>
+  <data name="RepeatOne" xml:space="preserve"><value>Повторять один</value></data>
+  <data name="Repeat" xml:space="preserve"><value>Повтор</value></data>
+  <data name="FoldersSummary" xml:space="preserve"><value>{0} папок - {1} треков</value></data>
+  <data name="QueuedSummary" xml:space="preserve"><value>{0} в очереди</value></data>
+  <data name="BitrateFmt" xml:space="preserve"><value>{0} кбит/с</value></data>
+  <data name="FolderUnknown" xml:space="preserve"><value>&lt;Папка неизвестна&gt;</value></data>
+  <data name="TitleUnknown" xml:space="preserve"><value>&lt;Название неизвестно&gt;</value></data>
+  <data name="ArtistUnknown" xml:space="preserve"><value>&lt;Исполнитель неизвестен&gt;</value></data>
+  <data name="Missing" xml:space="preserve"><value>Отсутствует</value></data>
+  <data name="TracksAndPlaylists" xml:space="preserve"><value>{0} треков · {1} плейлистов</value></data>
+  <data name="TrackCount" xml:space="preserve"><value>{0} треков</value></data>
+  <data name="PlaylistCount" xml:space="preserve"><value>{0} плейлистов</value></data>
+  <data name="Empty" xml:space="preserve"><value>Пусто</value></data>
+  <data name="SaveQueueAsPlaylist" xml:space="preserve"><value>Сохранить очередь как плейлист</value></data>
+  <data name="M3UPlaylist" xml:space="preserve"><value>Плейлист M3U</value></data>
+  <data name="PLSPlaylist" xml:space="preserve"><value>Плейлист PLS</value></data>
+  <data name="UnsavedQueue" xml:space="preserve"><value>Несохранённая очередь</value></data>
+  <data name="UnsavedQueueMessage" xml:space="preserve"><value>Ваша очередь воспроизведения была изменена.
+Сохранить её как плейлист перед заменой?</value></data>
+  <data name="Save" xml:space="preserve"><value>Сохранить</value></data>
+  <data name="Discard" xml:space="preserve"><value>Отклонить</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Отмена</value></data>
+  <data name="ShowOrpheus" xml:space="preserve"><value>Показать Orpheus</value></data>
+  <data name="Quit" xml:space="preserve"><value>Выход</value></data>
+  <data name="Session" xml:space="preserve"><value>Сессия</value></data>
+  <data name="OfflineLibrary" xml:space="preserve"><value>Офлайн-библиотека</value></data>
+  <data name="SessionRadio" xml:space="preserve"><value>Интернет-радио</value></data>
+  <data name="SessionStream" xml:space="preserve"><value>Сетевой поток</value></data>
+  <data name="Equalizer" xml:space="preserve"><value>Эквалайзер</value></data>
+  <data name="Settings" xml:space="preserve"><value>Настройки</value></data>
+  <data name="SearchWatermark" xml:space="preserve"><value>Поиск в библиотеке или вставить URL потока</value></data>
+  <data name="Stop" xml:space="preserve"><value>Стоп</value></data>
+  <data name="Previous" xml:space="preserve"><value>Назад</value></data>
+  <data name="PlayPause" xml:space="preserve"><value>Воспроизведение / Пауза</value></data>
+  <data name="Next" xml:space="preserve"><value>Далее</value></data>
+  <data name="Shuffle" xml:space="preserve"><value>Перемешать</value></data>
+  <data name="MuteUnmute" xml:space="preserve"><value>Без звука / Со звуком</value></data>
+  <data name="Library" xml:space="preserve"><value>Библиотека</value></data>
+  <data name="AddLibraryFolder" xml:space="preserve"><value>Добавить папку в библиотеку</value></data>
+  <data name="LibraryOptions" xml:space="preserve"><value>Настройки библиотеки</value></data>
+  <data name="ShowFiles" xml:space="preserve"><value>Показать файлы</value></data>
+  <data name="AddMusicFolder" xml:space="preserve"><value>Добавить музыкальную папку</value></data>
+  <data name="PlayQueue" xml:space="preserve"><value>Очередь воспроизведения</value></data>
+  <data name="QueueOptions" xml:space="preserve"><value>Настройки очереди</value></data>
+  <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>Сохранить очередь как плейлист...</value></data>
+  <data name="ClearQueue" xml:space="preserve"><value>Очистить очередь</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>Название + Альбом</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>Имя файла + Папка</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>Название + Альбом → Имя файла + Папка</value></data>
+  <data name="ShowSecondaryText" xml:space="preserve"><value>Показать дополнительный текст</value></data>
+  <data name="RemoveFromQueue" xml:space="preserve"><value>Удалить из очереди</value></data>
+  <data name="TrackList" xml:space="preserve"><value>Список треков</value></data>
+  <data name="CuratedFromPlaylistsAndFolders" xml:space="preserve"><value>Собрано из плейлистов и папок</value></data>
+  <data name="Sort" xml:space="preserve"><value>Сортировка</value></data>
+  <data name="Filter" xml:space="preserve"><value>Фильтр</value></data>
+  <data name="ColTitle" xml:space="preserve"><value>Название</value></data>
+  <data name="ColArtist" xml:space="preserve"><value>Исполнитель</value></data>
+  <data name="ColAlbum" xml:space="preserve"><value>Альбом</value></data>
+  <data name="ColFilename" xml:space="preserve"><value>Файл</value></data>
+  <data name="ColFile" xml:space="preserve"><value>Файл</value></data>
+  <data name="ColTrackNumber" xml:space="preserve"><value>Трек #</value></data>
+  <data name="ColDiscNumber" xml:space="preserve"><value>Диск #</value></data>
+  <data name="ColDisc" xml:space="preserve"><value>Диск</value></data>
+  <data name="ColYear" xml:space="preserve"><value>Год</value></data>
+  <data name="ColGenre" xml:space="preserve"><value>Жанр</value></data>
+  <data name="ColBitrate" xml:space="preserve"><value>Битрейт</value></data>
+  <data name="ColTime" xml:space="preserve"><value>Время</value></data>
+  <data name="ColFormat" xml:space="preserve"><value>Формат</value></data>
+  <data name="ColTrackHash" xml:space="preserve"><value>#</value></data>
+  <data name="SortFileName" xml:space="preserve"><value>Имя файла</value></data>
+  <data name="SortDuration" xml:space="preserve"><value>Длительность</value></data>
+  <data name="SortDateAdded" xml:space="preserve"><value>Дата добавления</value></data>
+  <data name="SortAscending" xml:space="preserve"><value>По возрастанию</value></data>
+  <data name="FilterHideMissingTitle" xml:space="preserve"><value>Скрыть без названия</value></data>
+  <data name="FilterHideMissingArtist" xml:space="preserve"><value>Скрыть без исполнителя</value></data>
+  <data name="FilterHideMissingAlbum" xml:space="preserve"><value>Скрыть без альбома</value></data>
+  <data name="FilterHideMissingGenre" xml:space="preserve"><value>Скрыть без жанра</value></data>
+  <data name="FilterHideMissingTrackNumber" xml:space="preserve"><value>Скрыть без номера трека</value></data>
+  <data name="Track" xml:space="preserve"><value>Трек</value></data>
+  <data name="General" xml:space="preserve"><value>Общие</value></data>
+  <data name="EnableTrayIcon" xml:space="preserve"><value>Иконка в трее (сворачивать при закрытии)</value></data>
+  <data name="Theme" xml:space="preserve"><value>Тема</value></data>
+  <data name="Appearance" xml:space="preserve"><value>Внешний вид</value></data>
+  <data name="ColorVariant" xml:space="preserve"><value>Цветовой вариант</value></data>
+  <data name="CustomColors" xml:space="preserve"><value>Пользовательские цвета</value></data>
+  <data name="EnableCustomColorOverrides" xml:space="preserve"><value>Включить пользовательские цвета</value></data>
+  <data name="ApplyColors" xml:space="preserve"><value>Применить цвета</value></data>
+  <data name="ResetToDefault" xml:space="preserve"><value>Сбросить</value></data>
+  <data name="LayoutsDirectory" xml:space="preserve"><value>Каталог тем:</value></data>
+  <data name="MusicFolders" xml:space="preserve"><value>Музыкальные папки</value></data>
+  <data name="AddFolder" xml:space="preserve"><value>Добавить папку</value></data>
+  <data name="RemoveSelected" xml:space="preserve"><value>Удалить выбранную</value></data>
+  <data name="Database" xml:space="preserve"><value>База данных</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>Сброс удаляет все проиндексированные треки, но сохраняет список папок. Пересканирование повторно индексирует все отслеживаемые папки.</value></data>
+  <data name="ResetLibrary" xml:space="preserve"><value>Сбросить библиотеку</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>Пересканировать всё</value></data>
+  <data name="Output" xml:space="preserve"><value>Выход</value></data>
+  <data name="AudioOutput" xml:space="preserve"><value>Аудиовыход</value></data>
+  <data name="OutputDevice" xml:space="preserve"><value>Устройство вывода</value></data>
+  <data name="Licenses" xml:space="preserve"><value>Лицензии</value></data>
+  <data name="OpenSourceLicenses" xml:space="preserve"><value>Лицензии открытого кода</value></data>
+  <data name="Default" xml:space="preserve"><value>(По умолчанию)</value></data>
+  <data name="SystemDefault" xml:space="preserve"><value>Системное по умолчанию</value></data>
+  <data name="SelectMusicFolder" xml:space="preserve"><value>Выбрать музыкальную папку</value></data>
+  <data name="ScanningFmt" xml:space="preserve"><value>Сканирование {0}...</value></data>
+  <data name="ScanComplete" xml:space="preserve"><value>Сканирование завершено.</value></data>
+  <data name="ResettingLibrary" xml:space="preserve"><value>Сброс библиотеки...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>Сканирование библиотеки...</value></data>
+  <data name="LibraryReset" xml:space="preserve"><value>Библиотека сброшена.</value></data>
+  <data name="CouldNotReadLicense" xml:space="preserve"><value>(Не удалось прочитать файл лицензии)</value></data>
+  <data name="EnableEqualizer" xml:space="preserve"><value>Включить эквалайзер</value></data>
+  <data name="Reset" xml:space="preserve"><value>Сброс</value></data>
+  <data name="Preamp" xml:space="preserve"><value>Предусилитель</value></data>
+  <data name="PreampDefault" xml:space="preserve"><value>0 дБ</value></data>
+  <data name="DecibelFmt" xml:space="preserve"><value>{0} дБ</value></data>
+  <data name="Language" xml:space="preserve"><value>Язык</value></data>
+  <data name="PresetFlat" xml:space="preserve"><value>Плоский</value></data>
+  <data name="PresetRock" xml:space="preserve"><value>Рок</value></data>
+  <data name="PresetPop" xml:space="preserve"><value>Поп</value></data>
+  <data name="PresetJazz" xml:space="preserve"><value>Джаз</value></data>
+  <data name="PresetClassical" xml:space="preserve"><value>Классика</value></data>
+  <data name="PresetElectronic" xml:space="preserve"><value>Электронная</value></data>
+  <data name="PresetHipHop" xml:space="preserve"><value>Хип-хоп</value></data>
+  <data name="PresetVocal" xml:space="preserve"><value>Вокал</value></data>
+  <data name="PresetBassBoost" xml:space="preserve"><value>Усиление басов</value></data>
+  <data name="PresetTrebleBoost" xml:space="preserve"><value>Усиление высоких</value></data>
+  <data name="PresetLoudness" xml:space="preserve"><value>Громкость</value></data>
+  <data name="PresetHeadphones" xml:space="preserve"><value>Наушники</value></data>
+</root>

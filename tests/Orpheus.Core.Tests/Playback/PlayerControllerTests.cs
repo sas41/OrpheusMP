@@ -5,7 +5,7 @@ using Orpheus.Core.Playlist;
 
 namespace Orpheus.Core.Tests.Playback;
 
-public class PlayerControllerTests : IDisposable
+public class PlayerControllerTests : IAsyncLifetime
 {
     private readonly IPlayer _mockPlayer;
     private readonly PlayerController _controller;
@@ -13,13 +13,16 @@ public class PlayerControllerTests : IDisposable
     public PlayerControllerTests()
     {
         _mockPlayer = Substitute.For<IPlayer>();
-        _mockPlayer.State.Returns(PlaybackState.Stopped);
-        _controller = new PlayerController(_mockPlayer);
+        _mockPlayer.PlaybackState.Returns(PlaybackState.Stopped);
+        _mockPlayer.LoadState.Returns(LoadState.Complete);
+        _controller = new PlayerController(_mockPlayer, null, 50);
     }
 
-    public void Dispose()
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync()
     {
-        _controller.Dispose();
+        await _controller.DisposeAsync();
     }
 
     private static PlaylistItem MakeItem(string name) =>
@@ -78,46 +81,46 @@ public class PlayerControllerTests : IDisposable
     }
 
     [Fact]
-    public void Pause_DelegatesToPlayer()
+    public async Task PauseAsync_DelegatesToPlayer()
     {
-        _controller.Pause();
-        _mockPlayer.Received(1).Pause();
+        await _controller.PauseAsync();
+        await _mockPlayer.Received(1).PauseAsync();
     }
 
     [Fact]
-    public void Resume_DelegatesToPlayer()
+    public async Task ResumeAsync_DelegatesToPlayer()
     {
-        _controller.Resume();
-        _mockPlayer.Received(1).Resume();
+        await _controller.ResumeAsync();
+        await _mockPlayer.Received(1).ResumeAsync();
     }
 
     [Fact]
-    public void Stop_DelegatesToPlayer()
+    public async Task StopAsync_DelegatesToPlayer()
     {
-        _controller.Stop();
-        _mockPlayer.Received(1).Stop();
+        await _controller.StopAsync();
+        await _mockPlayer.Received(1).StopAsync();
     }
 
     [Fact]
     public async Task TogglePlayPauseAsync_PausesWhenPlaying()
     {
-        _mockPlayer.State.Returns(PlaybackState.Playing);
+        _mockPlayer.PlaybackState.Returns(PlaybackState.Playing);
         await _controller.TogglePlayPauseAsync();
-        _mockPlayer.Received(1).Pause();
+        await _mockPlayer.Received(1).PauseAsync();
     }
 
     [Fact]
     public async Task TogglePlayPauseAsync_ResumesWhenPaused()
     {
-        _mockPlayer.State.Returns(PlaybackState.Paused);
+        _mockPlayer.PlaybackState.Returns(PlaybackState.Paused);
         await _controller.TogglePlayPauseAsync();
-        _mockPlayer.Received(1).Resume();
+        await _mockPlayer.Received(1).ResumeAsync();
     }
 
     [Fact]
     public async Task TogglePlayPauseAsync_PlaysWhenStopped()
     {
-        _mockPlayer.State.Returns(PlaybackState.Stopped);
+        _mockPlayer.PlaybackState.Returns(PlaybackState.Stopped);
         _controller.Playlist.Add(MakeItem("a"));
 
         await _controller.TogglePlayPauseAsync();
@@ -133,10 +136,10 @@ public class PlayerControllerTests : IDisposable
     }
 
     [Fact]
-    public void Dispose_UnsubscribesFromPlayerEvents()
+    public async Task DisposeAsync_UnsubscribesFromPlayerEvents()
     {
-        _controller.Dispose();
-        _mockPlayer.Received(1).Dispose();
+        await _controller.DisposeAsync();
+        await _mockPlayer.Received(1).DisposeAsync();
     }
 
     // ── Repeat Off ────────────────────────────────────────────────────
@@ -145,7 +148,7 @@ public class PlayerControllerTests : IDisposable
     public async Task RepeatOff_NextAsync_AdvancesSequentially()
     {
         LoadPlaylist(3);
-        _controller.RepeatMode = RepeatMode.Off;
+        _controller.SetRepeatMode(RepeatMode.Off);
 
         await _controller.NextAsync();
         Assert.Equal(1, _controller.Playlist.CurrentIndex);
@@ -158,31 +161,31 @@ public class PlayerControllerTests : IDisposable
     public async Task RepeatOff_NextAsync_StopsAtEnd()
     {
         LoadPlaylist(2);
-        _controller.RepeatMode = RepeatMode.Off;
+        _controller.SetRepeatMode(RepeatMode.Off);
         _controller.Playlist.CurrentIndex = 1;
 
         await _controller.NextAsync();
 
-        _mockPlayer.Received().Stop();
+        await _mockPlayer.Received().StopAsync();
     }
 
     [Fact]
     public async Task RepeatOff_PreviousAsync_RestartsTrackIfPast3Seconds()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(5));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(5));
         LoadPlaylist(3);
         _controller.Playlist.CurrentIndex = 1;
 
         await _controller.PreviousAsync();
 
-        _mockPlayer.Received(1).Seek(TimeSpan.Zero);
+        await _mockPlayer.Received(1).SeekAsync(TimeSpan.Zero);
         Assert.Equal(1, _controller.Playlist.CurrentIndex);
     }
 
     [Fact]
     public async Task RepeatOff_PreviousAsync_GoesBackIfEarlyInTrack()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(1));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(1));
         LoadPlaylist(3);
         _controller.Playlist.CurrentIndex = 1;
 
@@ -194,13 +197,13 @@ public class PlayerControllerTests : IDisposable
     [Fact]
     public async Task RepeatOff_PreviousAsync_RestartsAtStart()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(1));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(1));
         LoadPlaylist(3);
         _controller.Playlist.CurrentIndex = 0;
 
         await _controller.PreviousAsync();
 
-        _mockPlayer.Received().Seek(TimeSpan.Zero);
+        await _mockPlayer.Received().SeekAsync(TimeSpan.Zero);
     }
 
     // ── Repeat One ────────────────────────────────────────────────────
@@ -209,7 +212,7 @@ public class PlayerControllerTests : IDisposable
     public async Task RepeatOne_NextAsync_StaysOnSameTrack()
     {
         LoadPlaylist(3);
-        _controller.RepeatMode = RepeatMode.One;
+        _controller.SetRepeatMode(RepeatMode.One);
         _controller.Playlist.CurrentIndex = 1;
 
         await _controller.NextAsync();
@@ -222,9 +225,9 @@ public class PlayerControllerTests : IDisposable
     [Fact]
     public async Task RepeatOne_PreviousAsync_StaysOnSameTrack()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(0));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(0));
         LoadPlaylist(3);
-        _controller.RepeatMode = RepeatMode.One;
+        _controller.SetRepeatMode(RepeatMode.One);
         _controller.Playlist.CurrentIndex = 1;
 
         await _controller.PreviousAsync();
@@ -238,7 +241,7 @@ public class PlayerControllerTests : IDisposable
     public async Task RepeatAll_NextAsync_WrapsToStart()
     {
         LoadPlaylist(3);
-        _controller.RepeatMode = RepeatMode.All;
+        _controller.SetRepeatMode(RepeatMode.All);
         _controller.Playlist.CurrentIndex = 2;
 
         await _controller.NextAsync();
@@ -249,9 +252,9 @@ public class PlayerControllerTests : IDisposable
     [Fact]
     public async Task RepeatAll_PreviousAsync_WrapsToEnd()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(0));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(0));
         LoadPlaylist(3);
-        _controller.RepeatMode = RepeatMode.All;
+        _controller.SetRepeatMode(RepeatMode.All);
         _controller.Playlist.CurrentIndex = 0;
 
         await _controller.PreviousAsync();
@@ -263,21 +266,6 @@ public class PlayerControllerTests : IDisposable
 
     [Fact]
     public void CycleRepeatMode_CyclesOffAllOneOff()
-    {
-        Assert.Equal(RepeatMode.Off, _controller.RepeatMode);
-
-        var mode = _controller.CycleRepeatMode();
-        Assert.Equal(RepeatMode.All, mode);
-
-        mode = _controller.CycleRepeatMode();
-        Assert.Equal(RepeatMode.One, mode);
-
-        mode = _controller.CycleRepeatMode();
-        Assert.Equal(RepeatMode.Off, mode);
-    }
-
-    [Fact]
-    public void CycleRepeatMode_FiresEvent()
     {
         var reported = new List<RepeatMode>();
         _controller.RepeatModeChanged += (_, m) => reported.Add(m);
@@ -292,21 +280,16 @@ public class PlayerControllerTests : IDisposable
     // ── Shuffle Play ──────────────────────────────────────────────────
 
     [Fact]
-    public void ShufflePlay_DefaultsToFalse()
-    {
-        Assert.False(_controller.ShufflePlay);
-    }
-
-    [Fact]
     public void ToggleShufflePlay_TogglesState()
     {
-        var result = _controller.ToggleShufflePlay();
-        Assert.True(result);
-        Assert.True(_controller.ShufflePlay);
+        var reported = new List<bool>();
+        _controller.ShufflePlayChanged += (_, v) => reported.Add(v);
 
-        result = _controller.ToggleShufflePlay();
-        Assert.False(result);
-        Assert.False(_controller.ShufflePlay);
+        _controller.ToggleShufflePlay();
+        Assert.Equal([true], reported);
+
+        _controller.ToggleShufflePlay();
+        Assert.Equal([true, false], reported);
     }
 
     [Fact]
@@ -315,8 +298,8 @@ public class PlayerControllerTests : IDisposable
         var reported = new List<bool>();
         _controller.ShufflePlayChanged += (_, v) => reported.Add(v);
 
-        _controller.ShufflePlay = true;
-        _controller.ShufflePlay = false;
+        _controller.SetShufflePlay(true);
+        _controller.SetShufflePlay(false);
 
         Assert.Equal([true, false], reported);
     }
@@ -324,11 +307,11 @@ public class PlayerControllerTests : IDisposable
     [Fact]
     public void ShufflePlay_EventDoesNotFireWhenUnchanged()
     {
-        _controller.ShufflePlay = true;
+        _controller.SetShufflePlay(true);
         var fired = false;
         _controller.ShufflePlayChanged += (_, _) => fired = true;
 
-        _controller.ShufflePlay = true; // Same value.
+        _controller.SetShufflePlay(true); // Same value.
         Assert.False(fired);
     }
 
@@ -336,7 +319,7 @@ public class PlayerControllerTests : IDisposable
     public async Task ShufflePlay_NextAsync_VisitsAllTracks()
     {
         LoadPlaylist(10);
-        _controller.ShufflePlay = true;
+        _controller.SetShufflePlay(true);
 
         var visited = new HashSet<int> { _controller.Playlist.CurrentIndex };
         for (var i = 0; i < 9; i++)
@@ -352,23 +335,23 @@ public class PlayerControllerTests : IDisposable
     public async Task ShufflePlay_NextAsync_StopsWhenExhaustedAndRepeatOff()
     {
         LoadPlaylist(3);
-        _controller.ShufflePlay = true;
-        _controller.RepeatMode = RepeatMode.Off;
+        _controller.SetShufflePlay(true);
+        _controller.SetRepeatMode(RepeatMode.Off);
 
         // Exhaust all tracks.
         await _controller.NextAsync();
         await _controller.NextAsync();
         await _controller.NextAsync(); // Should stop.
 
-        _mockPlayer.Received().Stop();
+        await _mockPlayer.Received().StopAsync();
     }
 
     [Fact]
     public async Task ShufflePlay_NextAsync_ReshufflesOnRepeatAll()
     {
         LoadPlaylist(3);
-        _controller.ShufflePlay = true;
-        _controller.RepeatMode = RepeatMode.All;
+        _controller.SetShufflePlay(true);
+        _controller.SetRepeatMode(RepeatMode.All);
 
         // Exhaust all tracks.
         await _controller.NextAsync();
@@ -377,15 +360,15 @@ public class PlayerControllerTests : IDisposable
         // Should reshuffle and continue, not stop.
         await _controller.NextAsync();
 
-        _mockPlayer.DidNotReceive().Stop();
+        await _mockPlayer.DidNotReceive().StopAsync();
     }
 
     [Fact]
     public async Task ShufflePlay_PreviousAsync_GoesBackInShuffleOrder()
     {
-        _mockPlayer.Position.Returns(TimeSpan.FromSeconds(0));
+        _mockPlayer.PlaybackPosition.Returns(TimeSpan.FromSeconds(0));
         LoadPlaylist(5);
-        _controller.ShufflePlay = true;
+        _controller.SetShufflePlay(true);
 
         // Move forward twice to establish a history.
         await _controller.NextAsync();
@@ -418,7 +401,7 @@ public class PlayerControllerTests : IDisposable
     {
         LoadPlaylist(5);
         _controller.Playlist.CurrentIndex = 3;
-        _controller.RepeatMode = RepeatMode.All;
+        _controller.SetRepeatMode(RepeatMode.All);
 
         var upcoming = _controller.GetUpcomingTracks();
 
@@ -451,7 +434,7 @@ public class PlayerControllerTests : IDisposable
     public void GetUpcomingTracks_ShufflePlayReturnsShuffleOrder()
     {
         LoadPlaylist(10);
-        _controller.ShufflePlay = true;
+        _controller.SetShufflePlay(true);
 
         var upcoming = _controller.GetUpcomingTracks();
 
@@ -487,7 +470,7 @@ public class PlayerControllerTests : IDisposable
     public void GetPlaybackPosition_ShufflePlayReturnsShufflePosition()
     {
         LoadPlaylist(10);
-        _controller.ShufflePlay = true;
+        _controller.SetShufflePlay(true);
 
         var (current, total) = _controller.GetPlaybackPosition();
 

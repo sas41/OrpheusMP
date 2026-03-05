@@ -1,0 +1,92 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Desktop",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/src/Orpheus.Desktop/Orpheus.Desktop.csproj",
+    },
+    {
+      "name": "Windows",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-desktop",
+      "program": "${workspaceFolder}/src/Orpheus.Desktop/bin/Debug/net10.0/Orpheus.Desktop.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/Orpheus.Desktop",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    },
+    {
+      "name": "Android (Emulator)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-android",
+      "program": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/src/Orpheus.Android/Orpheus.Android.csproj",
+        "--framework",
+        "net10.0-android"
+      ],
+      "cwd": "${workspaceFolder}/src/Orpheus.Android",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    },
+    {
+      "name": "Android (Device)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-android",
+      "program": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/src/Orpheus.Android/Orpheus.Android.csproj",
+        "--framework",
+        "net10.0-android",
+        "-p:AndroidAttachDebugger=true"
+      ],
+      "cwd": "${workspaceFolder}/src/Orpheus.Android",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    },
+    {
+      "name": "iOS (Simulator)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-ios",
+      "program": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/src/Orpheus.iOS/Orpheus.iOS.csproj",
+        "--framework",
+        "net10.0-ios"
+      ],
+      "cwd": "${workspaceFolder}/src/Orpheus.iOS",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    },
+    {
+      "name": "iOS (Device)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build-ios",
+      "program": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/src/Orpheus.iOS/Orpheus.iOS.csproj",
+        "--framework",
+        "net10.0-ios",
+        "-p:_DeviceName=:v2:udid=<device-udid>"
+      ],
+      "cwd": "${workspaceFolder}/src/Orpheus.iOS",
+      "stopAtEntry": false,
+      "console": "internalConsole"
+    }
+  ]
+}

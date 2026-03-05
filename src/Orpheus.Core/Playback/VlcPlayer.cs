@@ -1,4 +1,8 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading.Channels;
 using LibVLCSharp.Shared;
+using Orpheus.Core.Effects;
 using Orpheus.Core.Media;
 
 namespace Orpheus.Core.Playback;
@@ -9,48 +13,63 @@ namespace Orpheus.Core.Playback;
 /// </summary>
 public sealed class VlcPlayer : IPlayer
 {
+    private volatile bool _stoppingIntentionally;
     private readonly LibVLC _libVlc;
     private readonly MediaPlayer _mediaPlayer;
+    private readonly SemaphoreSlim _playbackLock = new(1, 1);
     private PlaybackState _state = PlaybackState.Stopped;
+    private LoadState _loadState = LoadState.Complete;
     private MediaSource? _currentSource;
+    private int targetVolume = 50;
     private bool _disposed;
+    private readonly Timer? _positionTimer;
+    private TimeSpan _latestPosition;
+    private readonly Channel<Action> _eventChannel;
+    private readonly CancellationTokenSource _eventCts;
+    private static void DefaultInitialize() => LibVLCSharp.Shared.Core.Initialize();
 
-    public VlcPlayer()
-    {
-        LibVLCSharp.Shared.Core.Initialize();
-        _libVlc = new LibVLC(enableDebugLogs: false);
-        _mediaPlayer = new MediaPlayer(_libVlc);
-
-        AttachEvents();
-    }
+    public string? GetCurrentAudioDevice() => _mediaPlayer.OutputDevice;
 
     /// <summary>
     /// Create a VLC player with custom LibVLC arguments.
     /// Useful for passing options like --no-video, --network-caching, etc.
     /// </summary>
-    public VlcPlayer(params string[] libVlcArgs)
+    /// <param name="initializeCore">
+    /// Optional action that performs LibVLC native library initialization.
+    /// Defaults to <c>LibVLCSharp.Shared.Core.Initialize()</c>, which resolves the
+    /// native libraries from the file system (desktop behaviour).
+    /// Pass a no-op (<c>() => {}</c>) on platforms such as Android where the runtime
+    /// loads the native library automatically and calling <c>Core.Initialize()</c>
+    /// would throw a <c>VLCException</c>.
+    /// </param>
+    public VlcPlayer(Action? initializeCore = null)
     {
-        LibVLCSharp.Shared.Core.Initialize();
-        _libVlc = new LibVLC(libVlcArgs);
+        (initializeCore ?? DefaultInitialize)();
+        _libVlc = new LibVLC("--no-video", "--network-caching=3000");
         _mediaPlayer = new MediaPlayer(_libVlc);
+        _positionTimer = new Timer(OnPositionTimerTick, null, Timeout.Infinite, Timeout.Infinite);
+        _eventChannel = Channel.CreateUnbounded<Action>(new UnboundedChannelOptions { SingleReader = true });
+        _eventCts = new CancellationTokenSource();
+        _ = Task.Run(() => ProcessEventsAsync(_eventCts.Token));
 
         AttachEvents();
     }
 
-    public PlaybackState State => _state;
+    public PlaybackState PlaybackState => _state;
+    public LoadState LoadState => _loadState;
 
-    public TimeSpan Position
+    public TimeSpan PlaybackPosition
     {
         get
         {
-            if (_state is PlaybackState.Stopped or PlaybackState.Error)
+            if (_state == PlaybackState.Stopped)
                 return TimeSpan.Zero;
 
             return TimeSpan.FromMilliseconds(_mediaPlayer.Time);
         }
     }
 
-    public TimeSpan? Duration
+    public TimeSpan? MediaDuration
     {
         get
         {
@@ -62,164 +81,347 @@ public sealed class VlcPlayer : IPlayer
     public int Volume
     {
         get => _mediaPlayer.Volume;
-        set => _mediaPlayer.Volume = Math.Clamp(value, 0, 100);
-    }
-
-    public bool IsMuted
-    {
-        get => _mediaPlayer.Mute;
-        set => _mediaPlayer.Mute = value;
+        set
+        {
+            targetVolume = Math.Clamp(value, 0, 100);
+            _mediaPlayer.Volume = targetVolume;
+        }
     }
 
     public MediaSource? CurrentSource => _currentSource;
+
 
     public async Task PlayAsync(MediaSource source, CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(source);
 
-        Stop();
-
-        _currentSource = source;
-
-        using var media = new LibVLCSharp.Shared.Media(_libVlc, source.Uri);
-
-        // For network streams, add buffering options.
-        if (source.Type != MediaSourceType.LocalFile)
+        await _playbackLock.WaitAsync(cancellationToken);
+        try
         {
-            media.AddOption(":network-caching=3000");
+            await StopInternalAsync();
+
+            _currentSource = source;
+
+            using var media = new LibVLCSharp.Shared.Media(_libVlc, source.Uri);
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void OnPlaying(object? sender, EventArgs e)
+            {
+                _mediaPlayer.Playing -= OnPlaying;
+                _mediaPlayer.EncounteredError -= OnError;
+                tcs.TrySetResult(true);
+            }
+
+            void OnError(object? sender, EventArgs e)
+            {
+                _mediaPlayer.Playing -= OnPlaying;
+                _mediaPlayer.EncounteredError -= OnError;
+                tcs.TrySetException(new InvalidOperationException(
+                    $"Failed to play media: {source.Uri}"));
+            }
+
+            _mediaPlayer.Playing += OnPlaying;
+            _mediaPlayer.EncounteredError += OnError;
+
+            _mediaPlayer.Play(media);
+
+            // Wait for playback to start or fail, with cancellation support.
+            await using (cancellationToken.Register(() =>
+            {
+                _mediaPlayer.Playing -= OnPlaying;
+                _mediaPlayer.EncounteredError -= OnError;
+                // Run Stop on thread pool to avoid deadlock from cancellation context.
+                _stoppingIntentionally = true;
+                ThreadPool.QueueUserWorkItem(_ => _mediaPlayer.Stop());
+                tcs.TrySetCanceled(cancellationToken);
+            }))
+            {
+                await tcs.Task;
+            }
+
         }
-
-        var tcs = new TaskCompletionSource<bool>();
-
-        void OnPlaying(object? sender, EventArgs e)
+        catch
         {
-            _mediaPlayer.Playing -= OnPlaying;
-            _mediaPlayer.EncounteredError -= OnError;
-            tcs.TrySetResult(true);
+            throw;
         }
-
-        void OnError(object? sender, EventArgs e)
+        finally
         {
-            _mediaPlayer.Playing -= OnPlaying;
-            _mediaPlayer.EncounteredError -= OnError;
-            tcs.TrySetException(new InvalidOperationException(
-                $"Failed to play media: {source.Uri}"));
-        }
-
-        _mediaPlayer.Playing += OnPlaying;
-        _mediaPlayer.EncounteredError += OnError;
-
-        _mediaPlayer.Play(media);
-
-        // Wait for playback to start or fail, with cancellation support.
-        await using (cancellationToken.Register(() =>
-        {
-            _mediaPlayer.Playing -= OnPlaying;
-            _mediaPlayer.EncounteredError -= OnError;
-            _mediaPlayer.Stop();
-            tcs.TrySetCanceled(cancellationToken);
-        }))
-        {
-            await tcs.Task.ConfigureAwait(false);
+            _playbackLock.Release();
         }
     }
 
-    public void Pause()
+    public Task PauseAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (_state == PlaybackState.Playing)
-            _mediaPlayer.Pause();
+        {
+            return Task.Run(() =>
+            {
+                _mediaPlayer.Pause();
+            });
+        }
+
+        return Task.CompletedTask;
     }
 
-    public void Resume()
+    public Task ResumeAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         if (_state == PlaybackState.Paused)
-            _mediaPlayer.Pause(); // VLC toggles pause.
+        {
+            return Task.Run(() =>
+            {
+                _mediaPlayer.Pause(); // VLC toggles pause.
+            });
+        }
+
+        return Task.CompletedTask;
     }
 
-    public void Stop()
+    public async Task StopAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_state != PlaybackState.Stopped)
+        await _playbackLock.WaitAsync();
+        try
         {
+            await StopInternalAsync();
+        }
+        finally
+        {
+            _playbackLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Stop playback on a thread pool thread to avoid deadlocking with
+    /// LibVLC's internal event dispatch thread. Must be called while
+    /// holding <see cref="_playbackLock"/>.
+    /// </summary>
+    private Task StopInternalAsync()
+    {
+        if (_state == PlaybackState.Stopped)
+        {
+            return Task.CompletedTask;
+        }
+
+        return Task.Run(() =>
+        {
+            _stoppingIntentionally = true;
             _mediaPlayer.Stop();
             _currentSource = null;
-        }
+        });
     }
 
-    public void Seek(TimeSpan position)
+    public Task SeekAsync(TimeSpan position)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (_state is PlaybackState.Playing or PlaybackState.Paused)
+        if (_state == PlaybackState.Stopped)
         {
-            _mediaPlayer.Time = (long)position.TotalMilliseconds;
+            return Task.CompletedTask;
         }
+
+        _mediaPlayer.SeekTo(position);
+        return Task.CompletedTask;
     }
 
     public event EventHandler<PlaybackStateChangedEventArgs>? StateChanged;
+    public event EventHandler<LoadStateChangedEventArgs>? LoadStateChanged;
     public event EventHandler<TimeSpan>? PositionChanged;
     public event EventHandler? MediaEnded;
     public event EventHandler<string>? ErrorOccurred;
 
+    // ── Equalizer ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Creates a <see cref="VlcEqualizer"/> bound to this player's internal MediaPlayer.
+    /// The caller is responsible for disposing the returned equalizer.
+    /// </summary>
+    public VlcEqualizer CreateEqualizer() => new(_mediaPlayer);
+
+    // ── Audio output device enumeration / selection ──────────────────
+
+    /// <summary>
+    /// Returns the available audio output devices.
+    /// Each entry is (id, description) where id can be passed to <see cref="SetAudioDevice"/>.
+    /// The first entry is always ("", "System Default").
+    /// </summary>
+    public IReadOnlyList<(string? Id, string Description)> GetAudioOutputDevices()
+    {
+        var devices = new List<(string?, string)> { (null, "System Default") };
+        var enumerated = _mediaPlayer.AudioOutputDeviceEnum;
+        foreach (var dev in enumerated)
+        {
+            devices.Add((dev.DeviceIdentifier, dev.Description));
+        }
+        return devices;
+    }
+
+    /// <summary>
+    /// Selects an audio output device by its identifier.
+    /// Pass null to use the system default (resets VLC's explicit device selection).
+    /// Returns true if the device was set successfully.
+    /// </summary>
+    /// <remarks>
+    /// libvlc_audio_output_device_set requires an active audio output.
+    /// This call may have no effect if nothing is playing or the audio
+    /// pipeline hasn't finished initializing yet.
+    /// </remarks>
+    public bool SetAudioDevice(string? deviceId)
+    {
+        _mediaPlayer.SetOutputDevice(deviceId);
+        return true;
+    }
+
+    // private async void OnAudioDeviceChanged(object? sender, MediaPlayerAudioDeviceEventArgs e)
+    // {
+    //     Console.WriteLine($"AUDIO DEVICE CHANGED TO: {e.AudioDevice}");
+    // }
+
     private void AttachEvents()
     {
-        _mediaPlayer.Playing += (_, _) => SetState(PlaybackState.Playing);
-        _mediaPlayer.Paused += (_, _) => SetState(PlaybackState.Paused);
-        _mediaPlayer.Stopped += (_, _) => SetState(PlaybackState.Stopped);
-        _mediaPlayer.Opening += (_, _) => SetState(PlaybackState.Opening);
-        _mediaPlayer.Buffering += (_, e) =>
+        // Broken in libVLC 3.x
+        //_mediaPlayer.AudioDevice += OnAudioDeviceChanged;
+        _mediaPlayer.Playing += (_, _) =>
         {
-            // LibVLC fires Buffering with 100% when buffering is complete.
-            if (e.Cache < 100f)
-                SetState(PlaybackState.Buffering);
-        };
-
-        _mediaPlayer.EndReached += (_, _) =>
-        {
-            // EndReached fires from VLC's event thread. We must not call
-            // Stop() directly here (deadlock). Post to thread pool.
             ThreadPool.QueueUserWorkItem(_ =>
             {
-                SetState(PlaybackState.Stopped);
-                _currentSource = null;
-                MediaEnded?.Invoke(this, EventArgs.Empty);
+                SetPlaybackState(PlaybackState.Playing);
+                _positionTimer?.Change(0, 100);
             });
+        };
+        _mediaPlayer.Paused += (_, _) =>
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                SetPlaybackState(PlaybackState.Paused);
+                _positionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+            });
+        };
+        _mediaPlayer.Stopped += (_, _) =>
+        {
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                var naturalEnd = !_stoppingIntentionally;
+                _stoppingIntentionally = false;
+                SetPlaybackState(PlaybackState.Stopped);
+                SetLoadState(LoadState.Complete);
+                _positionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+                if (naturalEnd)
+                {
+                    _currentSource = null;
+                    MediaEnded?.Invoke(this, EventArgs.Empty);
+                }
+            });
+        };
+        _mediaPlayer.Opening += (_, _) =>
+        {
+            ThreadPool.QueueUserWorkItem(_ => SetLoadState(LoadState.Opening));
+        };
+        _mediaPlayer.Buffering += (_, e) =>
+        {
+            if (e.Cache < 100f)
+                ThreadPool.QueueUserWorkItem(_ => SetLoadState(LoadState.Buffering));
         };
 
         _mediaPlayer.EncounteredError += (_, _) =>
         {
-            SetState(PlaybackState.Error);
-            ErrorOccurred?.Invoke(this, $"Playback error on: {_currentSource?.Uri}");
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                SetLoadState(LoadState.Error);
+                SetPlaybackState(PlaybackState.Stopped);
+                ErrorOccurred?.Invoke(this, $"Playback error on: {_currentSource?.Uri}");
+            });
         };
 
         _mediaPlayer.TimeChanged += (_, e) =>
         {
-            PositionChanged?.Invoke(this, TimeSpan.FromMilliseconds(e.Time));
+            _latestPosition = TimeSpan.FromMilliseconds(e.Time);
         };
     }
 
-    private void SetState(PlaybackState newState)
+    private void OnPositionTimerTick(object? state)
+    {
+        var handler = PositionChanged;
+        if (handler is not null)
+        {
+            var position = _latestPosition;
+            _eventChannel.Writer.TryWrite(() =>
+            {
+                handler.Invoke(this, position);
+            });
+        }
+    }
+
+    private async Task ProcessEventsAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var action = await _eventChannel.Reader.ReadAsync(ct);
+                action();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void SetPlaybackState(PlaybackState newState)
     {
         var oldState = _state;
         if (oldState == newState) return;
 
         _state = newState;
-        StateChanged?.Invoke(this, new PlaybackStateChangedEventArgs(oldState, newState));
+
+        var handler = StateChanged;
+        if (handler is not null)
+        {
+            var args = new PlaybackStateChangedEventArgs(oldState, newState);
+            _eventChannel.Writer.TryWrite(() =>
+            {
+                handler.Invoke(this, args);
+            });
+        }
     }
 
-    public void Dispose()
+    private void SetLoadState(LoadState newState)
+    {
+        var oldState = _loadState;
+        if (oldState == newState) return;
+
+        _loadState = newState;
+
+        var handler = LoadStateChanged;
+        if (handler is not null)
+        {
+            var args = new LoadStateChangedEventArgs(oldState, newState);
+            _eventChannel.Writer.TryWrite(() =>
+            {
+                handler.Invoke(this, args);
+            });
+        }
+    }
+
+    public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
 
-        _mediaPlayer.Stop();
+        _positionTimer?.Dispose();
+        _eventCts.Cancel();
+        _eventChannel.Writer.Complete();
+        _stoppingIntentionally = true;
+        await Task.Run(() => _mediaPlayer.Stop());
         _mediaPlayer.Dispose();
         _libVlc.Dispose();
+        _playbackLock.Dispose();
+        _eventCts.Dispose();
     }
 }

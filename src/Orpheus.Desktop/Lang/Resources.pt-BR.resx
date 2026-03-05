@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="AppTitle" xml:space="preserve"><value>Orpheus Reprodutor de Música</value></data>
+  <data name="AppName" xml:space="preserve"><value>Orpheus</value></data>
+  <data name="LibraryLoading" xml:space="preserve"><value>Carregando biblioteca</value></data>
+  <data name="QueueEmpty" xml:space="preserve"><value>Fila vazia</value></data>
+  <data name="NothingPlaying" xml:space="preserve"><value>Nada tocando</value></data>
+  <data name="DefaultTime" xml:space="preserve"><value>00:00 / 00:00</value></data>
+  <data name="RepeatAll" xml:space="preserve"><value>Repetir tudo</value></data>
+  <data name="RepeatOne" xml:space="preserve"><value>Repetir uma</value></data>
+  <data name="Repeat" xml:space="preserve"><value>Repetir</value></data>
+  <data name="FoldersSummary" xml:space="preserve"><value>{0} pastas - {1} faixas</value></data>
+  <data name="QueuedSummary" xml:space="preserve"><value>{0} na fila</value></data>
+  <data name="BitrateFmt" xml:space="preserve"><value>{0} kbps</value></data>
+  <data name="FolderUnknown" xml:space="preserve"><value>&lt;Pasta desconhecida&gt;</value></data>
+  <data name="TitleUnknown" xml:space="preserve"><value>&lt;Título desconhecido&gt;</value></data>
+  <data name="ArtistUnknown" xml:space="preserve"><value>&lt;Artista desconhecido&gt;</value></data>
+  <data name="Missing" xml:space="preserve"><value>Ausente</value></data>
+  <data name="TracksAndPlaylists" xml:space="preserve"><value>{0} faixas · {1} playlists</value></data>
+  <data name="TrackCount" xml:space="preserve"><value>{0} faixas</value></data>
+  <data name="PlaylistCount" xml:space="preserve"><value>{0} playlists</value></data>
+  <data name="Empty" xml:space="preserve"><value>Vazio</value></data>
+  <data name="SaveQueueAsPlaylist" xml:space="preserve"><value>Salvar fila como playlist</value></data>
+  <data name="M3UPlaylist" xml:space="preserve"><value>Playlist M3U</value></data>
+  <data name="PLSPlaylist" xml:space="preserve"><value>Playlist PLS</value></data>
+  <data name="UnsavedQueue" xml:space="preserve"><value>Fila não salva</value></data>
+  <data name="UnsavedQueueMessage" xml:space="preserve"><value>Sua fila de reprodução foi modificada.
+Deseja salvá-la como playlist antes de substituí-la?</value></data>
+  <data name="Save" xml:space="preserve"><value>Salvar</value></data>
+  <data name="Discard" xml:space="preserve"><value>Descartar</value></data>
+  <data name="Cancel" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="ShowOrpheus" xml:space="preserve"><value>Mostrar Orpheus</value></data>
+  <data name="Quit" xml:space="preserve"><value>Sair</value></data>
+  <data name="Session" xml:space="preserve"><value>Sessão</value></data>
+  <data name="OfflineLibrary" xml:space="preserve"><value>Biblioteca offline</value></data>
+  <data name="SessionRadio" xml:space="preserve"><value>Rádio pela Internet</value></data>
+  <data name="SessionStream" xml:space="preserve"><value>Transmissão em rede</value></data>
+  <data name="Equalizer" xml:space="preserve"><value>Equalizador</value></data>
+  <data name="Settings" xml:space="preserve"><value>Configurações</value></data>
+  <data name="SearchWatermark" xml:space="preserve"><value>Pesquisar na biblioteca ou colar URL de stream</value></data>
+  <data name="Stop" xml:space="preserve"><value>Parar</value></data>
+  <data name="Previous" xml:space="preserve"><value>Anterior</value></data>
+  <data name="PlayPause" xml:space="preserve"><value>Reproduzir / Pausar</value></data>
+  <data name="Next" xml:space="preserve"><value>Próxima</value></data>
+  <data name="Shuffle" xml:space="preserve"><value>Aleatório</value></data>
+  <data name="MuteUnmute" xml:space="preserve"><value>Silenciar / Ativar som</value></data>
+  <data name="Library" xml:space="preserve"><value>Biblioteca</value></data>
+  <data name="AddLibraryFolder" xml:space="preserve"><value>Adicionar pasta à biblioteca</value></data>
+  <data name="LibraryOptions" xml:space="preserve"><value>Opções da biblioteca</value></data>
+  <data name="ShowFiles" xml:space="preserve"><value>Mostrar arquivos</value></data>
+  <data name="AddMusicFolder" xml:space="preserve"><value>Adicionar pasta de música</value></data>
+  <data name="PlayQueue" xml:space="preserve"><value>Fila de reprodução</value></data>
+  <data name="QueueOptions" xml:space="preserve"><value>Opções da fila</value></data>
+  <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>Salvar fila como playlist...</value></data>
+  <data name="ClearQueue" xml:space="preserve"><value>Limpar fila</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>Título + Álbum</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>Nome do arquivo + Pasta</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>Título + Álbum → Nome do arquivo + Pasta</value></data>
+  <data name="ShowSecondaryText" xml:space="preserve"><value>Mostrar texto secundário</value></data>
+  <data name="RemoveFromQueue" xml:space="preserve"><value>Remover da fila</value></data>
+  <data name="TrackList" xml:space="preserve"><value>Lista de faixas</value></data>
+  <data name="CuratedFromPlaylistsAndFolders" xml:space="preserve"><value>Selecionadas de playlists e pastas</value></data>
+  <data name="Sort" xml:space="preserve"><value>Ordenar</value></data>
+  <data name="Filter" xml:space="preserve"><value>Filtrar</value></data>
+  <data name="ColTitle" xml:space="preserve"><value>Título</value></data>
+  <data name="ColArtist" xml:space="preserve"><value>Artista</value></data>
+  <data name="ColAlbum" xml:space="preserve"><value>Álbum</value></data>
+  <data name="ColFilename" xml:space="preserve"><value>Arquivo</value></data>
+  <data name="ColFile" xml:space="preserve"><value>Arquivo</value></data>
+  <data name="ColTrackNumber" xml:space="preserve"><value>Faixa #</value></data>
+  <data name="ColDiscNumber" xml:space="preserve"><value>Disco #</value></data>
+  <data name="ColDisc" xml:space="preserve"><value>Disco</value></data>
+  <data name="ColYear" xml:space="preserve"><value>Ano</value></data>
+  <data name="ColGenre" xml:space="preserve"><value>Gênero</value></data>
+  <data name="ColBitrate" xml:space="preserve"><value>Taxa de bits</value></data>
+  <data name="ColTime" xml:space="preserve"><value>Duração</value></data>
+  <data name="ColFormat" xml:space="preserve"><value>Formato</value></data>
+  <data name="ColTrackHash" xml:space="preserve"><value>#</value></data>
+  <data name="SortFileName" xml:space="preserve"><value>Nome do arquivo</value></data>
+  <data name="SortDuration" xml:space="preserve"><value>Duração</value></data>
+  <data name="SortDateAdded" xml:space="preserve"><value>Data de adição</value></data>
+  <data name="SortAscending" xml:space="preserve"><value>Crescente</value></data>
+  <data name="FilterHideMissingTitle" xml:space="preserve"><value>Ocultar sem título</value></data>
+  <data name="FilterHideMissingArtist" xml:space="preserve"><value>Ocultar sem artista</value></data>
+  <data name="FilterHideMissingAlbum" xml:space="preserve"><value>Ocultar sem álbum</value></data>
+  <data name="FilterHideMissingGenre" xml:space="preserve"><value>Ocultar sem gênero</value></data>
+  <data name="FilterHideMissingTrackNumber" xml:space="preserve"><value>Ocultar sem número de faixa</value></data>
+  <data name="Track" xml:space="preserve"><value>Faixa</value></data>
+  <data name="General" xml:space="preserve"><value>Geral</value></data>
+  <data name="EnableTrayIcon" xml:space="preserve"><value>Ativar ícone na bandeja (minimizar ao fechar)</value></data>
+  <data name="Theme" xml:space="preserve"><value>Tema</value></data>
+  <data name="Appearance" xml:space="preserve"><value>Aparência</value></data>
+  <data name="ColorVariant" xml:space="preserve"><value>Variante de cor</value></data>
+  <data name="CustomColors" xml:space="preserve"><value>Cores personalizadas</value></data>
+  <data name="EnableCustomColorOverrides" xml:space="preserve"><value>Ativar cores personalizadas</value></data>
+  <data name="ApplyColors" xml:space="preserve"><value>Aplicar cores</value></data>
+  <data name="ResetToDefault" xml:space="preserve"><value>Restaurar padrão</value></data>
+  <data name="LayoutsDirectory" xml:space="preserve"><value>Diretório de layouts:</value></data>
+  <data name="MusicFolders" xml:space="preserve"><value>Pastas de música</value></data>
+  <data name="AddFolder" xml:space="preserve"><value>Adicionar pasta</value></data>
+  <data name="RemoveSelected" xml:space="preserve"><value>Remover selecionada</value></data>
+  <data name="Database" xml:space="preserve"><value>Banco de dados</value></data>
+  <data name="ResetLibraryDescription" xml:space="preserve"><value>Redefinir limpa todas as faixas indexadas mas mantém a lista de pastas. Reescanear reindexa todas as pastas monitoradas.</value></data>
+  <data name="ResetLibrary" xml:space="preserve"><value>Redefinir biblioteca</value></data>
+  <data name="RescanLibrary" xml:space="preserve"><value>Reescanear tudo</value></data>
+  <data name="Output" xml:space="preserve"><value>Saída</value></data>
+  <data name="AudioOutput" xml:space="preserve"><value>Saída de áudio</value></data>
+  <data name="OutputDevice" xml:space="preserve"><value>Dispositivo de saída</value></data>
+  <data name="Licenses" xml:space="preserve"><value>Licenças</value></data>
+  <data name="OpenSourceLicenses" xml:space="preserve"><value>Licenças de código aberto</value></data>
+  <data name="Default" xml:space="preserve"><value>(Padrão)</value></data>
+  <data name="SystemDefault" xml:space="preserve"><value>Padrão do sistema</value></data>
+  <data name="SelectMusicFolder" xml:space="preserve"><value>Selecionar pasta de música</value></data>
+  <data name="ScanningFmt" xml:space="preserve"><value>Escaneando {0}...</value></data>
+  <data name="ScanComplete" xml:space="preserve"><value>Escaneamento concluído.</value></data>
+  <data name="ResettingLibrary" xml:space="preserve"><value>Redefinindo biblioteca...</value></data>
+  <data name="ScanningLibrary" xml:space="preserve"><value>Escaneando biblioteca...</value></data>
+  <data name="LibraryReset" xml:space="preserve"><value>Biblioteca redefinida.</value></data>
+  <data name="CouldNotReadLicense" xml:space="preserve"><value>(Não foi possível ler o arquivo de licença)</value></data>
+  <data name="EnableEqualizer" xml:space="preserve"><value>Ativar equalizador</value></data>
+  <data name="Reset" xml:space="preserve"><value>Redefinir</value></data>
+  <data name="Preamp" xml:space="preserve"><value>Pré-amplificador</value></data>
+  <data name="PreampDefault" xml:space="preserve"><value>0 dB</value></data>
+  <data name="DecibelFmt" xml:space="preserve"><value>{0} dB</value></data>
+  <data name="Language" xml:space="preserve"><value>Idioma</value></data>
+  <data name="PresetFlat" xml:space="preserve"><value>Plano</value></data>
+  <data name="PresetRock" xml:space="preserve"><value>Rock</value></data>
+  <data name="PresetPop" xml:space="preserve"><value>Pop</value></data>
+  <data name="PresetJazz" xml:space="preserve"><value>Jazz</value></data>
+  <data name="PresetClassical" xml:space="preserve"><value>Clássica</value></data>
+  <data name="PresetElectronic" xml:space="preserve"><value>Eletrônica</value></data>
+  <data name="PresetHipHop" xml:space="preserve"><value>Hip-Hop</value></data>
+  <data name="PresetVocal" xml:space="preserve"><value>Vocal</value></data>
+  <data name="PresetBassBoost" xml:space="preserve"><value>Reforço de graves</value></data>
+  <data name="PresetTrebleBoost" xml:space="preserve"><value>Reforço de agudos</value></data>
+  <data name="PresetLoudness" xml:space="preserve"><value>Loudness</value></data>
+  <data name="PresetHeadphones" xml:space="preserve"><value>Fones de ouvido</value></data>
+</root>

@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <AndroidSdkDirectory>/opt/android-sdk</AndroidSdkDirectory>
+  </PropertyGroup>
+</Project>
+

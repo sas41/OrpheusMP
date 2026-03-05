@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Orpheus.Desktop"
+             xmlns:lang="clr-namespace:Orpheus.Desktop.Lang"
+             mc:Ignorable="d" d:DesignWidth="240" d:DesignHeight="520"
+             x:Class="Orpheus.Desktop.Views.LibraryPanel"
+             x:DataType="local:MainWindowViewModel">
+  <Border Classes="panel tight reveal-2">
+    <Grid RowDefinitions="Auto,*" RowSpacing="8">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+        <StackPanel>
+          <TextBlock Text="{x:Static lang:Resources.Library}" Classes="subheading" />
+          <TextBlock Text="{Binding LibrarySummary}" Classes="muted small" />
+        </StackPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+          <Button Classes="icon" Width="28" Height="28" Padding="4"
+                  Click="OnAddLibraryFolderClick" ToolTip.Tip="{x:Static lang:Resources.AddLibraryFolder}">
+            <Image Source="{Binding PlusIcon}" Width="14" Height="14" />
+          </Button>
+          <Button Classes="icon" Width="28" Height="28" Padding="4"
+                  ToolTip.Tip="{x:Static lang:Resources.LibraryOptions}">
+            <Button.Flyout>
+              <MenuFlyout Placement="BottomEdgeAlignedRight">
+                <MenuItem Header="{x:Static lang:Resources.ShowFiles}"
+                          Click="OnToggleShowFiles">
+                  <MenuItem.Icon>
+                    <CheckBox IsChecked="{Binding ShowLibraryFiles}"
+                              IsHitTestVisible="False"
+                              Margin="0" Padding="0" MinWidth="0" />
+                  </MenuItem.Icon>
+                </MenuItem>
+              </MenuFlyout>
+            </Button.Flyout>
+            <Image Source="{Binding EllipsisIcon}" Width="14" Height="14" />
+          </Button>
+        </StackPanel>
+      </Grid>
+      <TreeView Grid.Row="1"
+                x:Name="LibraryTree"
+                ItemsSource="{Binding LibraryRoots}"
+                AutoScrollToSelectedItem="False"
+                ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                SelectionChanged="OnTreeSelectionChanged">
+        <TreeView.Styles>
+          <Style Selector="TreeViewItem" x:DataType="local:LibraryNode">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+          </Style>
+        </TreeView.Styles>
+        <TreeView.ItemTemplate>
+          <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="local:LibraryNode">
+            <StackPanel Spacing="-3" Margin="0,1,0,1">
+              <TextBlock Text="{Binding Name}" FontSize="11" Padding="0" Margin="0"
+                         Opacity="{Binding NodeType, Converter={x:Static local:NodeTypeToOpacityConverter.Instance}}" />
+              <TextBlock Text="{Binding Meta}" Classes="muted" FontSize="9" Padding="0" Margin="0" />
+            </StackPanel>
+          </TreeDataTemplate>
+        </TreeView.ItemTemplate>
+      </TreeView>
+    </Grid>
+  </Border>
+</UserControl>
