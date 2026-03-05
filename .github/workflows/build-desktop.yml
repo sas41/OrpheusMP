@@ -34,11 +34,10 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Install .NET Android workload
-        run: dotnet workload install android
-
       - name: Restore
-        run: dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj
+        run: |
+          dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj `
+            -p:TargetFrameworks=net10.0
 
       - name: Publish (self-contained, win-x64)
         run: |
@@ -47,6 +46,7 @@ jobs:
             --runtime win-x64 `
             --self-contained true `
             -p:PublishSingleFile=false `
+            -p:TargetFrameworks=net10.0 `
             --output publish/windows
 
       - name: Install WiX v4
@@ -94,11 +94,10 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      - name: Install .NET Android workload
-        run: dotnet workload install android
-
       - name: Restore
-        run: dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj
+        run: |
+          dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj \
+            -p:TargetFrameworks=net10.0
 
       - name: Publish arm64
         run: |
@@ -106,6 +105,7 @@ jobs:
             --configuration Release \
             --runtime osx-arm64 \
             --self-contained true \
+            -p:TargetFrameworks=net10.0 \
             --output publish/macos-arm64
 
       - name: Publish x64
@@ -114,6 +114,7 @@ jobs:
             --configuration Release \
             --runtime osx-x64 \
             --self-contained true \
+            -p:TargetFrameworks=net10.0 \
             --output publish/macos-x64
 
       # Merge native executable slices into a universal binary
@@ -169,11 +170,10 @@ jobs:
       - name: Install libvlc
         run: sudo apt-get update && sudo apt-get install -y libvlc-dev vlc
 
-      - name: Install .NET Android workload
-        run: dotnet workload install android
-
       - name: Restore
-        run: dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj
+        run: |
+          dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj \
+            -p:TargetFrameworks=net10.0
 
       - name: Publish (self-contained, linux-x64)
         run: |
@@ -181,6 +181,7 @@ jobs:
             --configuration Release \
             --runtime linux-x64 \
             --self-contained true \
+            -p:TargetFrameworks=net10.0 \
             --output publish/linux
 
       - name: Copy install script

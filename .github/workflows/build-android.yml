@@ -51,12 +51,12 @@ jobs:
 
       - name: Restore NuGet packages
         run: |
-          dotnet restore src/Orpheus.Android/Orpheus.Android.slnx \
+          dotnet restore src/Orpheus.Android/Orpheus.Android.csproj \
             -p:AndroidSdkDirectory="$ANDROID_HOME"
 
       - name: Build APK (Release)
         run: |
-          dotnet build src/Orpheus.Android/Orpheus.Android.slnx \
+          dotnet build src/Orpheus.Android/Orpheus.Android.csproj \
             --configuration Release \
             --framework net10.0-android \
             -p:AndroidSdkDirectory="$ANDROID_HOME" \
