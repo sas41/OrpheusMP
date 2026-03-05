@@ -40,7 +40,7 @@
     <!-- ── Application files (auto-harvested from SourceDir) ──────────── -->
     <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER"
                     Source="$(SourceDir)">
-      <Files Include="$(SourceDir)\**" />
+      <Files Include="**" />
     </ComponentGroup>
 
     <!-- ── Shortcuts ──────────────────────────────────────────────────── -->
@@ -182,7 +182,7 @@
     </ComponentGroup>
 
     <!-- ── Icon ───────────────────────────────────────────────────────── -->
-    <Icon Id="OrpheusIcon" SourceFile="$(SourceDir)\assets\icon.ico" />
+    <Icon Id="OrpheusIcon" SourceFile="..\..\..\assets\icon.ico" />
 
     <!-- ── Add/Remove Programs entry ─────────────────────────────────── -->
     <Property Id="ARPPRODUCTICON" Value="OrpheusIcon" />
