@@ -56,19 +56,12 @@ jobs:
       - name: Generate MSI version
         id: msi-version
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          # MSI requires a numeric version. Use YY.MM.DDxxx where xxx is the
-          # count of workflow runs completed today — guarantees monotonic growth
-          # across multiple releases on the same day.
-          $today    = (Get-Date -Format 'yyyy-MM-dd')
-          $repoSlug = "${{ github.repository }}"
-          $runs     = gh api "repos/$repoSlug/actions/workflows/release.yml/runs?per_page=100&created=>=$today" `
-                        --jq '.workflow_runs | length'
-          $idx      = [int]$runs
+          # MSI requires four numeric fields (Major.Minor.Patch.Build).
+          # GITHUB_RUN_NUMBER is a free, always-incrementing per-workflow
+          # counter — no API calls or extra permissions needed.
           $datePart = (Get-Date -Format 'yy.MM.dd')
-          $v        = "$datePart$($idx.ToString('000'))"
+          $v        = "$datePart.${{ github.run_number }}"
           echo "value=$v" >> $env:GITHUB_OUTPUT
 
       - name: Build .msi
