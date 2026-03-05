@@ -182,7 +182,7 @@
     </ComponentGroup>
 
     <!-- ── Icon ───────────────────────────────────────────────────────── -->
-    <Icon Id="OrpheusIcon" SourceFile="..\..\..\assets\icon.ico" />
+    <Icon Id="OrpheusIcon" SourceFile="assets\icon.ico" />
 
     <!-- ── Add/Remove Programs entry ─────────────────────────────────── -->
     <Property Id="ARPPRODUCTICON" Value="OrpheusIcon" />
