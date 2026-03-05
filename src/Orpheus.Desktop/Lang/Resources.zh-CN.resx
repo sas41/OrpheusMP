@@ -103,8 +103,9 @@
   <data name="QueueOptions" xml:space="preserve"><value>队列选项</value></data>
   <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>将队列保存为播放列表...</value></data>
   <data name="ClearQueue" xml:space="preserve"><value>清空队列</value></data>
-  <data name="ShowTitle" xml:space="preserve"><value>显示标题</value></data>
-  <data name="ShowFilename" xml:space="preserve"><value>显示文件名</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>标题 + 专辑</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>文件名 + 文件夹</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>标题 + 专辑 → 文件名 + 文件夹</value></data>
   <data name="ShowSecondaryText" xml:space="preserve"><value>显示副文本</value></data>
   <data name="RemoveFromQueue" xml:space="preserve"><value>从队列中移除</value></data>
   <data name="TrackList" xml:space="preserve"><value>曲目列表</value></data>

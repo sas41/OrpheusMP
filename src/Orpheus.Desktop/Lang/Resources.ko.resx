@@ -103,8 +103,9 @@
   <data name="QueueOptions" xml:space="preserve"><value>대기열 옵션</value></data>
   <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>대기열을 재생목록으로 저장...</value></data>
   <data name="ClearQueue" xml:space="preserve"><value>대기열 비우기</value></data>
-  <data name="ShowTitle" xml:space="preserve"><value>제목 표시</value></data>
-  <data name="ShowFilename" xml:space="preserve"><value>파일명 표시</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>제목 + 앨범</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>파일명 + 폴더</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>제목 + 앨범 → 파일명 + 폴더</value></data>
   <data name="ShowSecondaryText" xml:space="preserve"><value>부가 텍스트 표시</value></data>
   <data name="RemoveFromQueue" xml:space="preserve"><value>대기열에서 제거</value></data>
   <data name="TrackList" xml:space="preserve"><value>트랙 목록</value></data>

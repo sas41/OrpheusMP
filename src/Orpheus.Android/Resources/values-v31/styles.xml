@@ -12,7 +12,9 @@
     <item name="postSplashScreenTheme">@style/MyTheme.Main</item>
   </style>
 
-  <style name="MyTheme.Main" parent="MyTheme.NoActionBar">
-    <item name="android:windowIsTranslucent">true</item>
+  <style name="MyTheme.Main" parent="Theme.AppCompat.NoActionBar">
+    <item name="android:windowActionBar">false</item>
+    <item name="android:windowNoTitle">true</item>
+    <item name="android:windowBackground">@color/splash_background</item>
   </style>
 </resources>

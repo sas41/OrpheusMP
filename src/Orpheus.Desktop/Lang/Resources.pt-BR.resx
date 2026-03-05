@@ -103,8 +103,9 @@ Deseja salvá-la como playlist antes de substituí-la?</value></data>
   <data name="QueueOptions" xml:space="preserve"><value>Opções da fila</value></data>
   <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>Salvar fila como playlist...</value></data>
   <data name="ClearQueue" xml:space="preserve"><value>Limpar fila</value></data>
-  <data name="ShowTitle" xml:space="preserve"><value>Mostrar título</value></data>
-  <data name="ShowFilename" xml:space="preserve"><value>Mostrar nome do arquivo</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>Título + Álbum</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>Nome do arquivo + Pasta</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>Título + Álbum → Nome do arquivo + Pasta</value></data>
   <data name="ShowSecondaryText" xml:space="preserve"><value>Mostrar texto secundário</value></data>
   <data name="RemoveFromQueue" xml:space="preserve"><value>Remover da fila</value></data>
   <data name="TrackList" xml:space="preserve"><value>Lista de faixas</value></data>

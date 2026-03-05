@@ -3,9 +3,9 @@
                     xmlns:local="clr-namespace:Orpheus.Android">
 
   <!--
-    Muse — mobile palette subset.
-    Contains only the color tokens, brushes, and MobileMainLayout DataTemplate.
-    No references to desktop View types or clr-namespaces.
+    Muse — mobile palette + layout.
+    Contains the color tokens, brushes, and MobileMainLayout DataTemplate.
+    No references to desktop View types.
     Loaded by Orpheus.Android and Orpheus.iOS instead of the full Muse.axaml.
   -->
 
@@ -33,29 +33,29 @@
 
   <!-- ── Fluent Slider overrides ────────────────────────── -->
 
-  <SolidColorBrush x:Key="SliderThumbBackground" Color="{DynamicResource AccentColor}" />
-  <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="{DynamicResource AccentColor}" />
-  <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="{DynamicResource AccentColor}" />
-  <SolidColorBrush x:Key="SliderThumbBackgroundDisabled" Color="{DynamicResource TextMuted}" />
-  <SolidColorBrush x:Key="SliderTrackValueFill" Color="{DynamicResource AccentColor}" />
-  <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="{DynamicResource AccentColor}" />
-  <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="{DynamicResource AccentColor}" />
-  <SolidColorBrush x:Key="SliderTrackValueFillDisabled" Color="{DynamicResource TextMuted}" />
-  <SolidColorBrush x:Key="SliderTrackFill" Color="{DynamicResource PanelStroke}" />
-  <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="{DynamicResource PanelStroke}" />
-  <SolidColorBrush x:Key="SliderTrackFillPressed" Color="{DynamicResource PanelStroke}" />
+  <SolidColorBrush x:Key="SliderThumbBackground"              Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver"   Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderThumbBackgroundPressed"       Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderThumbBackgroundDisabled"      Color="{DynamicResource TextMuted}" />
+  <SolidColorBrush x:Key="SliderTrackValueFill"               Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderTrackValueFillPointerOver"    Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderTrackValueFillPressed"        Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="SliderTrackValueFillDisabled"       Color="{DynamicResource TextMuted}" />
+  <SolidColorBrush x:Key="SliderTrackFill"                    Color="{DynamicResource PanelStroke}" />
+  <SolidColorBrush x:Key="SliderTrackFillPointerOver"         Color="{DynamicResource PanelStroke}" />
+  <SolidColorBrush x:Key="SliderTrackFillPressed"             Color="{DynamicResource PanelStroke}" />
 
   <!-- ── Fluent ToggleButton overrides ───────────────────── -->
 
-  <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="{DynamicResource AccentSoft}" />
-  <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="{DynamicResource AccentSoft}" />
-  <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="{DynamicResource AccentSoft}" />
-  <SolidColorBrush x:Key="ToggleButtonForegroundChecked" Color="{DynamicResource AccentText}" />
-  <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver" Color="{DynamicResource AccentText}" />
-  <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed" Color="{DynamicResource AccentText}" />
-  <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="{DynamicResource AccentColor}" />
-  <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver" Color="{DynamicResource AccentColor}" />
-  <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPressed" Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="ToggleButtonBackgroundChecked"              Color="{DynamicResource AccentSoft}" />
+  <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver"   Color="{DynamicResource AccentSoft}" />
+  <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed"       Color="{DynamicResource AccentSoft}" />
+  <SolidColorBrush x:Key="ToggleButtonForegroundChecked"              Color="{DynamicResource AccentText}" />
+  <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPointerOver"   Color="{DynamicResource AccentText}" />
+  <SolidColorBrush x:Key="ToggleButtonForegroundCheckedPressed"       Color="{DynamicResource AccentText}" />
+  <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked"             Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPointerOver"  Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="ToggleButtonBorderBrushCheckedPressed"      Color="{DynamicResource AccentColor}" />
 
   <!-- ── Surface brushes ─────────────────────────────────── -->
 
@@ -70,151 +70,498 @@
   </LinearGradientBrush>
 
   <!-- ── Mobile main layout ─────────────────────────────── -->
+  <!--
+    Two tabs: Library | Queue
+    Persistent transport footer at the bottom with the track name above the seek bar.
+    Tab switching is driven by IsLibraryTabActive / IsQueueTabActive.
+    All button Click handlers are dispatched in MainView.axaml.cs.
+  -->
 
   <DataTemplate x:Key="MobileMainLayout" x:DataType="local:MobileViewModel">
-    <Grid RowDefinitions="*,Auto">
-      <!-- Main content area with tabs -->
-      <Grid Grid.Row="0">
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto"/>
-          <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+    <Grid RowDefinitions="Auto,*,Auto"
+          Background="{DynamicResource AppSurfaceBrush}">
 
-        <!-- Tab buttons -->
-        <Border Grid.Row="0" Background="{DynamicResource PanelFill}" Padding="8">
-          <Grid ColumnDefinitions="*,*,*">
-            <Button Grid.Column="0" x:Name="LibraryTab"
-                    Content="Library" HorizontalAlignment="Stretch" Margin="2"
-                    Background="{DynamicResource ButtonFill}"
-                    Foreground="{DynamicResource TextPrimary}"/>
-            <Button Grid.Column="1" x:Name="QueueTab"
-                    Content="Queue" HorizontalAlignment="Stretch" Margin="2"
-                    Background="{DynamicResource ButtonFill}"
-                    Foreground="{DynamicResource TextPrimary}"/>
-            <Button Grid.Column="2" x:Name="NowPlayingTab"
-                    Content="Now Playing" HorizontalAlignment="Stretch" Margin="2"
-                    Background="{DynamicResource ButtonFill}"
-                    Foreground="{DynamicResource TextPrimary}"/>
+      <!-- ── Tab bar ────────────────────────────────────── -->
+      <Border Grid.Row="0"
+              Background="{DynamicResource PanelFill}"
+              BorderBrush="{DynamicResource PanelStroke}"
+              BorderThickness="0,0,0,1">
+        <Grid ColumnDefinitions="*,*,Auto" Height="48">
+
+          <Button x:Name="LibraryTabButton"
+                  Grid.Column="0"
+                  Background="Transparent"
+                  Padding="0"
+                  HorizontalAlignment="Stretch"
+                  VerticalAlignment="Stretch">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="2">
+              <TextBlock Text="Library"
+                         FontSize="13"
+                         FontWeight="{Binding IsLibraryTabActive,
+                             Converter={x:Static local:BoolToFontWeightConverter.Instance}}"
+                         Foreground="{Binding IsLibraryTabActive,
+                             Converter={x:Static local:BoolToAccentBrushConverter.Instance}}"
+                         HorizontalAlignment="Center" />
+              <Border Height="2" CornerRadius="1" Width="36"
+                      Background="{DynamicResource AccentColor}"
+                      IsVisible="{Binding IsLibraryTabActive}" />
+            </StackPanel>
+          </Button>
+
+          <Button x:Name="QueueTabButton"
+                  Grid.Column="1"
+                  Background="Transparent"
+                  Padding="0"
+                  HorizontalAlignment="Stretch"
+                  VerticalAlignment="Stretch">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="2">
+              <TextBlock Text="Queue"
+                         FontSize="13"
+                         FontWeight="{Binding IsQueueTabActive,
+                             Converter={x:Static local:BoolToFontWeightConverter.Instance}}"
+                         Foreground="{Binding IsQueueTabActive,
+                             Converter={x:Static local:BoolToAccentBrushConverter.Instance}}"
+                         HorizontalAlignment="Center" />
+              <Border Height="2" CornerRadius="1" Width="36"
+                      Background="{DynamicResource AccentColor}"
+                      IsVisible="{Binding IsQueueTabActive}" />
+            </StackPanel>
+          </Button>
+
+          <!-- Settings gear button -->
+          <Button x:Name="SettingsButton"
+                  Grid.Column="2"
+                  Background="Transparent"
+                  Padding="14,0"
+                  VerticalAlignment="Stretch">
+            <Image Source="{Binding SettingsIcon}" Width="20" Height="20" />
+          </Button>
+
+        </Grid>
+      </Border>
+
+      <!-- ── Tab content ────────────────────────────────── -->
+
+      <!-- Library tab -->
+      <Grid Grid.Row="1"
+            IsVisible="{Binding IsLibraryTabActive}"
+            RowDefinitions="Auto,*">
+
+        <!-- Library header: breadcrumb or root controls -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource PanelFill}"
+                BorderBrush="{DynamicResource PanelStroke}"
+                BorderThickness="0,0,0,1"
+                Padding="8,6">
+          <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+
+            <!-- Back button (drilled in) -->
+            <Button x:Name="LibraryBackButton"
+                    Grid.Column="0"
+                    Background="Transparent"
+                    Padding="6,4"
+                    IsVisible="{Binding CanNavigateBack}"
+                    VerticalAlignment="Center">
+              <Image Source="{Binding BackIcon}" Width="18" Height="18" />
+            </Button>
+
+            <!-- Current folder / library name -->
+            <TextBlock Grid.Column="1"
+                       Text="{Binding CurrentFolderName}"
+                       FontSize="15"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimary}"
+                       VerticalAlignment="Center"
+                       Margin="4,0"
+                       TextTrimming="CharacterEllipsis" />
+
+            <!-- Scanning indicator (replaces Add button while busy) -->
+            <TextBlock Grid.Column="2"
+                       Text="Scanning…"
+                       FontSize="11"
+                       Foreground="{DynamicResource TextMuted}"
+                       VerticalAlignment="Center"
+                       Margin="0,0,6,0"
+                       IsVisible="{Binding IsScanning}" />
+
+            <!-- Add folder button (root level only) -->
+            <Button x:Name="AddFolderButton"
+                    Grid.Column="3"
+                    Background="Transparent"
+                    Padding="6,4"
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding CanNavigateBack,
+                        Converter={x:Static local:BoolInverseConverter.Instance}}">
+              <Image Source="{Binding AddFolderIcon}" Width="20" Height="20" />
+            </Button>
+
           </Grid>
         </Border>
 
-        <!-- Content based on selected tab (placeholder - shows Library by default) -->
+        <!-- Folder children + tracks -->
         <ScrollViewer Grid.Row="1">
           <StackPanel>
-            <!-- Library items -->
-            <ItemsControl ItemsSource="{Binding LibraryRoots}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Background="{DynamicResource PanelFill}" Padding="12,8" Margin="4,2"
-                          CornerRadius="4">
-                    <StackPanel>
-                      <TextBlock Text="{Binding Name}" FontSize="16"
-                                 Foreground="{DynamicResource TextPrimary}"/>
-                      <TextBlock Text="{Binding Meta}" FontSize="12"
-                                 Foreground="{DynamicResource TextMuted}"/>
-                    </StackPanel>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
 
-            <!-- Queue items -->
-            <ItemsControl ItemsSource="{Binding Queue}" IsVisible="False" x:Name="QueueList">
+            <!-- Watched folders list shown at root, before sub-folder tree nodes.
+                 Each row shows the folder path with a remove button. -->
+            <ItemsControl ItemsSource="{Binding WatchedFolders}"
+                          IsVisible="{Binding CanNavigateBack,
+                              Converter={x:Static local:BoolInverseConverter.Instance}}">
               <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                  <Border Background="{DynamicResource PanelFill}" Padding="12,8" Margin="4,2"
-                          CornerRadius="4">
-                    <Grid ColumnDefinitions="*,Auto">
-                      <StackPanel Grid.Column="0">
-                        <TextBlock Text="{Binding Primary}" FontSize="14"
-                                   Foreground="{DynamicResource TextPrimary}"
-                                   TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Text="{Binding Secondary}" FontSize="12"
-                                   Foreground="{DynamicResource TextMuted}"/>
-                      </StackPanel>
-                      <TextBlock Grid.Column="1" Text="{Binding Duration}" FontSize="12"
-                                 Foreground="{DynamicResource TextMuted}" VerticalAlignment="Center"/>
+                <DataTemplate x:DataType="x:String">
+                  <Border Background="Transparent"
+                          BorderBrush="{DynamicResource PanelStroke}"
+                          BorderThickness="0,0,0,1"
+                          Padding="12,0">
+                    <Grid ColumnDefinitions="*,Auto" Height="44">
+                      <TextBlock Grid.Column="0"
+                                 Text="{Binding}"
+                                 FontSize="12"
+                                 Foreground="{DynamicResource TextMuted}"
+                                 VerticalAlignment="Center"
+                                 TextTrimming="CharacterEllipsis" />
+                      <Button x:Name="RemoveFolderButton"
+                              Grid.Column="1"
+                              Background="Transparent"
+                              Padding="8,4"
+                              VerticalAlignment="Center">
+                        <TextBlock Text="✕" FontSize="13"
+                                   Foreground="{DynamicResource TextMuted}" />
+                      </Button>
                     </Grid>
                   </Border>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <!-- Now Playing -->
-            <StackPanel IsVisible="False" x:Name="NowPlayingView">
-              <Border Background="{DynamicResource PanelFill}" Padding="20" Margin="4">
-                <StackPanel HorizontalAlignment="Center">
-                  <TextBlock Text="{Binding NowPlayingTitle}" FontSize="20" FontWeight="Bold"
-                             Foreground="{DynamicResource AccentColor}" TextAlignment="Center"
-                             TextTrimming="CharacterEllipsis"/>
-                  <TextBlock Text="{Binding NowPlayingArtist}" FontSize="16"
-                             Foreground="{DynamicResource TextPrimary}" TextAlignment="Center"
-                             TextTrimming="CharacterEllipsis"/>
-                  <TextBlock Text="{Binding NowPlayingAlbum}" FontSize="14"
-                             Foreground="{DynamicResource TextMuted}" TextAlignment="Center"
-                             TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
-              </Border>
+            <!-- Sub-folder nodes -->
+            <ItemsControl ItemsSource="{Binding DisplayedNodes}"
+                          IsVisible="{Binding DisplayedNodes.Count,
+                              Converter={x:Static local:CountToBoolConverter.Instance}}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="local:LibraryNode">
+                  <Border Background="Transparent"
+                          BorderBrush="{DynamicResource PanelStroke}"
+                          BorderThickness="0,0,0,1"
+                          Padding="12,0">
+                    <Grid ColumnDefinitions="*,Auto,Auto" Height="52">
+
+                      <!-- Drill into folder -->
+                      <Button x:Name="FolderDrillButton"
+                              Grid.Column="0"
+                              Background="Transparent"
+                              Padding="0"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch">
+                        <StackPanel VerticalAlignment="Center" Spacing="1">
+                          <TextBlock Text="{Binding Name}"
+                                     FontSize="15"
+                                     Foreground="{DynamicResource TextPrimary}"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Meta}"
+                                     FontSize="11"
+                                     Foreground="{DynamicResource TextMuted}"
+                                     IsVisible="{Binding Meta,
+                                         Converter={x:Static local:StringToBoolConverter.Instance}}" />
+                        </StackPanel>
+                      </Button>
+
+                      <!-- Play folder -->
+                      <Button x:Name="FolderPlayButton"
+                              Grid.Column="1"
+                              Background="Transparent"
+                              Padding="10,0"
+                              VerticalAlignment="Center">
+                        <TextBlock Text="▶" FontSize="14"
+                                   Foreground="{DynamicResource AccentColor}" />
+                      </Button>
+
+                      <!-- Enqueue folder -->
+                      <Button x:Name="FolderEnqueueButton"
+                              Grid.Column="2"
+                              Background="Transparent"
+                              Padding="10,0"
+                              VerticalAlignment="Center">
+                        <TextBlock Text="+" FontSize="18"
+                                   Foreground="{DynamicResource TextMuted}" />
+                      </Button>
+
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Tracks in current folder -->
+            <ItemsControl ItemsSource="{Binding DisplayedTracks}"
+                          IsVisible="{Binding DisplayedTracks.Count,
+                              Converter={x:Static local:CountToBoolConverter.Instance}}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="local:TrackRow">
+                  <Border Background="Transparent"
+                          BorderBrush="{DynamicResource PanelStroke}"
+                          BorderThickness="0,0,0,1"
+                          Padding="12,0">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" Height="52">
+
+                      <!-- Track number -->
+                      <TextBlock Grid.Column="0"
+                                 Text="{Binding TrackNumber}"
+                                 FontSize="12"
+                                 Foreground="{DynamicResource TextMuted}"
+                                 VerticalAlignment="Center"
+                                 Width="24"
+                                 TextAlignment="Right"
+                                 Margin="0,0,10,0" />
+
+                      <!-- Play track -->
+                      <Button x:Name="TrackPlayButton"
+                              Grid.Column="1"
+                              Background="Transparent"
+                              Padding="0"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch">
+                        <StackPanel VerticalAlignment="Center" Spacing="1">
+                          <TextBlock Text="{Binding Title}"
+                                     FontSize="14"
+                                     Foreground="{DynamicResource TextPrimary}"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Artist}"
+                                     FontSize="11"
+                                     Foreground="{DynamicResource TextMuted}"
+                                     TextTrimming="CharacterEllipsis"
+                                     IsVisible="{Binding Artist,
+                                         Converter={x:Static local:StringToBoolConverter.Instance}}" />
+                        </StackPanel>
+                      </Button>
+
+                      <!-- Duration -->
+                      <TextBlock Grid.Column="2"
+                                 Text="{Binding Duration}"
+                                 FontSize="12"
+                                 Foreground="{DynamicResource TextMuted}"
+                                 VerticalAlignment="Center"
+                                 Margin="8,0" />
+
+                      <!-- Enqueue -->
+                      <Button x:Name="TrackEnqueueButton"
+                              Grid.Column="3"
+                              Background="Transparent"
+                              Padding="8,0"
+                              VerticalAlignment="Center">
+                        <TextBlock Text="+" FontSize="18"
+                                   Foreground="{DynamicResource TextMuted}" />
+                      </Button>
+
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Empty state -->
+            <StackPanel IsVisible="{Binding IsLibraryEmpty}"
+                        HorizontalAlignment="Center"
+                        Margin="24,48,24,24"
+                        Spacing="10">
+              <TextBlock Text="No music found"
+                         FontSize="16"
+                         Foreground="{DynamicResource TextMuted}"
+                         HorizontalAlignment="Center" />
+              <TextBlock Text="Tap + to add a music folder"
+                         FontSize="13"
+                         Foreground="{DynamicResource TextMuted}"
+                         HorizontalAlignment="Center" />
             </StackPanel>
+
           </StackPanel>
         </ScrollViewer>
       </Grid>
 
-      <!-- Bottom playback controls -->
-      <Border Grid.Row="1" Background="{DynamicResource PanelFill}" Padding="12,8">
-        <Grid RowDefinitions="Auto,Auto,Auto">
-          <!-- Seek bar -->
-          <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
-            <TextBlock Grid.Column="0" Text="{Binding NowPlayingTime}" FontSize="11"
-                       Foreground="{DynamicResource TextMuted}" VerticalAlignment="Center"/>
-            <Slider Grid.Column="1" Minimum="0" Maximum="{Binding PlaybackDuration}"
+      <!-- Queue tab -->
+      <Grid Grid.Row="1"
+            IsVisible="{Binding IsQueueTabActive}"
+            RowDefinitions="Auto,*">
+
+        <!-- Queue header -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource PanelFill}"
+                BorderBrush="{DynamicResource PanelStroke}"
+                BorderThickness="0,0,0,1"
+                Padding="12,8">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Grid.Column="0"
+                       Text="{Binding QueueSummary}"
+                       FontSize="13"
+                       Foreground="{DynamicResource TextMuted}"
+                       VerticalAlignment="Center" />
+            <Button x:Name="ClearQueueButton"
+                    Grid.Column="1"
+                    Background="Transparent"
+                    Padding="4,2"
+                    IsVisible="{Binding Queue.Count,
+                        Converter={x:Static local:CountToBoolConverter.Instance}}">
+              <TextBlock Text="Clear" FontSize="13"
+                         Foreground="{DynamicResource TextMuted}" />
+            </Button>
+          </Grid>
+        </Border>
+
+        <!-- Queue list -->
+        <ScrollViewer Grid.Row="1">
+          <ItemsControl ItemsSource="{Binding Queue}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="local:QueueItem">
+                <Border Background="Transparent"
+                        BorderBrush="{DynamicResource PanelStroke}"
+                        BorderThickness="0,0,0,1"
+                        Padding="12,0">
+                  <Grid ColumnDefinitions="*,Auto,Auto" Height="56">
+
+                    <!-- Play queue item -->
+                    <Button x:Name="QueueItemPlayButton"
+                            Grid.Column="0"
+                            Background="Transparent"
+                            Padding="0"
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Stretch">
+                      <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Text="{Binding Primary}"
+                                   FontSize="14"
+                                   Foreground="{DynamicResource TextPrimary}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Secondary}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextMuted}"
+                                   TextTrimming="CharacterEllipsis"
+                                   IsVisible="{Binding Secondary,
+                                       Converter={x:Static local:StringToBoolConverter.Instance}}" />
+                      </StackPanel>
+                    </Button>
+
+                    <!-- Duration -->
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding Duration}"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextMuted}"
+                               VerticalAlignment="Center"
+                               Margin="8,0" />
+
+                    <!-- Remove -->
+                    <Button x:Name="QueueItemRemoveButton"
+                            Grid.Column="2"
+                            Background="Transparent"
+                            Padding="8,0"
+                            VerticalAlignment="Center">
+                      <TextBlock Text="✕" FontSize="13"
+                                 Foreground="{DynamicResource TextMuted}" />
+                    </Button>
+
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </ScrollViewer>
+      </Grid>
+
+      <!-- ── Transport footer ───────────────────────────── -->
+      <Border Grid.Row="2"
+              Background="{DynamicResource PanelFill}"
+              BorderBrush="{DynamicResource PanelStroke}"
+              BorderThickness="0,1,0,0"
+              Padding="12,8,12,12">
+        <StackPanel Spacing="4">
+
+          <!-- Track name above seek bar -->
+          <TextBlock Text="{Binding NowPlayingLabel}"
+                     FontSize="12"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextPrimary}"
+                     TextTrimming="CharacterEllipsis"
+                     HorizontalAlignment="Center"
+                     IsVisible="{Binding IsActive}" />
+
+          <!-- Seek bar with time labels -->
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <TextBlock Grid.Column="0"
+                       Text="{Binding NowPlayingTime,
+                           Converter={x:Static local:TimeStringSplitConverter.PositionInstance}}"
+                       FontSize="10"
+                       Foreground="{DynamicResource TextMuted}"
+                       VerticalAlignment="Center" />
+            <Slider x:Name="PositionSlider"
+                    Grid.Column="1"
+                    Minimum="0"
+                    Maximum="{Binding PlaybackDuration}"
                     Value="{Binding PlaybackPosition, Mode=TwoWay}"
-                    Margin="8,0" VerticalAlignment="Center"/>
+                    Margin="6,0"
+                    VerticalAlignment="Center" />
+            <TextBlock Grid.Column="2"
+                       Text="{Binding NowPlayingTime,
+                           Converter={x:Static local:TimeStringSplitConverter.DurationInstance}}"
+                       FontSize="10"
+                       Foreground="{DynamicResource TextMuted}"
+                       VerticalAlignment="Center" />
           </Grid>
 
           <!-- Transport controls -->
-          <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,*,Auto" Margin="0,0,0,8">
+          <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*,Auto,*,Auto"
+                HorizontalAlignment="Stretch">
+
             <!-- Shuffle -->
-            <ToggleButton Grid.Column="0" IsChecked="{Binding IsShuffleEnabled, Mode=OneWay}"
-                          Background="Transparent" Padding="8">
-              <Image Source="{Binding ShuffleIcon}" Width="20" Height="20"/>
+            <ToggleButton x:Name="ShuffleButton"
+                          Grid.Column="0"
+                          IsChecked="{Binding IsShuffleEnabled, Mode=OneWay}"
+                          Background="Transparent"
+                          Padding="6"
+                          VerticalAlignment="Center">
+              <Image Source="{Binding ShuffleIcon}" Width="20" Height="20" />
             </ToggleButton>
 
             <!-- Previous -->
-            <Button Grid.Column="1" Background="Transparent" HorizontalAlignment="Center"
-                    Padding="12">
-              <Image Source="{Binding PreviousIcon}" Width="24" Height="24"/>
+            <Button x:Name="PreviousButton"
+                    Grid.Column="2"
+                    Background="Transparent"
+                    Padding="8"
+                    HorizontalAlignment="Center">
+              <Image Source="{Binding PreviousIcon}" Width="24" Height="24" />
             </Button>
 
-            <!-- Play/Pause -->
-            <Button Grid.Column="2" Background="{DynamicResource AccentSoft}" Padding="16"
-                    CornerRadius="30" HorizontalAlignment="Center">
-              <Image Source="{Binding PlayPauseIcon}" Width="32" Height="32"/>
+            <!-- Play / Pause -->
+            <Button x:Name="PlayPauseButton"
+                    Grid.Column="4"
+                    Background="{DynamicResource AccentSoft}"
+                    Padding="14"
+                    CornerRadius="30"
+                    HorizontalAlignment="Center">
+              <Image Source="{Binding PlayPauseIcon}" Width="26" Height="26" />
             </Button>
 
             <!-- Next -->
-            <Button Grid.Column="3" Background="Transparent" HorizontalAlignment="Center"
-                    Padding="12">
-              <Image Source="{Binding NextIcon}" Width="24" Height="24"/>
+            <Button x:Name="NextButton"
+                    Grid.Column="6"
+                    Background="Transparent"
+                    Padding="8"
+                    HorizontalAlignment="Center">
+              <Image Source="{Binding NextIcon}" Width="24" Height="24" />
             </Button>
 
             <!-- Repeat -->
-            <ToggleButton Grid.Column="4" IsChecked="{Binding RepeatMode, Mode=OneWay}"
-                          Background="Transparent" Padding="8">
-              <Image Source="{Binding RepeatIcon}" Width="20" Height="20"/>
+            <ToggleButton x:Name="RepeatButton"
+                          Grid.Column="8"
+                          IsChecked="{Binding RepeatModeIsActive, Mode=OneWay}"
+                          Background="Transparent"
+                          Padding="6"
+                          VerticalAlignment="Center">
+              <Image Source="{Binding RepeatIcon}" Width="20" Height="20" />
             </ToggleButton>
+
           </Grid>
 
-          <!-- Volume -->
-          <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto">
-            <Image Grid.Column="0" Source="{Binding VolumeIcon}" Width="16" Height="16"
-                   VerticalAlignment="Center"/>
-            <Slider Grid.Column="1" Minimum="0" Maximum="100"
-                    Value="{Binding Volume, Mode=TwoWay}"
-                    Margin="8,0" VerticalAlignment="Center"/>
-          </Grid>
-        </Grid>
+        </StackPanel>
       </Border>
+
     </Grid>
   </DataTemplate>
 

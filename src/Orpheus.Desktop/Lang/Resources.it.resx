@@ -103,8 +103,9 @@ Vuoi salvarla come playlist prima di sostituirla?</value></data>
   <data name="QueueOptions" xml:space="preserve"><value>Opzioni coda</value></data>
   <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>Salva coda come playlist...</value></data>
   <data name="ClearQueue" xml:space="preserve"><value>Svuota coda</value></data>
-  <data name="ShowTitle" xml:space="preserve"><value>Mostra titolo</value></data>
-  <data name="ShowFilename" xml:space="preserve"><value>Mostra nome file</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>Titolo + Album</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>Nome file + Cartella</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>Titolo + Album → Nome file + Cartella</value></data>
   <data name="ShowSecondaryText" xml:space="preserve"><value>Mostra testo secondario</value></data>
   <data name="RemoveFromQueue" xml:space="preserve"><value>Rimuovi dalla coda</value></data>
   <data name="TrackList" xml:space="preserve"><value>Lista brani</value></data>

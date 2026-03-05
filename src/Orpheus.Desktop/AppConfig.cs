@@ -32,9 +32,9 @@ public sealed class AppConfig
 
     // ── Queue display ────────────────────────────────────────
 
-    /// <summary>Queue primary text mode: "Title" or "FileName".</summary>
+    /// <summary>Queue primary text mode: "TitleAlbum", "FileNameFolder", or "TitleAlbumWithFallback".</summary>
     [JsonPropertyName("queueDisplayMode")]
-    public string QueueDisplayMode { get; set; } = "Title";
+    public string QueueDisplayMode { get; set; } = "TitleAlbum";
 
     /// <summary>Whether to show secondary text in the play queue.</summary>
     [JsonPropertyName("queueShowSecondaryText")]

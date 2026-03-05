@@ -26,15 +26,25 @@ public sealed class VlcPlayer : IPlayer
     private TimeSpan _latestPosition;
     private readonly Channel<Action> _eventChannel;
     private readonly CancellationTokenSource _eventCts;
+    private static void DefaultInitialize() => LibVLCSharp.Shared.Core.Initialize();
+
     public string? GetCurrentAudioDevice() => _mediaPlayer.OutputDevice;
 
     /// <summary>
     /// Create a VLC player with custom LibVLC arguments.
     /// Useful for passing options like --no-video, --network-caching, etc.
     /// </summary>
-    public VlcPlayer()
+    /// <param name="initializeCore">
+    /// Optional action that performs LibVLC native library initialization.
+    /// Defaults to <c>LibVLCSharp.Shared.Core.Initialize()</c>, which resolves the
+    /// native libraries from the file system (desktop behaviour).
+    /// Pass a no-op (<c>() => {}</c>) on platforms such as Android where the runtime
+    /// loads the native library automatically and calling <c>Core.Initialize()</c>
+    /// would throw a <c>VLCException</c>.
+    /// </param>
+    public VlcPlayer(Action? initializeCore = null)
     {
-        LibVLCSharp.Shared.Core.Initialize();
+        (initializeCore ?? DefaultInitialize)();
         _libVlc = new LibVLC("--no-video", "--network-caching=3000");
         _mediaPlayer = new MediaPlayer(_libVlc);
         _positionTimer = new Timer(OnPositionTimerTick, null, Timeout.Infinite, Timeout.Infinite);

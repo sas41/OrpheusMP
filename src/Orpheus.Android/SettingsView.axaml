@@ -1,0 +1,224 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Orpheus.Android"
+             x:Class="Orpheus.Android.SettingsView"
+             x:DataType="local:MobileSettingsViewModel"
+             x:CompileBindings="False"
+             Background="{DynamicResource AppSurfaceBrush}">
+
+  <Grid RowDefinitions="Auto,*">
+
+    <!-- Header bar -->
+    <Border Grid.Row="0"
+            Background="{DynamicResource PanelFill}"
+            BorderBrush="{DynamicResource PanelStroke}"
+            BorderThickness="0,0,0,1">
+      <Grid ColumnDefinitions="Auto,*" Height="48">
+
+        <!-- Back button -->
+        <Button x:Name="SettingsBackButton"
+                Grid.Column="0"
+                Background="Transparent"
+                Padding="12,0"
+                VerticalAlignment="Stretch">
+          <TextBlock Text="‹ Back"
+                     FontSize="15"
+                     Foreground="{DynamicResource AccentColor}"
+                     VerticalAlignment="Center" />
+        </Button>
+
+        <TextBlock Grid.Column="1"
+                   Text="Settings"
+                   FontSize="16"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextPrimary}"
+                   VerticalAlignment="Center"
+                   Margin="0,0,12,0"
+                   HorizontalAlignment="Right" />
+      </Grid>
+    </Border>
+
+    <!-- Settings body -->
+    <ScrollViewer Grid.Row="1">
+      <StackPanel Spacing="0">
+
+        <!-- ── Library section ─────────────────────────────── -->
+        <Border Padding="16,12,16,4">
+          <TextBlock Text="LIBRARY"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextMuted}"
+                     LetterSpacing="1.5" />
+        </Border>
+
+        <!-- Music folders list -->
+        <Border Background="{DynamicResource PanelFill}"
+                BorderBrush="{DynamicResource PanelStroke}"
+                BorderThickness="0,1,0,1">
+          <StackPanel>
+
+            <ItemsControl ItemsSource="{Binding MusicFolders}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <Border BorderBrush="{DynamicResource PanelStroke}"
+                          BorderThickness="0,0,0,1"
+                          Padding="16,0">
+                    <Grid ColumnDefinitions="*,Auto" Height="52">
+                      <TextBlock Grid.Column="0"
+                                 Text="{Binding}"
+                                 FontSize="13"
+                                 Foreground="{DynamicResource TextPrimary}"
+                                 VerticalAlignment="Center"
+                                 TextTrimming="CharacterEllipsis" />
+                      <Button x:Name="SettingsRemoveFolderButton"
+                              Grid.Column="1"
+                              Background="Transparent"
+                              Padding="12,4"
+                              VerticalAlignment="Center">
+                        <TextBlock Text="Remove"
+                                   FontSize="13"
+                                   Foreground="{DynamicResource AccentColor}" />
+                      </Button>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Empty state when no folders -->
+            <Border Padding="16,14"
+                    IsVisible="{Binding HasNoFolders}">
+              <TextBlock Text="No music folders added"
+                         FontSize="13"
+                         Foreground="{DynamicResource TextMuted}" />
+            </Border>
+
+            <!-- Add folder row -->
+            <Border BorderBrush="{DynamicResource PanelStroke}"
+                    BorderThickness="0,1,0,0">
+              <Button x:Name="SettingsAddFolderButton"
+                      Background="Transparent"
+                      Padding="16,0"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Left"
+                      Height="52">
+                <TextBlock Text="Add Music Folder…"
+                           FontSize="14"
+                           Foreground="{DynamicResource AccentColor}" />
+              </Button>
+            </Border>
+
+          </StackPanel>
+        </Border>
+
+        <!-- Rescan / Reset buttons -->
+        <Border Background="{DynamicResource PanelFill}"
+                BorderBrush="{DynamicResource PanelStroke}"
+                BorderThickness="0,0,0,1"
+                Margin="0,16,0,0">
+          <StackPanel>
+
+            <Button x:Name="SettingsRescanButton"
+                    Background="Transparent"
+                    Padding="16,0"
+                    HorizontalAlignment="Stretch"
+                    HorizontalContentAlignment="Left"
+                    Height="52"
+                    IsEnabled="{Binding IsScanning,
+                        Converter={x:Static local:BoolInverseConverter.Instance}}">
+              <TextBlock FontSize="14"
+                         Foreground="{DynamicResource TextPrimary}">
+                <TextBlock.Text>
+                  <Binding Path="IsScanning"
+                           Converter="{x:Static local:BoolToRescanLabelConverter.Instance}" />
+                </TextBlock.Text>
+              </TextBlock>
+            </Button>
+
+            <Border BorderBrush="{DynamicResource PanelStroke}"
+                    BorderThickness="0,1,0,0">
+              <Button x:Name="SettingsResetLibraryButton"
+                      Background="Transparent"
+                      Padding="16,0"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Left"
+                      Height="52">
+                <TextBlock Text="Reset Library Database"
+                           FontSize="14"
+                           Foreground="#E05555" />
+              </Button>
+            </Border>
+
+          </StackPanel>
+        </Border>
+
+        <!-- Status message -->
+        <Border Padding="16,8"
+                IsVisible="{Binding StatusMessage,
+                    Converter={x:Static local:StringToBoolConverter.Instance}}">
+          <TextBlock Text="{Binding StatusMessage}"
+                     FontSize="12"
+                     Foreground="{DynamicResource TextMuted}" />
+        </Border>
+
+        <!-- ── Appearance section ──────────────────────────── -->
+        <Border Padding="16,20,16,4">
+          <TextBlock Text="APPEARANCE"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextMuted}"
+                     LetterSpacing="1.5" />
+        </Border>
+
+        <Border Background="{DynamicResource PanelFill}"
+                BorderBrush="{DynamicResource PanelStroke}"
+                BorderThickness="0,1,0,1">
+          <StackPanel>
+
+            <!-- Track display mode -->
+            <Border Padding="16,0"
+                    BorderBrush="{DynamicResource PanelStroke}"
+                    BorderThickness="0,0,0,1">
+              <Grid ColumnDefinitions="*,Auto" Height="52">
+                <TextBlock Grid.Column="0"
+                           Text="Track Display"
+                           FontSize="14"
+                           Foreground="{DynamicResource TextPrimary}"
+                           VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{Binding DisplayModes}"
+                          SelectedItem="{Binding SelectedDisplayMode}"
+                          MinWidth="140"
+                          VerticalAlignment="Center"
+                          Background="{DynamicResource ButtonFill}"
+                          Foreground="{DynamicResource TextPrimary}" />
+              </Grid>
+            </Border>
+
+            <!-- Color variant -->
+            <Border Padding="16,0">
+              <Grid ColumnDefinitions="*,Auto" Height="52">
+                <TextBlock Grid.Column="0"
+                           Text="Color Variant"
+                           FontSize="14"
+                           Foreground="{DynamicResource TextPrimary}"
+                           VerticalAlignment="Center" />
+                <ComboBox Grid.Column="1"
+                          ItemsSource="{Binding Variants}"
+                          SelectedItem="{Binding SelectedVariant}"
+                          MinWidth="120"
+                          VerticalAlignment="Center"
+                          Background="{DynamicResource ButtonFill}"
+                          Foreground="{DynamicResource TextPrimary}" />
+              </Grid>
+            </Border>
+
+          </StackPanel>
+        </Border>
+
+      </StackPanel>
+    </ScrollViewer>
+
+  </Grid>
+
+</UserControl>

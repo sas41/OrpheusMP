@@ -24,8 +24,9 @@
               <MenuItem Header="{x:Static lang:Resources.SaveQueueAsPlaylistMenu}" Click="OnSaveQueueClick" />
               <MenuItem Header="{x:Static lang:Resources.ClearQueue}" Click="OnClearQueueClick" />
               <Separator />
-              <MenuItem Header="{x:Static lang:Resources.ShowTitle}" Tag="Title" ToggleType="Radio" Click="OnShowTitle" />
-              <MenuItem Header="{x:Static lang:Resources.ShowFilename}" Tag="FileName" ToggleType="Radio" Click="OnShowFileName" />
+              <MenuItem Header="{x:Static lang:Resources.ShowTitleAlbum}" Tag="TitleAlbum" ToggleType="Radio" Click="OnSetDisplayMode" />
+              <MenuItem Header="{x:Static lang:Resources.ShowFileNameFolder}" Tag="FileNameFolder" ToggleType="Radio" Click="OnSetDisplayMode" />
+              <MenuItem Header="{x:Static lang:Resources.ShowTitleAlbumWithFallback}" Tag="TitleAlbumWithFallback" ToggleType="Radio" Click="OnSetDisplayMode" />
               <Separator />
               <MenuItem Header="{x:Static lang:Resources.ShowSecondaryText}" Tag="SecondaryText" ToggleType="CheckBox" Click="OnToggleSecondaryText" />
             </ContextMenu>

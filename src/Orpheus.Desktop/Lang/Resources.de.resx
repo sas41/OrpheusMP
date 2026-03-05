@@ -103,8 +103,9 @@ Möchten Sie sie als Playlist speichern, bevor sie ersetzt wird?</value></data>
   <data name="QueueOptions" xml:space="preserve"><value>Warteschlangenoptionen</value></data>
   <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>Warteschlange als Playlist speichern...</value></data>
   <data name="ClearQueue" xml:space="preserve"><value>Warteschlange leeren</value></data>
-  <data name="ShowTitle" xml:space="preserve"><value>Titel anzeigen</value></data>
-  <data name="ShowFilename" xml:space="preserve"><value>Dateiname anzeigen</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>Titel + Album</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>Dateiname + Ordner</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>Titel + Album → Dateiname + Ordner</value></data>
   <data name="ShowSecondaryText" xml:space="preserve"><value>Sekundärtext anzeigen</value></data>
   <data name="RemoveFromQueue" xml:space="preserve"><value>Aus Warteschlange entfernen</value></data>
   <data name="TrackList" xml:space="preserve"><value>Titelliste</value></data>

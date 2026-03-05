@@ -103,8 +103,9 @@
   <data name="QueueOptions" xml:space="preserve"><value>Настройки очереди</value></data>
   <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>Сохранить очередь как плейлист...</value></data>
   <data name="ClearQueue" xml:space="preserve"><value>Очистить очередь</value></data>
-  <data name="ShowTitle" xml:space="preserve"><value>Показать название</value></data>
-  <data name="ShowFilename" xml:space="preserve"><value>Показать имя файла</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>Название + Альбом</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>Имя файла + Папка</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>Название + Альбом → Имя файла + Папка</value></data>
   <data name="ShowSecondaryText" xml:space="preserve"><value>Показать дополнительный текст</value></data>
   <data name="RemoveFromQueue" xml:space="preserve"><value>Удалить из очереди</value></data>
   <data name="TrackList" xml:space="preserve"><value>Список треков</value></data>

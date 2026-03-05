@@ -1265,25 +1265,54 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             ? item.Source.Uri.LocalPath
             : item.Source.Uri.ToString();
 
-        if (_queueDisplayMode == QueueDisplayMode.FileName)
+        ResolveDisplayText(_queueDisplayMode, metadata, filePath, item.DisplayName,
+            out var primary, out var secondary);
+
+        NowPlayingPrimary = primary;
+        NowPlayingSecondary = _showQueueSecondaryText ? secondary : "";
+    }
+
+    /// <summary>
+    /// Resolves the primary (title/filename) and secondary (album/folder) display
+    /// strings for a playlist item according to the current <see cref="QueueDisplayMode"/>.
+    /// </summary>
+    private static void ResolveDisplayText(
+        QueueDisplayMode mode,
+        TrackMetadata? metadata,
+        string filePath,
+        string fallbackDisplayName,
+        out string primary,
+        out string secondary)
+    {
+        var hasTitle  = !string.IsNullOrWhiteSpace(metadata?.Title);
+        var hasAlbum  = !string.IsNullOrWhiteSpace(metadata?.Album);
+        var fileName  = Path.GetFileNameWithoutExtension(filePath);
+        var folder    = Path.GetFileName(Path.GetDirectoryName(filePath) ?? "") ?? "";
+
+        switch (mode)
         {
-            NowPlayingPrimary = Path.GetFileNameWithoutExtension(filePath);
-            NowPlayingSecondary = _showQueueSecondaryText
-                ? (Path.GetFileName(Path.GetDirectoryName(filePath) ?? "") is { Length: > 0 } folder
-                    ? folder
-                    : "")
-                : "";
-        }
-        else
-        {
-            NowPlayingPrimary = !string.IsNullOrWhiteSpace(metadata?.Title)
-                ? metadata!.Title!
-                : item.DisplayName;
-            NowPlayingSecondary = _showQueueSecondaryText
-                ? (!string.IsNullOrWhiteSpace(metadata?.Artist)
-                    ? metadata!.Artist!
-                    : "")
-                : "";
+            case QueueDisplayMode.FileNameFolder:
+                primary   = fileName.Length > 0 ? fileName : fallbackDisplayName;
+                secondary = folder;
+                break;
+
+            case QueueDisplayMode.TitleAlbumWithFallback:
+                if (hasTitle)
+                {
+                    primary   = metadata!.Title!;
+                    secondary = hasAlbum ? metadata!.Album! : folder;
+                }
+                else
+                {
+                    primary   = fileName.Length > 0 ? fileName : fallbackDisplayName;
+                    secondary = folder;
+                }
+                break;
+
+            default: // TitleAlbum
+                primary   = hasTitle  ? metadata!.Title!  : fallbackDisplayName;
+                secondary = hasAlbum  ? metadata!.Album!  : "";
+                break;
         }
     }
 
@@ -1384,33 +1413,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             ? item.Source.Uri.LocalPath
             : item.Source.Uri.ToString();
 
-        string primaryText;
-        string secondaryText;
-
-        if (_queueDisplayMode == QueueDisplayMode.FileName)
-        {
-            primaryText = Path.GetFileNameWithoutExtension(filePath);
-            secondaryText = _showQueueSecondaryText
-                ? (Path.GetFileName(Path.GetDirectoryName(filePath) ?? "") is { Length: > 0 } folder
-                    ? folder
-                    : Resources.FolderUnknown)
-                : "";
-        }
-        else
-        {
-            primaryText = !string.IsNullOrWhiteSpace(metadata?.Title)
-                ? metadata!.Title!
-                : Resources.TitleUnknown;
-            secondaryText = _showQueueSecondaryText
-                ? (!string.IsNullOrWhiteSpace(metadata?.Artist)
-                    ? metadata!.Artist!
-                    : Resources.ArtistUnknown)
-                : "";
-        }
+        ResolveDisplayText(_queueDisplayMode, metadata, filePath, item.DisplayName,
+            out var primaryText, out var secondaryText);
 
         return new QueueItem(
             primaryText,
-            secondaryText,
+            _showQueueSecondaryText ? secondaryText : "",
             FormatTime(metadata?.Duration ?? TimeSpan.Zero));
     }
 
@@ -2810,8 +2818,15 @@ public enum SessionMode
 
 public enum QueueDisplayMode
 {
-    Title,
-    FileName
+    /// <summary>Show metadata Title as primary, Album as secondary.</summary>
+    TitleAlbum,
+    /// <summary>Show file name (no ext) as primary, parent folder as secondary.</summary>
+    FileNameFolder,
+    /// <summary>Title+Album when metadata is present, falls back to FileName+Folder.</summary>
+    TitleAlbumWithFallback,
+    // Legacy aliases kept for config back-compat (mapped on load)
+    Title    = TitleAlbum,
+    FileName = FileNameFolder,
 }
 
 public enum TrackSortField

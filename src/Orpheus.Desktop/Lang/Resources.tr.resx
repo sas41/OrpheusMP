@@ -103,8 +103,9 @@ Değiştirmeden önce çalma listesi olarak kaydetmek ister misiniz?</value></da
   <data name="QueueOptions" xml:space="preserve"><value>Sıra seçenekleri</value></data>
   <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>Sırayı Çalma Listesi Olarak Kaydet...</value></data>
   <data name="ClearQueue" xml:space="preserve"><value>Sırayı Temizle</value></data>
-  <data name="ShowTitle" xml:space="preserve"><value>Başlığı Göster</value></data>
-  <data name="ShowFilename" xml:space="preserve"><value>Dosya Adını Göster</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>Başlık + Albüm</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>Dosya Adı + Klasör</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>Başlık + Albüm → Dosya Adı + Klasör</value></data>
   <data name="ShowSecondaryText" xml:space="preserve"><value>İkincil Metni Göster</value></data>
   <data name="RemoveFromQueue" xml:space="preserve"><value>Sıradan Kaldır</value></data>
   <data name="TrackList" xml:space="preserve"><value>Parça Listesi</value></data>

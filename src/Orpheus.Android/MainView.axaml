@@ -1,8 +1,20 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:Orpheus.Android"
              x:Class="Orpheus.Android.MainView"
-             x:CompileBindings="False">
+             x:CompileBindings="False"
+             Background="{DynamicResource AppSurfaceBrush}">
 
-  <ContentControl ContentTemplate="{DynamicResource MobileMainLayout}" />
+  <Grid>
+    <!-- Main content (Library / Queue tabs + transport footer) -->
+    <ContentControl Content="{Binding}"
+                    ContentTemplate="{DynamicResource MobileMainLayout}" />
+
+    <!-- Settings overlay — sits on top, hidden until gear is tapped.
+         IsVisible is also set to False as a hard default so the overlay is
+         never shown when DataContext is null (before first binding resolves). -->
+    <local:SettingsView x:Name="SettingsOverlay"
+                        IsVisible="False" />
+  </Grid>
 
 </UserControl>

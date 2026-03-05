@@ -525,22 +525,31 @@ namespace Orpheus.Desktop.Lang {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Show Title.
-        /// </summary>
-        public static string ShowTitle {
-            get {
-                return ResourceManager.GetString("ShowTitle", resourceCulture);
-            }
-        }
-        
-        /// <summary>
-        ///   Looks up a localized string similar to Show Filename.
-        /// </summary>
-        public static string ShowFilename {
-            get {
-                return ResourceManager.GetString("ShowFilename", resourceCulture);
-            }
-        }
+         ///   Looks up a localized string similar to Title + Album.
+         /// </summary>
+         public static string ShowTitleAlbum {
+             get {
+                 return ResourceManager.GetString("ShowTitleAlbum", resourceCulture);
+             }
+         }
+         
+         /// <summary>
+         ///   Looks up a localized string similar to File Name + Folder.
+         /// </summary>
+         public static string ShowFileNameFolder {
+             get {
+                 return ResourceManager.GetString("ShowFileNameFolder", resourceCulture);
+             }
+         }
+         
+         /// <summary>
+         ///   Looks up a localized string similar to Title + Album → File Name + Folder.
+         /// </summary>
+         public static string ShowTitleAlbumWithFallback {
+             get {
+                 return ResourceManager.GetString("ShowTitleAlbumWithFallback", resourceCulture);
+             }
+         }
         
         /// <summary>
         ///   Looks up a localized string similar to Show Secondary Text.

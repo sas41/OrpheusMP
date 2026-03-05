@@ -103,8 +103,9 @@
   <data name="QueueOptions" xml:space="preserve"><value>キューオプション</value></data>
   <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>キューをプレイリストとして保存...</value></data>
   <data name="ClearQueue" xml:space="preserve"><value>キューをクリア</value></data>
-  <data name="ShowTitle" xml:space="preserve"><value>タイトルを表示</value></data>
-  <data name="ShowFilename" xml:space="preserve"><value>ファイル名を表示</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>タイトル + アルバム</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>ファイル名 + フォルダー</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>タイトル + アルバム → ファイル名 + フォルダー</value></data>
   <data name="ShowSecondaryText" xml:space="preserve"><value>サブテキストを表示</value></data>
   <data name="RemoveFromQueue" xml:space="preserve"><value>キューから削除</value></data>
   <data name="TrackList" xml:space="preserve"><value>トラックリスト</value></data>

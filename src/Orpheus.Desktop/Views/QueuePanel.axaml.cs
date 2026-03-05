@@ -460,16 +460,11 @@ public partial class QueuePanel : UserControl
         }
     }
 
-    public void OnShowTitle(object? sender, RoutedEventArgs e)
+    public void OnSetDisplayMode(object? sender, RoutedEventArgs e)
     {
-        if (ViewModel is not null)
-            ViewModel.QueueDisplayMode = QueueDisplayMode.Title;
-    }
-
-    public void OnShowFileName(object? sender, RoutedEventArgs e)
-    {
-        if (ViewModel is not null)
-            ViewModel.QueueDisplayMode = QueueDisplayMode.FileName;
+        if (ViewModel is null || sender is not MenuItem { Tag: string tag }) return;
+        if (Enum.TryParse<QueueDisplayMode>(tag, out var mode))
+            ViewModel.QueueDisplayMode = mode;
     }
 
     public void OnToggleSecondaryText(object? sender, RoutedEventArgs e)
@@ -493,9 +488,10 @@ public partial class QueuePanel : UserControl
 
             menuItem.IsChecked = tag switch
             {
-                "Title" => ViewModel.QueueDisplayMode == QueueDisplayMode.Title,
-                "FileName" => ViewModel.QueueDisplayMode == QueueDisplayMode.FileName,
-                "SecondaryText" => ViewModel.ShowQueueSecondaryText,
+                "TitleAlbum"             => ViewModel.QueueDisplayMode == QueueDisplayMode.TitleAlbum,
+                "FileNameFolder"         => ViewModel.QueueDisplayMode == QueueDisplayMode.FileNameFolder,
+                "TitleAlbumWithFallback" => ViewModel.QueueDisplayMode == QueueDisplayMode.TitleAlbumWithFallback,
+                "SecondaryText"          => ViewModel.ShowQueueSecondaryText,
                 _ => menuItem.IsChecked
             };
         }

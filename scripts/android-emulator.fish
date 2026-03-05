@@ -12,6 +12,7 @@ set JAVA_HOME       /usr/lib/jvm/java-21-openjdk
 set SDKMANAGER      $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
 set AVDMANAGER      $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager
 set EMULATOR        $ANDROID_HOME/emulator/emulator
+set ADB             $ANDROID_HOME/platform-tools/adb
 set AVD_NAME        Orpheus
 set API_LEVEL       36
 set ABI             x86_64
@@ -28,6 +29,25 @@ end
 function die
     echo "ERROR: $argv" >&2
     exit 1
+end
+
+function start_adb_if_needed
+    if not test -x $ADB
+        die "ADB not found at $ADB"
+    end
+    set adb_path (which adb 2>/dev/null)
+    if test -z "$adb_path"
+        set -gx PATH $ANDROID_HOME/platform-tools $PATH
+    end
+    if not adb get-state 1>/dev/null 2>&1
+        echo "  Starting ADB server..."
+        adb start-server
+        if test $status -ne 0
+            die "Failed to start ADB server."
+        end
+    else
+        echo "  ADB server already running."
+    end
 end
 
 # ── cold-boot flag ─────────────────────────────────────────────────────────
@@ -86,7 +106,12 @@ else
     echo "  AVD already exists."
 end
 
-# ── 4. start emulator ──────────────────────────────────────────────────────
+# ── 4. start adb server ─────────────────────────────────────────────────────
+
+step "Checking ADB server..."
+start_adb_if_needed
+
+# ── 5. start emulator ──────────────────────────────────────────────────────
 
 step "Starting emulator '$AVD_NAME'..."
 echo "  (close this terminal or press Ctrl+C to stop the emulator)"

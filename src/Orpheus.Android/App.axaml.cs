@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -37,11 +38,43 @@ public partial class App : Application
     {
         if (ApplicationLifetime is ISingleViewApplicationLifetime singleView)
         {
-            ViewModel = new MobileViewModel();
+            // ViewModel is kept alive across Activity recreations (minimize/resume).
+            // MainView must be a new instance each time because the old one still
+            // holds a reference to the destroyed surface's visual tree and Avalonia
+            // will throw if the same control is re-parented.
+            ViewModel ??= new MobileViewModel();
             singleView.MainView = new MainView { DataContext = ViewModel };
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    // The currently active layout and variant, used by settings.
+    public string ActiveLayout { get; private set; } = "Muse";
+    public string? ActiveVariant { get; private set; }
+
+    /// <summary>
+    /// Returns the known color variant names for the Muse mobile theme.
+    /// These correspond to {layout}.{Variant}.axaml files in assets/themes/Muse/.
+    /// </summary>
+    public static IReadOnlyList<string> AvailableVariants { get; } =
+        ["Default", "Ember", "Berry", "Midnight", "Plum"];
+
+    /// <summary>Apply a new color variant on top of the already-loaded base theme.</summary>
+    public void ApplyVariant(string? variant)
+    {
+        // Re-apply from scratch: reload base + new variant over a clean merged dict.
+        // Clear only the merged entries we own (indices after FluentTheme's own resources).
+        if (Resources is ResourceDictionary rd)
+            rd.MergedDictionaries.Clear();
+
+        ApplyTheme(ActiveLayout, variant == "Default" ? null : variant);
+
+        // Persist
+        ActiveVariant = variant == "Default" ? null : variant;
+        var config = MobileConfig.Load();
+        config.Variant = ActiveVariant;
+        config.Save();
     }
 
     private void ApplyTheme(string layout, string? variant)
@@ -54,6 +87,8 @@ public partial class App : Application
             layout = "Muse";
             TryMergeResource($"avares://{AssemblyName}/assets/themes/{layout}/{layout}.mobile.axaml");
         }
+
+        ActiveLayout = layout;
 
         // Color variant (contains only Color / Brush entries — safe for mobile)
         if (!string.IsNullOrWhiteSpace(variant))
@@ -121,6 +156,10 @@ internal sealed class MobileConfig
 
     [JsonPropertyName("language")]
     public string? Language { get; set; }
+
+    /// <summary>Queue/transport display mode: "TitleAlbum", "FileNameFolder", or "TitleAlbumWithFallback".</summary>
+    [JsonPropertyName("trackDisplayMode")]
+    public string TrackDisplayMode { get; set; } = "TitleAlbum";
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 

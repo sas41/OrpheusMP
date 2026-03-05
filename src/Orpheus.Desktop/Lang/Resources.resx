@@ -215,11 +215,14 @@ Do you want to save it as a playlist before replacing it?</value>
   <data name="ClearQueue" xml:space="preserve">
     <value>Clear Queue</value>
   </data>
-  <data name="ShowTitle" xml:space="preserve">
-    <value>Show Title</value>
+  <data name="ShowTitleAlbum" xml:space="preserve">
+    <value>Title + Album</value>
   </data>
-  <data name="ShowFilename" xml:space="preserve">
-    <value>Show Filename</value>
+  <data name="ShowFileNameFolder" xml:space="preserve">
+    <value>File Name + Folder</value>
+  </data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve">
+    <value>Title + Album → File Name + Folder</value>
   </data>
   <data name="ShowSecondaryText" xml:space="preserve">
     <value>Show Secondary Text</value>

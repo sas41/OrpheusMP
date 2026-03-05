@@ -103,8 +103,9 @@
   <data name="QueueOptions" xml:space="preserve"><value>Опции на опашката</value></data>
   <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>Запази опашката като плейлист...</value></data>
   <data name="ClearQueue" xml:space="preserve"><value>Изчисти опашката</value></data>
-  <data name="ShowTitle" xml:space="preserve"><value>Покажи заглавие</value></data>
-  <data name="ShowFilename" xml:space="preserve"><value>Покажи име на файл</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>Заглавие + Албум</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>Име на файл + Папка</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>Заглавие + Албум → Име на файл + Папка</value></data>
   <data name="ShowSecondaryText" xml:space="preserve"><value>Покажи допълнителен текст</value></data>
   <data name="RemoveFromQueue" xml:space="preserve"><value>Премахни от опашката</value></data>
   <data name="TrackList" xml:space="preserve"><value>Списък с песни</value></data>

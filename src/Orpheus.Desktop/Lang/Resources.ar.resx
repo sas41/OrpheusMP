@@ -103,8 +103,9 @@
   <data name="QueueOptions" xml:space="preserve"><value>خيارات قائمة الانتظار</value></data>
   <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>حفظ قائمة الانتظار كقائمة تشغيل...</value></data>
   <data name="ClearQueue" xml:space="preserve"><value>مسح قائمة الانتظار</value></data>
-  <data name="ShowTitle" xml:space="preserve"><value>إظهار العنوان</value></data>
-  <data name="ShowFilename" xml:space="preserve"><value>إظهار اسم الملف</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>العنوان + الألبوم</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>اسم الملف + المجلد</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>العنوان + الألبوم → اسم الملف + المجلد</value></data>
   <data name="ShowSecondaryText" xml:space="preserve"><value>إظهار النص الثانوي</value></data>
   <data name="RemoveFromQueue" xml:space="preserve"><value>إزالة من قائمة الانتظار</value></data>
   <data name="TrackList" xml:space="preserve"><value>قائمة المقطوعات</value></data>

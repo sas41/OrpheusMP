@@ -103,8 +103,9 @@
   <data name="QueueOptions" xml:space="preserve"><value>Opciones de cola</value></data>
   <data name="SaveQueueAsPlaylistMenu" xml:space="preserve"><value>Guardar cola como lista...</value></data>
   <data name="ClearQueue" xml:space="preserve"><value>Vaciar cola</value></data>
-  <data name="ShowTitle" xml:space="preserve"><value>Mostrar título</value></data>
-  <data name="ShowFilename" xml:space="preserve"><value>Mostrar nombre de archivo</value></data>
+  <data name="ShowTitleAlbum" xml:space="preserve"><value>Título + Álbum</value></data>
+  <data name="ShowFileNameFolder" xml:space="preserve"><value>Nombre de archivo + Carpeta</value></data>
+  <data name="ShowTitleAlbumWithFallback" xml:space="preserve"><value>Título + Álbum → Nombre de archivo + Carpeta</value></data>
   <data name="ShowSecondaryText" xml:space="preserve"><value>Mostrar texto secundario</value></data>
   <data name="RemoveFromQueue" xml:space="preserve"><value>Quitar de la cola</value></data>
   <data name="TrackList" xml:space="preserve"><value>Lista de pistas</value></data>
