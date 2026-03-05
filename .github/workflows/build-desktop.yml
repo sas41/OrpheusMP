@@ -37,16 +37,17 @@ jobs:
       - name: Restore
         run: |
           dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj `
-            -p:TargetFrameworks=net10.0
+            -p:DesktopOnly=true
 
       - name: Publish (self-contained, win-x64)
         run: |
           dotnet publish src/Orpheus.Desktop/Orpheus.Desktop.csproj `
             --configuration Release `
+            --framework net10.0 `
             --runtime win-x64 `
             --self-contained true `
             -p:PublishSingleFile=false `
-            -p:TargetFrameworks=net10.0 `
+            -p:DesktopOnly=true `
             --output publish/windows
 
       - name: Install WiX v4
@@ -97,24 +98,26 @@ jobs:
       - name: Restore
         run: |
           dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj \
-            -p:TargetFrameworks=net10.0
+            -p:DesktopOnly=true
 
       - name: Publish arm64
         run: |
           dotnet publish src/Orpheus.Desktop/Orpheus.Desktop.csproj \
             --configuration Release \
+            --framework net10.0 \
             --runtime osx-arm64 \
             --self-contained true \
-            -p:TargetFrameworks=net10.0 \
+            -p:DesktopOnly=true \
             --output publish/macos-arm64
 
       - name: Publish x64
         run: |
           dotnet publish src/Orpheus.Desktop/Orpheus.Desktop.csproj \
             --configuration Release \
+            --framework net10.0 \
             --runtime osx-x64 \
             --self-contained true \
-            -p:TargetFrameworks=net10.0 \
+            -p:DesktopOnly=true \
             --output publish/macos-x64
 
       # Merge native executable slices into a universal binary
@@ -173,15 +176,16 @@ jobs:
       - name: Restore
         run: |
           dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj \
-            -p:TargetFrameworks=net10.0
+            -p:DesktopOnly=true
 
       - name: Publish (self-contained, linux-x64)
         run: |
           dotnet publish src/Orpheus.Desktop/Orpheus.Desktop.csproj \
             --configuration Release \
+            --framework net10.0 \
             --runtime linux-x64 \
             --self-contained true \
-            -p:TargetFrameworks=net10.0 \
+            -p:DesktopOnly=true \
             --output publish/linux
 
       - name: Copy install script
