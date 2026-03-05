@@ -51,7 +51,7 @@ jobs:
             --output publish/windows
 
       - name: Install WiX v6
-        run: dotnet tool install --global wix --version "6.0.2"
+        run: dotnet tool update --global wix --version "6.0.2"
 
       - name: Generate MSI version
         id: msi-version
