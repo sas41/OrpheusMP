@@ -1,6 +1,12 @@
+<p align="center">
+  <img src="assets/icon.png" alt="OrpheusMP" width="96" />
+</p>
+
 # Orpheus Music Player
 
 A modern music player for listening to local and network-shared libraries. Built with [Avalonia UI](https://avaloniaui.net/) and [LibVLC](https://www.videolan.org/vlc/libvlc.html), targeting Windows, macOS, Linux, and Android.
+
+![OrpheusMP desktop screenshot](screenshots/desktop.png)
 
 ## Features
 
