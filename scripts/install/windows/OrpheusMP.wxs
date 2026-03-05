@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  OrpheusMP — WiX v6 installer source (silent/no UI)
+  OrpheusMP — WiX v4 installer source (silent/no UI)
   Build (CI):
     wix build OrpheusMP.wxs -arch x64 -d SourceDir=<publish-output> -d Version=1.2.3.4 -o OrpheusMP.msi
 
@@ -13,7 +13,7 @@
     - Creates an entry in "Apps & features" with a proper uninstaller
   Note: no WixUI dialog set — install is silent (msiexec /i OrpheusMP.msi /quiet).
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v6/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <Package
     Name="OrpheusMP"
@@ -182,7 +182,7 @@
     </ComponentGroup>
 
     <!-- ── Icon ───────────────────────────────────────────────────────── -->
-    <Icon Id="OrpheusIcon" SourceFile="$(SourceDir)\assets\icon-256.png" />
+    <Icon Id="OrpheusIcon" SourceFile="$(SourceDir)\assets\icon.ico" />
 
     <!-- ── Add/Remove Programs entry ─────────────────────────────────── -->
     <Property Id="ARPPRODUCTICON" Value="OrpheusIcon" />
