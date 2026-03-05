@@ -61,10 +61,22 @@ jobs:
           name: ${{ needs.desktop.outputs.windows-artifact }}
           path: artifacts/
 
+      - name: Download Windows zip artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.desktop.outputs.windows-zip-artifact }}
+          path: artifacts/
+
       - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
           name: ${{ needs.desktop.outputs.macos-artifact }}
+          path: artifacts/
+
+      - name: Download macOS zip artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.desktop.outputs.macos-zip-artifact }}
           path: artifacts/
 
       - name: Download Linux artifact

@@ -10,9 +10,15 @@ on:
       windows-artifact:
         description: "Name of the Windows .msi artifact"
         value: ${{ jobs.build-windows.outputs.artifact-name }}
+      windows-zip-artifact:
+        description: "Name of the Windows .zip artifact"
+        value: ${{ jobs.build-windows.outputs.zip-artifact-name }}
       macos-artifact:
         description: "Name of the macOS .pkg artifact"
         value: ${{ jobs.build-macos.outputs.artifact-name }}
+      macos-zip-artifact:
+        description: "Name of the macOS .zip artifact"
+        value: ${{ jobs.build-macos.outputs.zip-artifact-name }}
       linux-artifact:
         description: "Name of the Linux .zip artifact"
         value: ${{ jobs.build-linux.outputs.artifact-name }}
@@ -24,6 +30,7 @@ jobs:
     runs-on: windows-latest
     outputs:
       artifact-name: ${{ steps.meta.outputs.artifact-name }}
+      zip-artifact-name: ${{ steps.meta.outputs.zip-artifact-name }}
 
     steps:
       - name: Checkout
@@ -79,12 +86,26 @@ jobs:
         run: |
           $name = "OrpheusMP-${{ inputs.version }}-windows-x64"
           echo "artifact-name=$name" >> $env:GITHUB_OUTPUT
+          echo "zip-artifact-name=$name-zip" >> $env:GITHUB_OUTPUT
 
-      - name: Upload artifact
+      - name: Zip release
+        shell: pwsh
+        run: |
+          Compress-Archive -Path publish/windows/* `
+            -DestinationPath "${{ steps.meta.outputs.artifact-name }}.zip"
+
+      - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.meta.outputs.artifact-name }}
           path: ${{ steps.meta.outputs.artifact-name }}.msi
+          retention-days: 7
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.zip-artifact-name }}
+          path: ${{ steps.meta.outputs.artifact-name }}.zip
           retention-days: 7
 
   # ── macOS — universal binary → .app bundle → .pkg ─────────────────────────
@@ -93,6 +114,7 @@ jobs:
     runs-on: macos-latest
     outputs:
       artifact-name: ${{ steps.meta.outputs.artifact-name }}
+      zip-artifact-name: ${{ steps.meta.outputs.zip-artifact-name }}
 
     steps:
       - name: Checkout
@@ -144,6 +166,7 @@ jobs:
         run: |
           name="OrpheusMP-${{ inputs.version }}-macos-universal"
           echo "artifact-name=$name" >> "$GITHUB_OUTPUT"
+          echo "zip-artifact-name=$name-zip" >> "$GITHUB_OUTPUT"
 
       # build-pkg.sh wraps the publish output in a .app bundle and calls
       # pkgbuild + productbuild to produce a signed-ready .pkg installer.
@@ -154,11 +177,23 @@ jobs:
             "${{ inputs.version }}" \
             .
 
-      - name: Upload artifact
+      - name: Zip release
+        run: |
+          cd publish/macos-universal
+          zip -r "../../${{ steps.meta.outputs.artifact-name }}.zip" .
+
+      - name: Upload pkg artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.meta.outputs.artifact-name }}
           path: OrpheusMP-${{ inputs.version }}-macos.pkg
+          retention-days: 7
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.zip-artifact-name }}
+          path: ${{ steps.meta.outputs.artifact-name }}.zip
           retention-days: 7
 
   # ── Linux — self-contained publish → .zip (with install script) ───────────
