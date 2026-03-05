@@ -1,0 +1,85 @@
+name: Build Android
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+    outputs:
+      artifact-name:
+        description: "Name of the Android APK artifact"
+        value: ${{ jobs.build-android.outputs.artifact-name }}
+
+jobs:
+  build-android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ steps.meta.outputs.artifact-name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Install Android build tools & platforms
+        run: |
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Restore NuGet packages
+        run: |
+          dotnet restore src/Orpheus.Android/Orpheus.Android.slnx \
+            -p:AndroidSdkDirectory="$ANDROID_HOME"
+
+      - name: Build APK (Release)
+        run: |
+          dotnet build src/Orpheus.Android/Orpheus.Android.slnx \
+            --configuration Release \
+            --framework net10.0-android \
+            -p:AndroidSdkDirectory="$ANDROID_HOME" \
+            -p:AndroidPackageFormat=apk \
+            -p:AndroidKeyStore=false
+
+      - name: Locate APK
+        id: locate-apk
+        run: |
+          apk=$(find src/Orpheus.Android -name "*.apk" | head -1)
+          echo "apk-path=$apk" >> "$GITHUB_OUTPUT"
+
+      - name: Set artifact metadata
+        id: meta
+        run: |
+          name="OrpheusMP-${{ inputs.version }}-android"
+          echo "artifact-name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Rename APK
+        run: |
+          cp "${{ steps.locate-apk.outputs.apk-path }}" \
+            "${{ steps.meta.outputs.artifact-name }}.apk"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact-name }}
+          path: ${{ steps.meta.outputs.artifact-name }}.apk
+          retention-days: 7

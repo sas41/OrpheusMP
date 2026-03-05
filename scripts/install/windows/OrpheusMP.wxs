@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OrpheusMP — WiX v4 installer source
+  Build:
+    wix build OrpheusMP.wxs -o OrpheusMP.msi
+  Or via CI (see build-desktop.yml which uses `dotnet tool run wix build`).
+
+  What this installer does:
+    - Installs all application files to %ProgramFiles%\OrpheusMP\
+    - Creates a Start Menu shortcut
+    - Creates a Desktop shortcut
+    - Registers a ProgID (OrpheusMP.AudioFile) for audio file types
+    - Registers audio file-extension and MIME-type associations silently
+    - Registers with Windows "Default Programs" (Capabilities)
+    - Creates an entry in "Apps & features" with a proper uninstaller
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package
+    Name="OrpheusMP"
+    Manufacturer="OrpheusMP Contributors"
+    Version="1.0.0.0"
+    UpgradeCode="4A8B2C1D-3E5F-4A6B-8C7D-9E0F1A2B3C4D"
+    Scope="perMachine"
+    Compressed="yes">
+
+    <!-- Allow upgrades; remove older versions automatically -->
+    <MajorUpgrade DowngradeErrorMessage="A newer version of OrpheusMP is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ── UI ────────────────────────────────────────────────────────── -->
+    <ui:WixUI Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <!-- ── Install directory ──────────────────────────────────────────── -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="OrpheusMP" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="OrpheusMP" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+
+    <!-- ── Application files ─────────────────────────────────────────── -->
+    <!--
+      At build time the CI step runs:
+        wix build OrpheusMP.wxs -d PublishDir=<path-to-dotnet-publish-output>
+      All files under that directory are harvested via the heat/HarvestDirectory
+      extension, OR you can list them explicitly here.
+
+      The simplest approach that works without heat is to use a WiX v4
+      HarvestDirectory directive. Add the WiX.Toolset.HeatWave NuGet package
+      or use the `wix extension add WixToolset.Util.wixext` approach.
+
+      For a self-contained publish the only file you must reference explicitly
+      is the main EXE; everything else can be harvested.
+    -->
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
+      <!-- Main executable — required for shortcuts and ProgID -->
+      <Component Id="MainExecutable" Guid="B1C2D3E4-F5A6-7B8C-9D0E-1F2A3B4C5D6E">
+        <File Id="OrpheusExe"
+              Source="$(var.PublishDir)\Orpheus.Desktop.exe"
+              KeyPath="yes" />
+      </Component>
+
+      <!-- All remaining published files (DLLs, assets, etc.) -->
+      <!-- WiX v4: use HarvestDirectory in a .wixproj, or list files here.
+           The CI workflow uses `wix build` with -ext WixToolset.Util.wixext
+           and passes the publish directory so all files are auto-included. -->
+    </ComponentGroup>
+
+    <!-- ── Shortcuts ─────────────────────────────────────────────────── -->
+    <ComponentGroup Id="Shortcuts" Directory="ApplicationProgramsFolder">
+      <Component Id="StartMenuShortcut" Guid="C2D3E4F5-A6B7-8C9D-0E1F-2A3B4C5D6E7F">
+        <Shortcut Id="StartMenuShortcut"
+                  Name="OrpheusMP"
+                  Description="Open-source music player"
+                  Target="[INSTALLFOLDER]Orpheus.Desktop.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="OrpheusIcon" />
+        <RemoveFolder Id="RemoveStartMenuFolder"
+                      Directory="ApplicationProgramsFolder"
+                      On="uninstall" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\OrpheusMP"
+                       Name="StartMenuShortcut"
+                       Type="integer" Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="DesktopShortcuts" Directory="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="D3E4F5A6-B7C8-9D0E-1F2A-3B4C5D6E7F8A">
+        <Shortcut Id="DesktopShortcut"
+                  Name="OrpheusMP"
+                  Description="Open-source music player"
+                  Target="[INSTALLFOLDER]Orpheus.Desktop.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="OrpheusIcon" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\OrpheusMP"
+                       Name="DesktopShortcut"
+                       Type="integer" Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- ── ProgID + file-type / MIME registration ─────────────────────── -->
+    <ComponentGroup Id="FileAssociations" Directory="INSTALLFOLDER">
+      <Component Id="ProgIdRegistration" Guid="E4F5A6B7-C8D9-0E1F-2A3B-4C5D6E7F8A9B"
+                 KeyPath="yes">
+
+        <!-- ProgID -->
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\OrpheusMP.AudioFile">
+          <RegistryValue Type="string" Value="Audio File" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\OrpheusMP.AudioFile\DefaultIcon">
+          <RegistryValue Type="string" Value="[INSTALLFOLDER]Orpheus.Desktop.exe,0" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\OrpheusMP.AudioFile\shell\open\command">
+          <RegistryValue Type="string" Value='"[INSTALLFOLDER]Orpheus.Desktop.exe" "%1"' />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\OrpheusMP.AudioFile\shell\open">
+          <RegistryValue Name="FriendlyAppName" Type="string" Value="OrpheusMP" />
+        </RegistryKey>
+
+        <!-- Capabilities (Default Programs) -->
+        <RegistryKey Root="HKLM" Key="SOFTWARE\OrpheusMP\Capabilities">
+          <RegistryValue Name="ApplicationName"        Type="string" Value="OrpheusMP" />
+          <RegistryValue Name="ApplicationDescription" Type="string" Value="Open-source music player" />
+          <RegistryValue Name="ApplicationIcon"        Type="string" Value="[INSTALLFOLDER]Orpheus.Desktop.exe,0" />
+        </RegistryKey>
+
+        <!-- File-extension → ProgID mappings -->
+        <RegistryKey Root="HKLM" Key="SOFTWARE\OrpheusMP\Capabilities\FileAssociations">
+          <RegistryValue Name=".mp3"  Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".flac" Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".ogg"  Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".opus" Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".m4a"  Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".aac"  Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".wav"  Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".wma"  Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".aiff" Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".aif"  Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".ape"  Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".wv"   Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name=".mka"  Type="string" Value="OrpheusMP.AudioFile" />
+        </RegistryKey>
+
+        <!-- MIME-type → ProgID mappings -->
+        <RegistryKey Root="HKLM" Key="SOFTWARE\OrpheusMP\Capabilities\MIMEAssociations">
+          <RegistryValue Name="audio/mpeg"     Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name="audio/flac"     Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name="audio/ogg"      Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name="audio/opus"     Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name="audio/mp4"      Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name="audio/aac"      Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name="audio/x-wav"    Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name="audio/x-ms-wma" Type="string" Value="OrpheusMP.AudioFile" />
+          <RegistryValue Name="audio/x-aiff"   Type="string" Value="OrpheusMP.AudioFile" />
+        </RegistryKey>
+
+        <!-- OpenWithProgids on each extension (shows in "Open with" menu) -->
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.mp3\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.flac\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.ogg\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.opus\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.m4a\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.aac\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.wav\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.wma\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.aiff\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.ape\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.wv\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Classes\.mka\OpenWithProgids">
+          <RegistryValue Name="OrpheusMP.AudioFile" Type="string" Value="" />
+        </RegistryKey>
+
+        <!-- Register with Default Programs -->
+        <RegistryKey Root="HKLM" Key="SOFTWARE\RegisteredApplications">
+          <RegistryValue Name="OrpheusMP" Type="string"
+                         Value="SOFTWARE\OrpheusMP\Capabilities" />
+        </RegistryKey>
+      </Component>
+    </ComponentGroup>
+
+    <!-- ── Icon ───────────────────────────────────────────────────────── -->
+    <Icon Id="OrpheusIcon" SourceFile="$(var.PublishDir)\assets\icon-256.png" />
+
+    <!-- ── Add/Remove Programs entry ─────────────────────────────────── -->
+    <Property Id="ARPPRODUCTICON" Value="OrpheusIcon" />
+    <Property Id="ARPHELPLINK"    Value="https://github.com/your-org/OrpheusMP" />
+
+    <!-- ── Feature tree ──────────────────────────────────────────────── -->
+    <Feature Id="ProductFeature" Title="OrpheusMP" Level="1">
+      <ComponentGroupRef Id="ApplicationFiles" />
+      <ComponentGroupRef Id="Shortcuts" />
+      <ComponentGroupRef Id="DesktopShortcuts" />
+      <ComponentGroupRef Id="FileAssociations" />
+    </Feature>
+
+  </Package>
+</Wix>
