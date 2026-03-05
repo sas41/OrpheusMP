@@ -34,6 +34,9 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Install .NET Android workload
+        run: dotnet workload install android
+
       - name: Restore
         run: dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj
 
@@ -90,6 +93,9 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
+
+      - name: Install .NET Android workload
+        run: dotnet workload install android
 
       - name: Restore
         run: dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj
@@ -162,6 +168,9 @@ jobs:
       # libvlc is system-installed on Linux — no NuGet package available
       - name: Install libvlc
         run: sudo apt-get update && sudo apt-get install -y libvlc-dev vlc
+
+      - name: Install .NET Android workload
+        run: dotnet workload install android
 
       - name: Restore
         run: dotnet restore src/Orpheus.Desktop/Orpheus.Desktop.csproj

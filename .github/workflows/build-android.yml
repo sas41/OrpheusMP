@@ -46,6 +46,9 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
+      - name: Install .NET Android workload
+        run: dotnet workload install android
+
       - name: Restore NuGet packages
         run: |
           dotnet restore src/Orpheus.Android/Orpheus.Android.slnx \
