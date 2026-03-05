@@ -50,19 +50,34 @@ jobs:
             -p:DesktopOnly=true `
             --output publish/windows
 
-      - name: Install WiX v4
+      - name: Install WiX v6
         run: dotnet tool install --global wix
 
-      - name: Add WiX UI extension
-        run: wix extension add WixToolset.UI.wixext
+      - name: Generate MSI version
+        id: msi-version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # MSI requires a numeric version. Use YY.MM.DDxxx where xxx is the
+          # count of workflow runs completed today — guarantees monotonic growth
+          # across multiple releases on the same day.
+          $today    = (Get-Date -Format 'yyyy-MM-dd')
+          $repoSlug = "${{ github.repository }}"
+          $runs     = gh api "repos/$repoSlug/actions/workflows/release.yml/runs?per_page=100&created=>=$today" `
+                        --jq '.workflow_runs | length'
+          $idx      = [int]$runs
+          $datePart = (Get-Date -Format 'yy.MM.dd')
+          $v        = "$datePart$($idx.ToString('000'))"
+          echo "value=$v" >> $env:GITHUB_OUTPUT
 
       - name: Build .msi
         shell: pwsh
         run: |
           wix build scripts/install/windows/OrpheusMP.wxs `
-            -d PublishDir=publish/windows `
-            -d Version="${{ inputs.version }}" `
-            -ext WixToolset.UI.wixext `
+            -arch x64 `
+            -d SourceDir=publish/windows `
+            -d Version="${{ steps.msi-version.outputs.value }}" `
             -o "OrpheusMP-${{ inputs.version }}-windows-x64.msi"
 
       - name: Set artifact metadata

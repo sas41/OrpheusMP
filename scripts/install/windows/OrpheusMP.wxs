@@ -1,38 +1,30 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  OrpheusMP — WiX v4 installer source
-  Build:
-    wix build OrpheusMP.wxs -o OrpheusMP.msi
-  Or via CI (see build-desktop.yml which uses `dotnet tool run wix build`).
+  OrpheusMP — WiX v6 installer source (silent/no UI)
+  Build (CI):
+    wix build OrpheusMP.wxs -arch x64 -d SourceDir=<publish-output> -d Version=1.2.3.4 -o OrpheusMP.msi
 
   What this installer does:
-    - Installs all application files to %ProgramFiles%\OrpheusMP\
-    - Creates a Start Menu shortcut
-    - Creates a Desktop shortcut
+    - Harvests all files from SourceDir into %ProgramFiles%\OrpheusMP\
+    - Creates Start Menu and Desktop shortcuts
     - Registers a ProgID (OrpheusMP.AudioFile) for audio file types
-    - Registers audio file-extension and MIME-type associations silently
+    - Registers file-extension and MIME-type associations silently
     - Registers with Windows "Default Programs" (Capabilities)
     - Creates an entry in "Apps & features" with a proper uninstaller
+  Note: no WixUI dialog set — install is silent (msiexec /i OrpheusMP.msi /quiet).
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+<Wix xmlns="http://wixtoolset.org/schemas/v6/wxs">
 
   <Package
     Name="OrpheusMP"
     Manufacturer="OrpheusMP Contributors"
-    Version="1.0.0.0"
+    Version="$(Version)"
     UpgradeCode="4A8B2C1D-3E5F-4A6B-8C7D-9E0F1A2B3C4D"
-    Scope="perMachine"
-    Compressed="yes">
+    Scope="perMachine">
 
-    <!-- Allow upgrades; remove older versions automatically -->
     <MajorUpgrade DowngradeErrorMessage="A newer version of OrpheusMP is already installed." />
 
-    <MediaTemplate EmbedCab="yes" />
 
-    <!-- ── UI ────────────────────────────────────────────────────────── -->
-    <ui:WixUI Id="WixUI_InstallDir" />
-    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
 
     <!-- ── Install directory ──────────────────────────────────────────── -->
     <StandardDirectory Id="ProgramFiles64Folder">
@@ -45,35 +37,13 @@
 
     <StandardDirectory Id="DesktopFolder" />
 
-    <!-- ── Application files ─────────────────────────────────────────── -->
-    <!--
-      At build time the CI step runs:
-        wix build OrpheusMP.wxs -d PublishDir=<path-to-dotnet-publish-output>
-      All files under that directory are harvested via the heat/HarvestDirectory
-      extension, OR you can list them explicitly here.
-
-      The simplest approach that works without heat is to use a WiX v4
-      HarvestDirectory directive. Add the WiX.Toolset.HeatWave NuGet package
-      or use the `wix extension add WixToolset.Util.wixext` approach.
-
-      For a self-contained publish the only file you must reference explicitly
-      is the main EXE; everything else can be harvested.
-    -->
-    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER">
-      <!-- Main executable — required for shortcuts and ProgID -->
-      <Component Id="MainExecutable" Guid="B1C2D3E4-F5A6-7B8C-9D0E-1F2A3B4C5D6E">
-        <File Id="OrpheusExe"
-              Source="$(var.PublishDir)\Orpheus.Desktop.exe"
-              KeyPath="yes" />
-      </Component>
-
-      <!-- All remaining published files (DLLs, assets, etc.) -->
-      <!-- WiX v4: use HarvestDirectory in a .wixproj, or list files here.
-           The CI workflow uses `wix build` with -ext WixToolset.Util.wixext
-           and passes the publish directory so all files are auto-included. -->
+    <!-- ── Application files (auto-harvested from SourceDir) ──────────── -->
+    <ComponentGroup Id="ApplicationFiles" Directory="INSTALLFOLDER"
+                    Source="$(SourceDir)">
+      <Files Include="$(SourceDir)\**" />
     </ComponentGroup>
 
-    <!-- ── Shortcuts ─────────────────────────────────────────────────── -->
+    <!-- ── Shortcuts ──────────────────────────────────────────────────── -->
     <ComponentGroup Id="Shortcuts" Directory="ApplicationProgramsFolder">
       <Component Id="StartMenuShortcut" Guid="C2D3E4F5-A6B7-8C9D-0E1F-2A3B4C5D6E7F">
         <Shortcut Id="StartMenuShortcut"
@@ -212,7 +182,7 @@
     </ComponentGroup>
 
     <!-- ── Icon ───────────────────────────────────────────────────────── -->
-    <Icon Id="OrpheusIcon" SourceFile="$(var.PublishDir)\assets\icon-256.png" />
+    <Icon Id="OrpheusIcon" SourceFile="$(SourceDir)\assets\icon-256.png" />
 
     <!-- ── Add/Remove Programs entry ─────────────────────────────────── -->
     <Property Id="ARPPRODUCTICON" Value="OrpheusIcon" />
