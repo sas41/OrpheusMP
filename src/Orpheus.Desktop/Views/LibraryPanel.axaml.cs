@@ -175,10 +175,17 @@ public partial class LibraryPanel : UserControl
         if (ViewModel is null)
             return;
 
-        if (sender is TreeView tree && tree.SelectedItem is LibraryNode node
-            && node.NodeType == LibraryNodeType.Folder)
+        if (sender is not TreeView tree || tree.SelectedItem is not LibraryNode node)
+            return;
+
+        switch (node.NodeType)
         {
-            await ViewModel.SelectFolderAsync(node.Path);
+            case LibraryNodeType.Folder:
+                await ViewModel.SelectFolderAsync(node.Path);
+                break;
+            case LibraryNodeType.Playlist:
+                await ViewModel.SelectPlaylistAsync(node.Path);
+                break;
         }
     }
 

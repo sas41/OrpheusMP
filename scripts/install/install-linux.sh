@@ -39,6 +39,7 @@ EXEC_NAME="Orpheus.Desktop"
 
 # ── Locate files relative to this script ─────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="${SCRIPT_DIR}/app"
 
 # ── Uninstall mode ────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--uninstall" ]]; then
@@ -75,10 +76,8 @@ fi
 echo "Installing ${APP_DISPLAY} to ${LIB_DIR} ..."
 mkdir -p "$LIB_DIR" "$BIN_DIR"
 
-# Copy everything except this installer script
-rsync -a --exclude="install-linux.sh" "${SCRIPT_DIR}/" "${LIB_DIR}/" 2>/dev/null || \
-  (cd "$SCRIPT_DIR" && find . -not -name "install-linux.sh" -print0 | \
-    cpio -0pdm "$LIB_DIR")
+rsync -a "${APP_DIR}/" "${LIB_DIR}/" 2>/dev/null || \
+  (cd "$APP_DIR" && find . -print0 | cpio -0pdm "$LIB_DIR")
 
 chmod +x "${LIB_DIR}/${EXEC_NAME}"
 
@@ -91,8 +90,8 @@ chmod +x "${BIN_DIR}/${APP_NAME}"
 echo "Launcher written to ${BIN_DIR}/${APP_NAME}"
 
 # ── Install icon ──────────────────────────────────────────────────────────
-ICON_PNG="${SCRIPT_DIR}/assets/icon-256.png"
-ICON_SVG="${SCRIPT_DIR}/assets/icon.svg"
+ICON_PNG="${APP_DIR}/assets/icon-256.png"
+ICON_SVG="${APP_DIR}/assets/icon.svg"
 
 if [[ -f "$ICON_PNG" ]]; then
   mkdir -p "${ICON_DIR}/256x256/apps"

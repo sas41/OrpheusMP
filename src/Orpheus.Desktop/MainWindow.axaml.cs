@@ -1085,7 +1085,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _currentTracks = tracks;
 
         var folders = await _library.GetWatchedFoldersAsync();
-        var treeNodes = await Task.Run(() => BuildFolderTree(folders, tracks, pruneEmpty: isSearch, showFiles: _showLibraryFiles));
+        var treeNodes = await Task.Run(() => BuildFolderTree(folders, tracks, pruneEmpty: isSearch || tracks.Count == 0, showFiles: _showLibraryFiles));
 
         var state = ((App)Application.Current!).State;
         var expandedPaths = new HashSet<string>(state.ExpandedPaths, StringComparer.OrdinalIgnoreCase);
@@ -1478,13 +1478,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
                 prunedChildren.Add(pruned);
         }
 
-        // Keep this folder only if it has matched tracks beneath it
-        // (Meta != "Empty" / "Missing") OR has surviving children after pruning.
-        var hasMatchedTracks = node.Meta != Resources.Empty && node.Meta != Resources.Missing;
-        if (!hasMatchedTracks && prunedChildren.Count == 0)
+        // Keep this folder only if it has matched tracks beneath it OR has
+        // surviving children (e.g. subfolders with matched tracks) after pruning.
+        if (node.TrackCount == 0 && prunedChildren.Count == 0)
             return null;
 
-        return new LibraryNode(node.Name, node.Meta, node.Path, prunedChildren);
+        return new LibraryNode(node.Name, node.Meta, node.Path, prunedChildren, trackCount: node.TrackCount);
     }
 
     private static Dictionary<string, int> BuildTrackCounts(IEnumerable<LibraryTrack> tracks)
@@ -1575,7 +1574,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             meta = Resources.Empty;
         }
 
-        return new LibraryNode(name, meta, path, children);
+        return new LibraryNode(name, meta, path, children, trackCount: trackCount);
     }
 
     /// <summary>
@@ -1864,6 +1863,64 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).ToList());
 
         _currentTracks = filteredTracks;
+        await RefreshTrackViewAsync(resetSelection: true);
+    }
+
+    /// <summary>
+    /// Show the contents of a playlist file in the track list panel.
+    /// Entries that are in the library use their cached metadata; entries not
+    /// yet indexed fall back to a stub track so they still appear in the list.
+    /// Playlist order is preserved.
+    /// </summary>
+    public async Task SelectPlaylistAsync(string playlistPath)
+    {
+        if (string.IsNullOrWhiteSpace(playlistPath))
+            return;
+
+        var tracks = await Task.Run(() =>
+        {
+            IReadOnlyList<PlaylistItem> items;
+            try
+            {
+                items = PlaylistFileReader.ReadFile(playlistPath);
+            }
+            catch
+            {
+                return new List<LibraryTrack>();
+            }
+
+            var byPath = _allTracks.ToDictionary(t => t.FilePath, StringComparer.OrdinalIgnoreCase);
+
+            var result = new List<LibraryTrack>(items.Count);
+            foreach (var item in items)
+            {
+                if (item.Source.Type != MediaSourceType.LocalFile)
+                    continue;
+
+                var filePath = item.Source.Uri.LocalPath;
+
+                if (byPath.TryGetValue(filePath, out var libraryTrack))
+                {
+                    result.Add(libraryTrack);
+                }
+                else if (File.Exists(filePath))
+                {
+                    // File exists but is not in the library — create a stub so
+                    // it still shows up in the track list.
+                    result.Add(new LibraryTrack
+                    {
+                        FilePath = filePath,
+                        Title    = item.Metadata?.Title
+                                   ?? Path.GetFileNameWithoutExtension(filePath),
+                        Artist   = item.Metadata?.Artist,
+                        Album    = item.Metadata?.Album,
+                    });
+                }
+            }
+            return result;
+        });
+
+        _currentTracks = tracks;
         await RefreshTrackViewAsync(resetSelection: true);
     }
 
@@ -2750,13 +2807,15 @@ public sealed class LibraryNode : INotifyPropertyChanged
 
     public LibraryNode(string name, string meta, string path,
         IReadOnlyList<LibraryNode>? children = null, bool isExpanded = false,
-        LibraryNodeType nodeType = LibraryNodeType.Folder)
+        LibraryNodeType nodeType = LibraryNodeType.Folder,
+        int trackCount = 0)
     {
         Name = name;
         _meta = meta;
         _isExpanded = isExpanded;
         Path = path;
         NodeType = nodeType;
+        TrackCount = trackCount;
         Children = children is null
             ? new ObservableCollection<LibraryNode>()
             : new ObservableCollection<LibraryNode>(children);
@@ -2765,6 +2824,7 @@ public sealed class LibraryNode : INotifyPropertyChanged
     public string Name { get; }
     public string Path { get; }
     public LibraryNodeType NodeType { get; }
+    public int TrackCount { get; }
     public ObservableCollection<LibraryNode> Children { get; }
 
     public string Meta

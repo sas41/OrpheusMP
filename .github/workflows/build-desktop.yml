@@ -91,8 +91,10 @@ jobs:
       - name: Zip release
         shell: pwsh
         run: |
-          Compress-Archive -Path publish/windows/* `
-            -DestinationPath "${{ steps.meta.outputs.artifact-name }}.zip"
+          $zipName = "${{ steps.meta.outputs.artifact-name }}"
+          New-Item -ItemType Directory -Path "zip-stage/app" -Force | Out-Null
+          Copy-Item -Recurse -Path "publish/windows/*" -Destination "zip-stage/app/"
+          Compress-Archive -Path "zip-stage/*" -DestinationPath "$zipName.zip"
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
@@ -179,7 +181,9 @@ jobs:
 
       - name: Zip release
         run: |
-          cd publish/macos-universal
+          mkdir -p zip-stage/app
+          cp -R publish/macos-universal/. zip-stage/app/
+          cd zip-stage
           zip -r "../../${{ steps.meta.outputs.artifact-name }}.zip" .
 
       - name: Upload pkg artifact
@@ -231,8 +235,13 @@ jobs:
             -p:DesktopOnly=true \
             --output publish/linux
 
-      - name: Copy install script
-        run: cp scripts/install/install-linux.sh publish/linux/
+      - name: Stage zip layout
+        run: |
+          mkdir -p publish/linux-zip/app/assets
+          cp -r publish/linux/. publish/linux-zip/app/
+          cp scripts/install/install-linux.sh publish/linux-zip/
+          cp assets/icon-256.png publish/linux-zip/app/assets/
+          cp assets/icon.svg publish/linux-zip/app/assets/
 
       - name: Set artifact metadata
         id: meta
@@ -242,7 +251,7 @@ jobs:
 
       - name: Zip release
         run: |
-          cd publish/linux
+          cd publish/linux-zip
           zip -r "../../${{ steps.meta.outputs.artifact-name }}.zip" .
 
       - name: Upload artifact

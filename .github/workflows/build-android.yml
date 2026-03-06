@@ -54,9 +54,9 @@ jobs:
           dotnet restore src/Orpheus.Android/Orpheus.Android.csproj \
             -p:AndroidSdkDirectory="$ANDROID_HOME"
 
-      - name: Build APK (Release)
+      - name: Publish APK (Release)
         run: |
-          dotnet build src/Orpheus.Android/Orpheus.Android.csproj \
+          dotnet publish src/Orpheus.Android/Orpheus.Android.csproj \
             --configuration Release \
             --framework net10.0-android \
             -p:AndroidSdkDirectory="$ANDROID_HOME" \

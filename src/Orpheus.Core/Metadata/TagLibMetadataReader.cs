@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace Orpheus.Core.Metadata;
 
 /// <summary>
@@ -20,41 +22,60 @@ public sealed class TagLibMetadataReader : IMetadataReader
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
-        using var file = TagLib.File.Create(filePath);
-        var tag = file.Tag;
-        var properties = file.Properties;
-
-        byte[]? albumArt = null;
-        string? albumArtMime = null;
-
-        if (tag.Pictures.Length > 0)
+        // TagLib writes parse warnings directly to stderr with no public hook to
+        // suppress them. Redirect stderr around the call to keep the console clean.
+        // These messages ("MPEG header did not match synch", "ID3v2 size byte > 128")
+        // are diagnostics for malformed/corrupt files — TagLib still returns whatever
+        // data it could recover, so they are not actionable errors for us.
+        var savedError = Console.Error;
+        Console.SetError(TextWriter.Null);
+        TagLib.File file;
+        try
         {
-            var picture = tag.Pictures[0];
-            albumArt = picture.Data.Data;
-            albumArtMime = picture.MimeType;
+            file = TagLib.File.Create(filePath, TagLib.ReadStyle.Average);
+        }
+        finally
+        {
+            Console.SetError(savedError);
         }
 
-        return new TrackMetadata
+        using (file)
         {
-            Title = NullIfEmpty(tag.Title),
-            Artist = NullIfEmpty(tag.FirstPerformer),
-            Album = NullIfEmpty(tag.Album),
-            AlbumArtist = NullIfEmpty(tag.FirstAlbumArtist),
-            TrackNumber = tag.Track > 0 ? tag.Track : null,
-            TrackCount = tag.TrackCount > 0 ? tag.TrackCount : null,
-            DiscNumber = tag.Disc > 0 ? tag.Disc : null,
-            Year = tag.Year > 0 ? tag.Year : null,
-            Genre = NullIfEmpty(tag.FirstGenre),
-            Duration = properties.Duration > TimeSpan.Zero ? properties.Duration : null,
-            Bitrate = properties.AudioBitrate > 0 ? properties.AudioBitrate : null,
-            SampleRate = properties.AudioSampleRate > 0 ? properties.AudioSampleRate : null,
-            Channels = properties.AudioChannels > 0 ? properties.AudioChannels : null,
-            Codec = NullIfEmpty(properties.Description),
-            AlbumArt = albumArt,
-            AlbumArtMimeType = albumArtMime,
-            Comment = NullIfEmpty(tag.Comment),
-            Lyrics = NullIfEmpty(tag.Lyrics),
-        };
+            var tag = file.Tag;
+            var properties = file.Properties;
+
+            byte[]? albumArt = null;
+            string? albumArtMime = null;
+
+            if (tag.Pictures.Length > 0)
+            {
+                var picture = tag.Pictures[0];
+                albumArt = picture.Data.Data;
+                albumArtMime = picture.MimeType;
+            }
+
+            return new TrackMetadata
+            {
+                Title = NullIfEmpty(tag.Title),
+                Artist = NullIfEmpty(tag.FirstPerformer),
+                Album = NullIfEmpty(tag.Album),
+                AlbumArtist = NullIfEmpty(tag.FirstAlbumArtist),
+                TrackNumber = tag.Track > 0 ? tag.Track : null,
+                TrackCount = tag.TrackCount > 0 ? tag.TrackCount : null,
+                DiscNumber = tag.Disc > 0 ? tag.Disc : null,
+                Year = tag.Year > 0 ? tag.Year : null,
+                Genre = NullIfEmpty(tag.FirstGenre),
+                Duration = properties.Duration > TimeSpan.Zero ? properties.Duration : null,
+                Bitrate = properties.AudioBitrate > 0 ? properties.AudioBitrate : null,
+                SampleRate = properties.AudioSampleRate > 0 ? properties.AudioSampleRate : null,
+                Channels = properties.AudioChannels > 0 ? properties.AudioChannels : null,
+                Codec = NullIfEmpty(properties.Description),
+                AlbumArt = albumArt,
+                AlbumArtMimeType = albumArtMime,
+                Comment = NullIfEmpty(tag.Comment),
+                Lyrics = NullIfEmpty(tag.Lyrics),
+            };
+        }
     }
 
     private static string? NullIfEmpty(string? value) =>
