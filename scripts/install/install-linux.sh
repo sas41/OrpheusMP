@@ -185,6 +185,12 @@ if command -v gtk-update-icon-cache &>/dev/null; then
   gtk-update-icon-cache -q -t -f "${ICON_DIR}" 2>/dev/null || true
 fi
 
+if command -v kbuildsycoca6 &>/dev/null; then
+  kbuildsycoca6 2>/dev/null || true
+elif command -v kbuildsycoca5 &>/dev/null; then
+  kbuildsycoca5 2>/dev/null || true
+fi
+
 # ── Optionally set as default handler ────────────────────────────────────
 echo ""
 CURRENT_DEFAULT=$(xdg-mime query default audio/mpeg 2>/dev/null || true)
