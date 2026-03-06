@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using System.Linq;
 using System;
 
 namespace Orpheus.Desktop.Views;
@@ -75,7 +76,8 @@ public partial class QueuePanel : UserControl
         var svc = ManagedDragService.Instance;
         return svc.Payload is not null &&
                (svc.Payload.ContainsKey(DragFormats.TrackIndex) ||
-                svc.Payload.ContainsKey(DragFormats.LibraryNodePath));
+                svc.Payload.ContainsKey(DragFormats.TrackIndices) ||
+                 svc.Payload.ContainsKey(DragFormats.LibraryNodePath));
     }
 
     private void OnManagedDragStarted()
@@ -152,6 +154,21 @@ public partial class QueuePanel : UserControl
         if (ViewModel is null) return;
 
         // Drop from TrackListPanel
+        if (payload.TryGetValue(DragFormats.TrackIndices, out var trackIndicesStr))
+        {
+            var indices = trackIndicesStr
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(value => int.TryParse(value, out var index) ? index : -1)
+                .Where(index => index >= 0)
+                .ToArray();
+
+            if (indices.Length > 0)
+            {
+                await ViewModel.AddSelectedTracksToQueueAsync(indices, insertAt);
+                return;
+            }
+        }
+
         if (payload.TryGetValue(DragFormats.TrackIndex, out var trackIndexStr)
             && int.TryParse(trackIndexStr, out var trackIndex))
         {

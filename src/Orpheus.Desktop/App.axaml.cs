@@ -56,7 +56,6 @@ public partial class App : Application
         {
             var mainWindow = new MainWindow();
             desktop.MainWindow = mainWindow;
-            desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
             RestoreWindowGeometry(mainWindow);
 
@@ -66,6 +65,8 @@ public partial class App : Application
             // Create tray icon if enabled in config
             if (Config.EnableTrayIcon)
                 CreateTrayIcon();
+
+            UpdateShutdownMode();
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -88,6 +89,8 @@ public partial class App : Application
             if (_trayIcon is not null)
                 _trayIcon.IsVisible = false;
         }
+
+        UpdateShutdownMode();
     }
 
     public static void SetLanguage(string cultureCode)
@@ -233,5 +236,15 @@ public partial class App : Application
         {
             desktop.Shutdown();
         }
+    }
+
+    private void UpdateShutdownMode()
+    {
+        if (ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+            return;
+
+        desktop.ShutdownMode = IsTrayIconActive
+            ? ShutdownMode.OnExplicitShutdown
+            : ShutdownMode.OnMainWindowClose;
     }
 }

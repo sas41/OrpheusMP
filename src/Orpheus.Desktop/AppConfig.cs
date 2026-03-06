@@ -123,6 +123,27 @@ public sealed class AppConfig
     [JsonPropertyName("showBitrate")]
     public bool ShowBitrate { get; set; } = false;
 
+    [JsonPropertyName("trackSortField")]
+    public string TrackSortField { get; set; } = nameof(Desktop.TrackSortField.Title);
+
+    [JsonPropertyName("trackSortAscending")]
+    public bool TrackSortAscending { get; set; } = true;
+
+    [JsonPropertyName("hideMissingTitle")]
+    public bool HideMissingTitle { get; set; }
+
+    [JsonPropertyName("hideMissingArtist")]
+    public bool HideMissingArtist { get; set; }
+
+    [JsonPropertyName("hideMissingAlbum")]
+    public bool HideMissingAlbum { get; set; }
+
+    [JsonPropertyName("hideMissingGenre")]
+    public bool HideMissingGenre { get; set; }
+
+    [JsonPropertyName("hideMissingTrackNumber")]
+    public bool HideMissingTrackNumber { get; set; }
+
     // ── Serialization ────────────────────────────────────────
 
     private static readonly JsonSerializerOptions JsonOptions = new()

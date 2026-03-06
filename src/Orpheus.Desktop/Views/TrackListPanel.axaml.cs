@@ -2,9 +2,12 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Layout;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Lang = Orpheus.Desktop.Lang;
+using System.Collections.Generic;
+using System.Linq;
 using System;
 
 namespace Orpheus.Desktop.Views;
@@ -14,6 +17,11 @@ public partial class TrackListPanel : UserControl
     private Point _dragStartPoint;
     private bool _isDragPending;
     private bool _isManagedDragging;
+    private bool _isInternalReordering;
+    private int _currentInsertIndex = -1;
+    private TrackRow? _pressedRow;
+    private IReadOnlyList<int> _pressedSelection = Array.Empty<int>();
+    private IReadOnlyList<int> _activeDragSelection = Array.Empty<int>();
     private IPointer? _capturedPointer;
     private TopLevel? _dragTopLevel;
     private const double DragThreshold = 8;
@@ -36,11 +44,22 @@ public partial class TrackListPanel : UserControl
         {
             TracksGrid.AddHandler(PointerPressedEvent, OnGridPointerPressed, RoutingStrategies.Tunnel);
             TracksGrid.AddHandler(PointerMovedEvent, OnGridPointerMoved, RoutingStrategies.Tunnel);
+            TracksGrid.SelectionChanged += OnTracksGridSelectionChanged;
         }
+    }
+
+    protected override void OnUnloaded(RoutedEventArgs e)
+    {
+        base.OnUnloaded(e);
+        if (TracksGrid is not null)
+            TracksGrid.SelectionChanged -= OnTracksGridSelectionChanged;
     }
 
     private void OnGridPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (TracksGrid is null)
+            return;
+
         if (!e.GetCurrentPoint(TracksGrid).Properties.IsLeftButtonPressed)
             return;
 
@@ -61,11 +80,13 @@ public partial class TrackListPanel : UserControl
             visual = visual.GetVisualParent();
         }
 
-        if (visual is not DataGridRow)
+        if (visual is not DataGridRow row)
             return;
 
         _dragStartPoint = e.GetPosition(TracksGrid);
         _isDragPending = true;
+        _pressedRow = row.DataContext as TrackRow;
+        _pressedSelection = GetSelectedIndices();
     }
 
     private void OnGridPointerMoved(object? sender, PointerEventArgs e)
@@ -76,6 +97,8 @@ public partial class TrackListPanel : UserControl
         if (!e.GetCurrentPoint(TracksGrid).Properties.IsLeftButtonPressed)
         {
             _isDragPending = false;
+            _pressedRow = null;
+            _pressedSelection = Array.Empty<int>();
             return;
         }
 
@@ -86,17 +109,35 @@ public partial class TrackListPanel : UserControl
 
         _isDragPending = false;
 
-        var index = ViewModel.SelectedTrackIndex;
+        if (_pressedSelection.Count > 1)
+        {
+            RestoreSelection(_pressedSelection);
+        }
+        else if (_pressedRow is not null)
+        {
+            EnsureRowSelectedForDrag(_pressedRow);
+        }
+
+        var selectedIndices = GetSelectedIndices();
+        _activeDragSelection = selectedIndices;
+        var index = selectedIndices.Count > 0 ? selectedIndices[0] : ViewModel.SelectedTrackIndex;
         if (index < 0) return;
 
         var trackRow = index < ViewModel.Tracks.Count ? ViewModel.Tracks[index] : null;
-        var label = trackRow?.Title ?? trackRow?.FileName ?? Lang.Resources.Track;
+        var label = selectedIndices.Count > 1
+            ? $"{selectedIndices.Count} tracks"
+            : trackRow?.Title ?? trackRow?.FileName ?? Lang.Resources.Track;
 
-        var payload = new System.Collections.Generic.Dictionary<string, string>
+        var payload = new Dictionary<string, string>
         {
             [DragFormats.TrackIndex] = index.ToString(),
             [DragFormats.DragLabel] = label,
         };
+
+        if (selectedIndices.Count > 1)
+            payload[DragFormats.TrackIndices] = string.Join(",", selectedIndices);
+
+        _isInternalReordering = ViewModel is not null && !ViewModel.IsSearchActive;
 
         // Begin managed drag: capture pointer, show preview, notify drop targets
         var topLevel = TopLevel.GetTopLevel(this);
@@ -131,18 +172,52 @@ public partial class TrackListPanel : UserControl
         var clientPos = e.GetPosition(_dragTopLevel);
         DragPreviewService.Move(_dragTopLevel, clientPos);
         ManagedDragService.Instance.Move(clientPos);
+
+        if (_isInternalReordering && TracksGrid is not null)
+        {
+            var point = e.GetPosition(TracksGrid);
+            if (IsPointerOverTracksGrid(point))
+            {
+                var insertIndex = GetTrackInsertionIndex(point);
+                ShowInsertIndicator(insertIndex);
+            }
+            else
+            {
+                HideInsertIndicator();
+            }
+        }
+        else
+        {
+            HideInsertIndicator();
+        }
     }
 
     private void OnTopLevelPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         if (!_isManagedDragging) return;
+
+        if (_isInternalReordering && TracksGrid is not null && ViewModel is not null)
+        {
+            var point = e.GetPosition(TracksGrid);
+            if (IsPointerOverTracksGrid(point))
+            {
+                var insertIndex = GetTrackInsertionIndex(point);
+                ViewModel.MoveTrackRows(_activeDragSelection, insertIndex);
+            }
+        }
+
         EndManagedDrag();
     }
 
     private void EndManagedDrag()
     {
         _isManagedDragging = false;
+        _isInternalReordering = false;
         _isDragPending = false;
+        _pressedRow = null;
+        _pressedSelection = Array.Empty<int>();
+        _activeDragSelection = Array.Empty<int>();
+        HideInsertIndicator();
 
         ManagedDragService.Instance.End();
         DragPreviewService.Hide();
@@ -159,6 +234,11 @@ public partial class TrackListPanel : UserControl
     }
 
     private MainWindowViewModel? ViewModel => DataContext as MainWindowViewModel;
+
+    private void OnTracksGridSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        SyncSelectedRows();
+    }
 
     public async void OnTrackDoubleTapped(object? sender, Avalonia.Input.TappedEventArgs e)
     {
@@ -214,7 +294,13 @@ public partial class TrackListPanel : UserControl
 
             if (tag == "Ascending")
             {
-                menuItem.IsChecked = ViewModel.SortAscending;
+                menuItem.IsChecked = ViewModel.IsTrackSortEnabled && ViewModel.SortAscending;
+                continue;
+            }
+
+            if (!ViewModel.IsTrackSortEnabled)
+            {
+                menuItem.IsChecked = false;
                 continue;
             }
 
@@ -386,6 +472,13 @@ public partial class TrackListPanel : UserControl
     public void OnTracksGridLoaded(object? sender, RoutedEventArgs e)
     {
         ApplyColumnVisibility();
+        SyncSelectedRows();
+    }
+
+    public async void OnSavePlaylistOrderClick(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel is not null)
+            await ViewModel.SaveTrackOrderAsync();
     }
 
     private void ApplyColumnVisibility()
@@ -412,5 +505,136 @@ public partial class TrackListPanel : UserControl
         }
 
         Dispatcher.UIThread.Post(() => TracksGrid.InvalidateMeasure());
+    }
+
+    private void SyncSelectedRows()
+    {
+        if (TracksGrid is null || ViewModel is null)
+            return;
+
+        ViewModel.SetSelectedTrackIndices(GetSelectedIndices());
+    }
+
+    private void EnsureRowSelectedForDrag(TrackRow row)
+    {
+        if (TracksGrid?.SelectedItems is null)
+            return;
+
+        if (!TracksGrid.SelectedItems.OfType<TrackRow>().Any(selected => selected == row))
+        {
+            TracksGrid.SelectedItems.Clear();
+            TracksGrid.SelectedItems.Add(row);
+            SyncSelectedRows();
+        }
+    }
+
+    private IReadOnlyList<int> GetSelectedIndices()
+    {
+        if (TracksGrid is null || ViewModel is null)
+            return Array.Empty<int>();
+
+        return TracksGrid.SelectedItems?
+            .OfType<TrackRow>()
+            .Select(row => ViewModel.Tracks.IndexOf(row))
+            .Where(index => index >= 0)
+            .Distinct()
+            .OrderBy(index => index)
+            .ToArray() ?? Array.Empty<int>();
+    }
+
+    private void RestoreSelection(IReadOnlyList<int> indices)
+    {
+        if (TracksGrid?.SelectedItems is null || ViewModel is null)
+            return;
+
+        TracksGrid.SelectedItems.Clear();
+        foreach (var index in indices)
+        {
+            if (index >= 0 && index < ViewModel.Tracks.Count)
+                TracksGrid.SelectedItems.Add(ViewModel.Tracks[index]);
+        }
+
+        SyncSelectedRows();
+    }
+
+    private int GetTrackInsertionIndex(Point point)
+    {
+        if (TracksGrid?.ItemsSource is null)
+            return 0;
+
+        var rows = TracksGrid.GetVisualDescendants().OfType<DataGridRow>().OrderBy(row => row.Bounds.Y).ToList();
+        foreach (var row in rows)
+        {
+            var rowTop = row.TranslatePoint(new Point(0, 0), TracksGrid);
+            if (rowTop is null)
+                continue;
+
+            var midY = rowTop.Value.Y + row.Bounds.Height / 2;
+            if (point.Y < midY)
+                return GetRowIndex(row);
+        }
+
+        return ViewModel?.Tracks.Count ?? 0;
+    }
+
+    private void ShowInsertIndicator(int index)
+    {
+        if (TracksGrid is null || TrackInsertIndicator is null)
+            return;
+
+        _currentInsertIndex = index;
+
+        var rows = TracksGrid.GetVisualDescendants().OfType<DataGridRow>().OrderBy(row => row.Bounds.Y).ToList();
+        double top;
+
+        if (rows.Count == 0)
+        {
+            top = TracksGrid.ColumnHeaderHeight;
+        }
+        else if (index <= 0)
+        {
+            var firstTop = rows[0].TranslatePoint(new Point(0, 0), TracksGrid);
+            top = firstTop?.Y ?? TracksGrid.ColumnHeaderHeight;
+        }
+        else if (index >= rows.Count)
+        {
+            var last = rows[^1];
+            var lastTop = last.TranslatePoint(new Point(0, 0), TracksGrid);
+            top = (lastTop?.Y ?? TracksGrid.ColumnHeaderHeight) + last.Bounds.Height;
+        }
+        else
+        {
+            var rowTop = rows[index].TranslatePoint(new Point(0, 0), TracksGrid);
+            top = rowTop?.Y ?? TracksGrid.ColumnHeaderHeight;
+        }
+
+        TrackInsertIndicator.Margin = new Thickness(8, Math.Max(TracksGrid.ColumnHeaderHeight, top) - 1.5, 8, 0);
+        TrackInsertIndicator.VerticalAlignment = VerticalAlignment.Top;
+        TrackInsertIndicator.IsVisible = true;
+    }
+
+    private void HideInsertIndicator()
+    {
+        _currentInsertIndex = -1;
+        if (TrackInsertIndicator is not null)
+            TrackInsertIndicator.IsVisible = false;
+    }
+
+    private int GetRowIndex(DataGridRow row)
+    {
+        if (ViewModel is null || row.DataContext is not TrackRow trackRow)
+            return -1;
+
+        return ViewModel.Tracks.IndexOf(trackRow);
+    }
+
+    private bool IsPointerOverTracksGrid(Point point)
+    {
+        if (TracksGrid is null)
+            return false;
+
+        return point.X >= 0 && point.Y >= 0
+            && point.X <= TracksGrid.Bounds.Width
+            && point.Y <= TracksGrid.Bounds.Height;
     }
 }

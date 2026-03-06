@@ -289,7 +289,16 @@ namespace Orpheus.Desktop.Lang {
                 return ResourceManager.GetString("Save", resourceCulture);
             }
         }
-        
+
+        /// <summary>
+        ///   Looks up a localized string similar to Save playlist order.
+        /// </summary>
+        public static string SavePlaylistOrder {
+            get {
+                return ResourceManager.GetString("SavePlaylistOrder", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to Discard.
         /// </summary>

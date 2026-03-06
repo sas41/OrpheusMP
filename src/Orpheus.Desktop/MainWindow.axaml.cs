@@ -272,8 +272,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private readonly ObservableCollection<TrackRow> _tracks = new();
     private readonly ObservableCollection<QueueItem> _queue = new();
     private IReadOnlyList<LibraryTrack> _allTracks = Array.Empty<LibraryTrack>();
-    private IReadOnlyList<LibraryTrack> _currentTracks = Array.Empty<LibraryTrack>();
-    private IReadOnlyList<LibraryTrack> _viewTracks = Array.Empty<LibraryTrack>();
+    private IReadOnlyList<TrackRow> _currentTracks = Array.Empty<TrackRow>();
+    private IReadOnlyList<TrackRow> _viewTracks = Array.Empty<TrackRow>();
     private readonly string _databasePath;
     private readonly string _musicFolder;
     private bool _suppressPlaylistChanged;
@@ -297,6 +297,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private string _searchQuery = string.Empty;
     private bool _isSearchActive;
     private int _selectedTrackIndex = -1;
+    private IReadOnlyList<int> _selectedTrackIndices = Array.Empty<int>();
     private int _currentQueueIndex = -1;
     private TrackSortField _sortField = TrackSortField.Title;
     private bool _sortAscending = true;
@@ -325,6 +326,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private bool _showLibraryFiles;
     private bool _isQueueDirty;
     private SessionMode _sessionMode = SessionMode.Library;
+    private bool _isTrackSortEnabled = true;
+    private bool _isPlaylistView;
+    private bool _isTrackOrderDirty;
+    private string? _currentPlaylistPath;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -525,7 +530,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public int SelectedTrackIndex
     {
         get => _selectedTrackIndex;
-        set => SetField(ref _selectedTrackIndex, value);
+        set
+        {
+            if (SetField(ref _selectedTrackIndex, value) && value >= 0)
+                _selectedTrackIndices = new[] { value };
+        }
     }
 
     public int CurrentQueueIndex
@@ -556,13 +565,51 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         private set => SetField(ref _sortAscending, value);
     }
 
+    public bool IsTrackSortEnabled
+    {
+        get => _isTrackSortEnabled;
+        private set
+        {
+            if (SetField(ref _isTrackSortEnabled, value))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanSaveTrackOrder)));
+        }
+    }
+
+    public bool IsPlaylistView
+    {
+        get => _isPlaylistView;
+        private set
+        {
+            if (SetField(ref _isPlaylistView, value))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanSaveTrackOrder)));
+        }
+    }
+
+    public bool IsTrackOrderDirty
+    {
+        get => _isTrackOrderDirty;
+        private set
+        {
+            if (SetField(ref _isTrackOrderDirty, value))
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanSaveTrackOrder)));
+        }
+    }
+
+    public bool CanSaveTrackOrder =>
+        IsPlaylistView && IsTrackOrderDirty && !IsTrackSortEnabled && !string.IsNullOrWhiteSpace(_currentPlaylistPath);
+
+    public IReadOnlyList<int> SelectedTrackIndices => _selectedTrackIndices;
+
     public bool HideMissingTitle
     {
         get => _hideMissingTitle;
         set
         {
             if (SetField(ref _hideMissingTitle, value))
+            {
+                SaveConfig();
                 _ = RefreshTrackViewAsync();
+            }
         }
     }
 
@@ -572,7 +619,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         set
         {
             if (SetField(ref _hideMissingArtist, value))
+            {
+                SaveConfig();
                 _ = RefreshTrackViewAsync();
+            }
         }
     }
 
@@ -582,7 +632,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         set
         {
             if (SetField(ref _hideMissingAlbum, value))
+            {
+                SaveConfig();
                 _ = RefreshTrackViewAsync();
+            }
         }
     }
 
@@ -592,7 +645,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         set
         {
             if (SetField(ref _hideMissingGenre, value))
+            {
+                SaveConfig();
                 _ = RefreshTrackViewAsync();
+            }
         }
     }
 
@@ -602,7 +658,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         set
         {
             if (SetField(ref _hideMissingTrackNumber, value))
+            {
+                SaveConfig();
                 _ = RefreshTrackViewAsync();
+            }
         }
     }
 
@@ -885,6 +944,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public ObservableCollection<TrackRow> Tracks => _tracks;
     public ObservableCollection<QueueItem> Queue => _queue;
 
+    public void SetSelectedTrackIndices(IReadOnlyList<int> indices)
+    {
+        _selectedTrackIndices = indices
+            .Where(index => index >= 0 && index < _tracks.Count)
+            .Distinct()
+            .OrderBy(index => index)
+            .ToArray();
+
+        var selectedIndex = _selectedTrackIndices.Count > 0 ? _selectedTrackIndices[0] : -1;
+        SetField(ref _selectedTrackIndex, selectedIndex, nameof(SelectedTrackIndex));
+    }
+
     public MainWindowViewModel()
     {
         _databasePath = Path.Combine(
@@ -911,6 +982,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _showGenre = config.ShowGenre;
         _showBitrate = config.ShowBitrate;
         _showLibraryFiles = config.ShowLibraryFiles;
+        _sortField = Enum.TryParse<TrackSortField>(config.TrackSortField, out var sortField) ? sortField : TrackSortField.Title;
+        _sortAscending = config.TrackSortAscending;
+        _hideMissingTitle = config.HideMissingTitle;
+        _hideMissingArtist = config.HideMissingArtist;
+        _hideMissingAlbum = config.HideMissingAlbum;
+        _hideMissingGenre = config.HideMissingGenre;
+        _hideMissingTrackNumber = config.HideMissingTrackNumber;
         _volume = state.Volume;
 
         _library = new SqliteMediaLibrary(_databasePath);
@@ -1082,7 +1160,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             : tracks;
 
         _allTracks = allTracks;
-        _currentTracks = tracks;
+        _currentTracks = tracks.Select(ToTrackRow).ToList();
+        _viewTracks = _currentTracks;
+        _currentPlaylistPath = null;
+        IsPlaylistView = false;
+        IsTrackOrderDirty = false;
+        IsTrackSortEnabled = true;
 
         var folders = await _library.GetWatchedFoldersAsync();
         var treeNodes = await Task.Run(() => BuildFolderTree(folders, tracks, pruneEmpty: isSearch || tracks.Count == 0, showFiles: _showLibraryFiles));
@@ -1393,6 +1476,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private static TrackRow ToTrackRow(LibraryTrack track)
     {
         return new TrackRow(
+            track.FilePath,
             track.Title ?? Path.GetFileNameWithoutExtension(track.FilePath),
             track.Artist ?? "",
             track.Album ?? "",
@@ -1860,9 +1944,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             return;
 
         var filteredTracks = await Task.Run(() =>
-            _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).ToList());
+            _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
 
         _currentTracks = filteredTracks;
+        _currentPlaylistPath = null;
+        IsPlaylistView = false;
+        IsTrackOrderDirty = false;
+        IsTrackSortEnabled = true;
         await RefreshTrackViewAsync(resetSelection: true);
     }
 
@@ -1886,12 +1974,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             }
             catch
             {
-                return new List<LibraryTrack>();
+                return new List<TrackRow>();
             }
 
             var byPath = _allTracks.ToDictionary(t => t.FilePath, StringComparer.OrdinalIgnoreCase);
 
-            var result = new List<LibraryTrack>(items.Count);
+            var result = new List<TrackRow>(items.Count);
             foreach (var item in items)
             {
                 if (item.Source.Type != MediaSourceType.LocalFile)
@@ -1901,26 +1989,30 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
                 if (byPath.TryGetValue(filePath, out var libraryTrack))
                 {
-                    result.Add(libraryTrack);
+                    result.Add(ToTrackRow(libraryTrack));
                 }
                 else if (File.Exists(filePath))
                 {
                     // File exists but is not in the library — create a stub so
                     // it still shows up in the track list.
-                    result.Add(new LibraryTrack
+                    result.Add(ToTrackRow(new LibraryTrack
                     {
                         FilePath = filePath,
                         Title    = item.Metadata?.Title
                                    ?? Path.GetFileNameWithoutExtension(filePath),
                         Artist   = item.Metadata?.Artist,
                         Album    = item.Metadata?.Album,
-                    });
+                    }));
                 }
             }
             return result;
         });
 
         _currentTracks = tracks;
+        _currentPlaylistPath = playlistPath;
+        IsPlaylistView = true;
+        IsTrackOrderDirty = false;
+        IsTrackSortEnabled = false;
         await RefreshTrackViewAsync(resetSelection: true);
     }
 
@@ -2103,7 +2195,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             return;
 
         var folderTracks = await Task.Run(() =>
-            _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).ToList());
+            _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
 
         if (folderTracks.Count == 0)
             return;
@@ -2357,6 +2449,26 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         IsQueueDirty = false;
     }
 
+    public async Task SaveTrackOrderAsync()
+    {
+        if (!CanSaveTrackOrder || string.IsNullOrWhiteSpace(_currentPlaylistPath))
+            return;
+
+        var playlistPath = _currentPlaylistPath;
+        var items = await Task.Run(() => BuildPlaylistItems(_currentTracks, null).Items);
+        if (items.Count == 0)
+            return;
+
+        await Task.Run(() =>
+        {
+            var playlist = new Playlist();
+            playlist.AddRange(items);
+            PlaylistFileWriter.WriteFile(playlist, playlistPath);
+        });
+
+        IsTrackOrderDirty = false;
+    }
+
     /// <summary>
     /// Append tracks (from the library/track list) to the end of the play queue.
     /// </summary>
@@ -2371,7 +2483,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         await AddTracksToQueueAsync(new[] { viewTracks[viewIndex] }, insertAt);
     }
 
-    public async Task AddTracksToQueueAsync(IReadOnlyList<LibraryTrack> tracks, int insertAt = -1)
+    public async Task AddTracksToQueueAsync(IReadOnlyList<TrackRow> tracks, int insertAt = -1)
     {
         if (tracks.Count == 0) return;
 
@@ -2403,6 +2515,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
         IsQueueDirty = true;
         ScheduleQueueStateSave();
+    }
+
+    public async Task AddSelectedTracksToQueueAsync(IReadOnlyList<int> viewIndices, int insertAt = -1)
+    {
+        if (viewIndices.Count == 0)
+            return;
+
+        var viewTracks = _viewTracks.Count > 0 ? _viewTracks : _currentTracks;
+        var tracks = viewIndices
+            .Where(index => index >= 0 && index < viewTracks.Count)
+            .Distinct()
+            .OrderBy(index => index)
+            .Select(index => viewTracks[index])
+            .ToList();
+
+        await AddTracksToQueueAsync(tracks, insertAt);
     }
 
     /// <summary>
@@ -2502,7 +2630,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (string.IsNullOrWhiteSpace(folderPath)) return;
 
         var folderTracks = await Task.Run(() =>
-            _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).ToList());
+            _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
 
         if (folderTracks.Count == 0) return;
 
@@ -2551,7 +2679,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     }
 
     private static (List<PlaylistItem> Items, int SelectedIndex) BuildPlaylistItems(
-        IReadOnlyList<LibraryTrack> tracks,
+        IReadOnlyList<TrackRow> tracks,
         string? selectedPath)
     {
         var items = new List<PlaylistItem>();
@@ -2566,10 +2694,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
                     Source = MediaSource.FromFile(track.FilePath),
                     Metadata = new TrackMetadata
                     {
-                        Title = track.Title,
-                        Artist = track.Artist,
-                        Album = track.Album,
-                        Duration = track.Duration
+                        Title = string.IsNullOrWhiteSpace(track.Title) ? null : track.Title,
+                        Artist = string.IsNullOrWhiteSpace(track.Artist) ? null : track.Artist,
+                        Album = string.IsNullOrWhiteSpace(track.Album) ? null : track.Album,
+                        Duration = TryParseTrackLength(track.Length)
                     }
                 };
 
@@ -2586,6 +2714,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         }
 
         return (items, selectedIndex);
+    }
+
+    private static TimeSpan? TryParseTrackLength(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        return TimeSpan.TryParseExact(value, new[] { @"m\:ss", @"h\:mm\:ss" }, CultureInfo.InvariantCulture, out var duration)
+            ? duration
+            : null;
     }
 
     private void SaveConfig()
@@ -2607,6 +2745,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         config.ShowGenre = _showGenre;
         config.ShowBitrate = _showBitrate;
         config.ShowLibraryFiles = _showLibraryFiles;
+        config.TrackSortField = _sortField.ToString();
+        config.TrackSortAscending = _sortAscending;
+        config.HideMissingTitle = _hideMissingTitle;
+        config.HideMissingArtist = _hideMissingArtist;
+        config.HideMissingAlbum = _hideMissingAlbum;
+        config.HideMissingGenre = _hideMissingGenre;
+        config.HideMissingTrackNumber = _hideMissingTrackNumber;
         config.Save();
 
         var state = app.State;
@@ -2697,14 +2842,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             foreach (var row in view.Rows)
                 _tracks.Add(row);
 
-            if (resetSelection || SelectedTrackIndex >= _tracks.Count)
-                SelectedTrackIndex = -1;
+            if (resetSelection)
+            {
+                SetSelectedTrackIndices(Array.Empty<int>());
+            }
+            else
+            {
+                SetSelectedTrackIndices(_selectedTrackIndices);
+            }
         });
     }
 
-    private TrackView BuildTrackView(IReadOnlyList<LibraryTrack> source)
+    private TrackView BuildTrackView(IReadOnlyList<TrackRow> source)
     {
-        IEnumerable<LibraryTrack> query = source;
+        IEnumerable<TrackRow> query = source;
 
         // Filters and sort are suppressed during search — results are already
         // ordered by relevance and filters would hide valid matches.
@@ -2719,36 +2870,36 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             if (HideMissingGenre)
                 query = query.Where(t => !string.IsNullOrWhiteSpace(t.Genre));
             if (HideMissingTrackNumber)
-                query = query.Where(t => t.TrackNumber.HasValue && t.TrackNumber.Value > 0);
+                query = query.Where(t => int.TryParse(t.TrackNumber, out var trackNumber) && trackNumber > 0);
 
-            query = ApplySort(query);
+            if (IsTrackSortEnabled)
+                query = ApplySort(query);
         }
 
         var list = query.ToList();
-        var rows = list.Select(ToTrackRow).ToList();
-        return new TrackView(list, rows);
+        return new TrackView(list, list);
     }
 
-    private IEnumerable<LibraryTrack> ApplySort(IEnumerable<LibraryTrack> tracks)
+    private IEnumerable<TrackRow> ApplySort(IEnumerable<TrackRow> tracks)
     {
         return SortField switch
         {
-            TrackSortField.Title => OrderByString(tracks, t => t.Title ?? Path.GetFileNameWithoutExtension(t.FilePath), SortAscending),
+            TrackSortField.Title => OrderByString(tracks, t => t.Title, SortAscending),
             TrackSortField.Artist => OrderByString(tracks, t => t.Artist, SortAscending),
             TrackSortField.Album => OrderByString(tracks, t => t.Album, SortAscending),
-            TrackSortField.FileName => OrderByString(tracks, t => Path.GetFileName(t.FilePath), SortAscending),
-            TrackSortField.TrackNumber => OrderByNumber(tracks, t => t.TrackNumber ?? uint.MaxValue, SortAscending),
-            TrackSortField.Year => OrderByNumber(tracks, t => t.Year ?? uint.MaxValue, SortAscending),
-            TrackSortField.Duration => OrderByNumber(tracks, t => t.DurationMs ?? long.MaxValue, SortAscending),
-            TrackSortField.DateAdded => OrderByNumber(tracks, t => t.DateAddedTicks, SortAscending),
-            TrackSortField.Bitrate => OrderByNumber(tracks, t => t.Bitrate ?? int.MaxValue, SortAscending),
-            _ => OrderByString(tracks, t => t.Title ?? Path.GetFileNameWithoutExtension(t.FilePath), SortAscending)
+            TrackSortField.FileName => OrderByString(tracks, t => t.FileName, SortAscending),
+            TrackSortField.TrackNumber => OrderByNumber(tracks, t => ParseSortableUInt(t.TrackNumber), SortAscending),
+            TrackSortField.Year => OrderByNumber(tracks, t => ParseSortableUInt(t.Year), SortAscending),
+            TrackSortField.Duration => OrderByNumber(tracks, t => ParseSortableDuration(t.Length), SortAscending),
+            TrackSortField.DateAdded => tracks,
+            TrackSortField.Bitrate => OrderByNumber(tracks, t => ParseSortableInt(t.Bitrate), SortAscending),
+            _ => OrderByString(tracks, t => t.Title, SortAscending)
         };
     }
 
-    private static IEnumerable<LibraryTrack> OrderByString(
-        IEnumerable<LibraryTrack> tracks,
-        Func<LibraryTrack, string?> selector,
+    private static IEnumerable<TrackRow> OrderByString(
+        IEnumerable<TrackRow> tracks,
+        Func<TrackRow, string?> selector,
         bool ascending)
     {
         return ascending
@@ -2756,14 +2907,31 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             : tracks.OrderByDescending(t => selector(t) ?? string.Empty, StringComparer.OrdinalIgnoreCase);
     }
 
-    private static IEnumerable<LibraryTrack> OrderByNumber<T>(
-        IEnumerable<LibraryTrack> tracks,
-        Func<LibraryTrack, T> selector,
+    private static IEnumerable<TrackRow> OrderByNumber<T>(
+        IEnumerable<TrackRow> tracks,
+        Func<TrackRow, T> selector,
         bool ascending) where T : IComparable<T>
     {
         return ascending
             ? tracks.OrderBy(selector)
             : tracks.OrderByDescending(selector);
+    }
+
+    private static uint ParseSortableUInt(string? value) => uint.TryParse(value, out var number) ? number : uint.MaxValue;
+
+    private static int ParseSortableInt(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return int.MaxValue;
+
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, out var number) ? number : int.MaxValue;
+    }
+
+    private static long ParseSortableDuration(string? value)
+    {
+        var duration = TryParseTrackLength(value);
+        return duration?.Ticks ?? long.MaxValue;
     }
 
     private void OnShufflePlayChanged(object? sender, bool enabled)
@@ -2778,6 +2946,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     public void SetSortField(TrackSortField field)
     {
+        IsTrackSortEnabled = true;
+
         if (SortField == field)
         {
             SortAscending = !SortAscending;
@@ -2788,13 +2958,89 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             SortAscending = true;
         }
 
+        if (IsPlaylistView)
+            IsTrackOrderDirty = false;
+
+        SaveConfig();
         _ = RefreshTrackViewAsync();
     }
 
     public void ToggleSortDirection()
     {
+        if (!IsTrackSortEnabled)
+            return;
+
         SortAscending = !SortAscending;
+        SaveConfig();
         _ = RefreshTrackViewAsync();
+    }
+
+    public void MoveTrackRows(IReadOnlyList<int> selectedViewIndices, int targetIndex)
+    {
+        if (selectedViewIndices.Count == 0)
+            return;
+
+        var normalized = selectedViewIndices
+            .Where(index => index >= 0 && index < _viewTracks.Count)
+            .Distinct()
+            .OrderBy(index => index)
+            .ToList();
+        if (normalized.Count == 0)
+            return;
+
+        var displayRows = _viewTracks.ToList();
+        var movingRows = normalized.Select(index => displayRows[index]).ToList();
+        foreach (var index in normalized.OrderByDescending(index => index))
+            displayRows.RemoveAt(index);
+
+        var insertionIndex = Math.Clamp(targetIndex, 0, displayRows.Count);
+        var removedBefore = normalized.Count(index => index < insertionIndex);
+        insertionIndex -= removedBefore;
+        insertionIndex = Math.Clamp(insertionIndex, 0, displayRows.Count);
+
+        foreach (var row in movingRows)
+        {
+            displayRows.Insert(insertionIndex, row);
+            insertionIndex++;
+        }
+
+        _viewTracks = displayRows;
+
+        var currentRows = _currentTracks.ToList();
+        var movingPaths = new HashSet<string>(movingRows.Select(row => row.FilePath), StringComparer.OrdinalIgnoreCase);
+        var remainingRows = currentRows.Where(row => !movingPaths.Contains(row.FilePath)).ToList();
+
+        var firstAnchorIndex = normalized[0];
+        TrackRow? anchorRow = null;
+        if (firstAnchorIndex < displayRows.Count)
+            anchorRow = displayRows[firstAnchorIndex];
+        else if (displayRows.Count > 0)
+            anchorRow = displayRows[^1];
+
+        var currentInsertionIndex = anchorRow is null
+            ? remainingRows.Count
+            : remainingRows.FindIndex(row => string.Equals(row.FilePath, anchorRow.FilePath, StringComparison.OrdinalIgnoreCase));
+        if (currentInsertionIndex < 0)
+            currentInsertionIndex = remainingRows.Count;
+
+        foreach (var row in movingRows)
+        {
+            remainingRows.Insert(currentInsertionIndex, row);
+            currentInsertionIndex++;
+        }
+
+        _currentTracks = remainingRows;
+        IsTrackSortEnabled = false;
+        IsTrackOrderDirty = IsPlaylistView;
+        _tracks.Clear();
+        foreach (var row in _viewTracks)
+            _tracks.Add(row);
+
+        SetSelectedTrackIndices(_viewTracks
+            .Select((row, index) => (row, index))
+            .Where(pair => movingPaths.Contains(pair.row.FilePath))
+            .Select(pair => pair.index)
+            .ToArray());
     }
 }
 
@@ -2853,6 +3099,7 @@ public sealed class LibraryNode : INotifyPropertyChanged
 }
 
 public sealed record TrackRow(
+    string FilePath,
     string Title,
     string Artist,
     string Album,
@@ -2867,7 +3114,7 @@ public sealed record TrackRow(
 
 public sealed record QueueItem(string PrimaryText, string SecondaryText, string Length, bool IsPlaceholder = false);
 
-public readonly record struct TrackView(IReadOnlyList<LibraryTrack> Tracks, IReadOnlyList<TrackRow> Rows);
+public readonly record struct TrackView(IReadOnlyList<TrackRow> Tracks, IReadOnlyList<TrackRow> Rows);
 
 public enum SessionMode
 {
@@ -2908,6 +3155,7 @@ public enum TrackSortField
 public static class DragFormats
 {
     public const string TrackIndex = "orpheus-track-index";
+    public const string TrackIndices = "orpheus-track-indices";
     public const string LibraryNodePath = "orpheus-library-node-path";
     public const string LibraryNodeType = "orpheus-library-node-type";
     public const string DragLabel = "orpheus-drag-label";

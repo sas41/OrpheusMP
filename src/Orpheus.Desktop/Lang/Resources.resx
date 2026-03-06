@@ -137,6 +137,9 @@ Do you want to save it as a playlist before replacing it?</value>
   <data name="Save" xml:space="preserve">
     <value>Save</value>
   </data>
+  <data name="SavePlaylistOrder" xml:space="preserve">
+    <value>Save playlist order</value>
+  </data>
   <data name="Discard" xml:space="preserve">
     <value>Discard</value>
   </data>
