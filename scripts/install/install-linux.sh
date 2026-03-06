@@ -76,8 +76,9 @@ fi
 echo "Installing ${APP_DISPLAY} to ${LIB_DIR} ..."
 mkdir -p "$LIB_DIR" "$BIN_DIR"
 
-rsync -a "${APP_DIR}/" "${LIB_DIR}/" 2>/dev/null || \
-  (cd "$APP_DIR" && find . -print0 | cpio -0pdm "$LIB_DIR")
+rsync -a --delete "${APP_DIR}/" "${LIB_DIR}/" 2>/dev/null || \
+  (rm -rf "${LIB_DIR}" && mkdir -p "${LIB_DIR}" && \
+   cd "$APP_DIR" && find . -print0 | cpio -0pdm "$LIB_DIR")
 
 chmod +x "${LIB_DIR}/${EXEC_NAME}"
 
@@ -186,7 +187,13 @@ fi
 
 # ── Optionally set as default handler ────────────────────────────────────
 echo ""
-read -r -p "Set OrpheusMP as the default player for all supported audio files? [y/N] " SET_DEFAULT
+CURRENT_DEFAULT=$(xdg-mime query default audio/mpeg 2>/dev/null || true)
+if [[ "$CURRENT_DEFAULT" == "${APP_NAME}.desktop" ]]; then
+  echo "OrpheusMP is already the default audio player."
+  SET_DEFAULT="n"
+else
+  read -r -p "Set OrpheusMP as the default player for all supported audio files? [y/N] " SET_DEFAULT
+fi
 if [[ "$SET_DEFAULT" =~ ^[Yy]$ ]]; then
   AUDIO_MIMES=(
     audio/mpeg audio/flac audio/ogg audio/opus audio/mp4 audio/aac

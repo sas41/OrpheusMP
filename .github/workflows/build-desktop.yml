@@ -183,8 +183,7 @@ jobs:
         run: |
           mkdir -p zip-stage/app
           cp -R publish/macos-universal/. zip-stage/app/
-          cd zip-stage
-          zip -r "../../${{ steps.meta.outputs.artifact-name }}.zip" .
+          zip -r "${{ steps.meta.outputs.artifact-name }}.zip" zip-stage/
 
       - name: Upload pkg artifact
         uses: actions/upload-artifact@v4
@@ -251,8 +250,7 @@ jobs:
 
       - name: Zip release
         run: |
-          cd publish/linux-zip
-          zip -r "../../${{ steps.meta.outputs.artifact-name }}.zip" .
+          zip -r "${{ steps.meta.outputs.artifact-name }}.zip" publish/linux-zip/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
