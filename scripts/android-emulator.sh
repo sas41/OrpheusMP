@@ -9,17 +9,18 @@
 
 set -euo pipefail
 
-ANDROID_HOME=/opt/android-sdk
-JAVA_HOME=/usr/lib/jvm/java-21-openjdk
-SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-AVDMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager"
-EMULATOR="$ANDROID_HOME/emulator/emulator"
-ADB="$ANDROID_HOME/platform-tools/adb"
-AVD_NAME=Orpheus
-API_LEVEL=36
-ABI=x86_64
-SYSTEM_IMAGE="system-images;android-${API_LEVEL};google_apis;${ABI}"
-DEVICE_PROFILE=pixel_6
+ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/android-sdk}}"
+ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk}"
+SDKMANAGER="${SDKMANAGER:-$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager}"
+AVDMANAGER="${AVDMANAGER:-$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager}"
+EMULATOR="${EMULATOR:-$ANDROID_HOME/emulator/emulator}"
+ADB="${ADB:-$ANDROID_HOME/platform-tools/adb}"
+AVD_NAME="${AVD_NAME:-Orpheus}"
+API_LEVEL="${API_LEVEL:-36}"
+ABI="${ABI:-x86_64}"
+SYSTEM_IMAGE="${SYSTEM_IMAGE:-system-images;android-${API_LEVEL};google_apis;${ABI}}"
+DEVICE_PROFILE="${DEVICE_PROFILE:-pixel_6}"
 
 # ── helpers ────────────────────────────────────────────────────────────────
 

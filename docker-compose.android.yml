@@ -1,0 +1,41 @@
+## Android container workflow
+##
+## Build the image:
+##   docker compose -f docker-compose.android.yml build
+##
+## Common commands:
+##   docker compose -f docker-compose.android.yml run --rm android publish
+##   docker compose -f docker-compose.android.yml run --rm android install
+##   docker compose -f docker-compose.android.yml run --rm android run
+##   docker compose -f docker-compose.android.yml run --rm android deploy
+##   docker compose -f docker-compose.android.yml run --rm android emulator
+##   docker compose -f docker-compose.android.yml run --rm android shell
+##
+## Intended flow:
+##   1. Start the emulator on the host (or use the `emulator` command here).
+##   2. Run `deploy` from this compose file to publish, install, and launch.
+##
+## Notes:
+##   - `network_mode: host` lets container `adb` talk to the host emulator.
+##   - The repo is mounted at `/workspace`.
+
+services:
+  android:
+    build:
+      context: .
+      dockerfile: docker/android/Dockerfile
+    image: orpheusmp-android:latest
+    working_dir: /workspace
+    environment:
+      JAVA_HOME: /usr/lib/jvm/java-21-openjdk-amd64
+      ANDROID_HOME: /opt/android-sdk
+      ANDROID_SDK_ROOT: /opt/android-sdk
+    volumes:
+      - .:/workspace
+      - dotnet-nuget:/root/.nuget/packages
+    network_mode: host
+    stdin_open: true
+    tty: true
+
+volumes:
+  dotnet-nuget:
