@@ -78,7 +78,8 @@ jobs:
             -p:AndroidKeyStore=true \
             -p:AndroidSigningKeyStore="$(pwd)/orpheus-release.jks" \
             -p:AndroidSigningKeyAlias="$SIGNING_KEY_ALIAS" \
-            -p:AndroidSigningStorePass="$SIGNING_STORE_PASS"
+            -p:AndroidSigningStorePass="$SIGNING_STORE_PASS" \
+            -p:AndroidSigningKeyPass="$SIGNING_STORE_PASS"
 
       - name: Locate APK
         id: locate-apk
