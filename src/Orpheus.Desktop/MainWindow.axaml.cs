@@ -11,6 +11,7 @@ using Orpheus.Core.Playlist;
 using Orpheus.Core.Effects;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -273,8 +274,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private readonly PlayerController _controller;
     private VlcEqualizer? _equalizer;
     private readonly ObservableCollection<LibraryNode> _libraryRoots = new();
-    private readonly ObservableCollection<TrackRow> _tracks = new();
-    private readonly ObservableCollection<QueueItem> _queue = new();
+    private readonly BulkObservableCollection<TrackRow> _tracks = new();
+    private readonly BulkObservableCollection<QueueItem> _queue = new();
     private IReadOnlyList<LibraryTrack> _allTracks = Array.Empty<LibraryTrack>();
     private IReadOnlyList<TrackRow> _currentTracks = Array.Empty<TrackRow>();
     private IReadOnlyList<TrackRow> _viewTracks = Array.Empty<TrackRow>();
@@ -1299,12 +1300,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     private void UpdateQueueFromPlaylist()
     {
-        _queue.Clear();
-        foreach (var item in _controller.Playlist)
-        {
-            _queue.Add(ToQueueItem(item));
-        }
-
+        _queue.Reset(_controller.Playlist.Select(ToQueueItem));
         QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
     }
 
@@ -2231,6 +2227,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _controller.Playlist.AddRange(items);
         await Dispatcher.UIThread.InvokeAsync(UpdateQueueFromPlaylist);
         await _controller.PlayAtIndexAsync(0).ConfigureAwait(false);
+
         IsQueueDirty = false;
     }
 
@@ -2465,6 +2462,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         await Task.Run(() => PlaylistFileWriter.WriteFile(_controller.Playlist, path));
         IsQueueDirty = false;
+        await RefreshLibraryAsync();
     }
 
     public async Task SaveTrackOrderAsync()
@@ -2856,9 +2854,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            _tracks.Clear();
-            foreach (var row in view.Rows)
-                _tracks.Add(row);
+            _tracks.Reset(view.Rows);
 
             if (resetSelection)
             {
@@ -3050,15 +3046,38 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _currentTracks = remainingRows;
         IsTrackSortEnabled = false;
         IsTrackOrderDirty = IsPlaylistView;
-        _tracks.Clear();
-        foreach (var row in _viewTracks)
-            _tracks.Add(row);
+        _tracks.Reset(_viewTracks);
 
         SetSelectedTrackIndices(_viewTracks
             .Select((row, index) => (row, index))
             .Where(pair => movingPaths.Contains(pair.row.FilePath))
             .Select(pair => pair.index)
             .ToArray());
+    }
+}
+
+/// <summary>
+/// An <see cref="ObservableCollection{T}"/> that adds a <see cref="Reset"/> method for
+/// bulk replacement using a single <see cref="NotifyCollectionChangedAction.Reset"/> notification,
+/// avoiding O(n) individual Add notifications when replacing the entire collection.
+/// All other mutation methods (Add, Remove, Move, Insert) retain their normal per-item notifications
+/// so that drag-and-drop and animated list operations continue to work correctly.
+/// </summary>
+public sealed class BulkObservableCollection<T> : ObservableCollection<T>
+{
+    /// <summary>
+    /// Replaces the entire contents of the collection with <paramref name="items"/> and fires
+    /// a single <see cref="NotifyCollectionChangedAction.Reset"/> notification instead of
+    /// individual Add/Remove notifications.
+    /// </summary>
+    public void Reset(IEnumerable<T> items)
+    {
+        Items.Clear();
+        foreach (var item in items)
+            Items.Add(item);
+        OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+        OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs("Count"));
+        OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs("Item[]"));
     }
 }
 

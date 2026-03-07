@@ -115,6 +115,20 @@ public sealed class BoolInverseConverter : IValueConverter
 }
 
 /// <summary>
+/// Converts bool → chevron character (▾ when expanded, ▸ when collapsed).
+/// </summary>
+public sealed class BoolToChevronConverter : IValueConverter
+{
+    public static readonly BoolToChevronConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is true ? "▾" : "▸";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
 /// Splits the "m:ss / m:ss" NowPlayingTime string and returns either the position
 /// or duration half, so both can be shown as separate labels flanking the seek bar.
 /// </summary>

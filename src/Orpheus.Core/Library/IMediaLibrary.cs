@@ -29,6 +29,14 @@ public interface IMediaLibrary : IDisposable
     Task<LibraryTrack?> GetTrackByPathAsync(string filePath, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Load a lightweight snapshot of all tracked files (path, size, last-modified)
+    /// keyed by normalised full path. Used by the scanner to detect new/changed files
+    /// in a single query instead of one per file.
+    /// </summary>
+    Task<Dictionary<string, (long FileSize, long LastModifiedTicks)>> GetTrackedFileSnapshotAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Search tracks by a query string. Matches against title, artist, album,
     /// album artist, and file path using full-text search with prefix matching.
     /// </summary>

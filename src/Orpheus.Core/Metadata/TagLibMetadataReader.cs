@@ -18,7 +18,7 @@ public sealed class TagLibMetadataReader : IMetadataReader
         return SupportedExtensions.Contains(extension);
     }
 
-    public TrackMetadata ReadFromFile(string filePath)
+    public TrackMetadata ReadFromFile(string filePath, bool readPictures = true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
@@ -32,7 +32,14 @@ public sealed class TagLibMetadataReader : IMetadataReader
         TagLib.File file;
         try
         {
-            file = TagLib.File.Create(filePath, TagLib.ReadStyle.Average);
+            // PictureLazy defers loading embedded image bytes until .Pictures is
+            // accessed. When readPictures=false we never access .Pictures, so no
+            // album-art bytes are allocated — dramatically reducing GC pressure
+            // during library scans over large collections.
+            var readStyle = readPictures
+                ? TagLib.ReadStyle.Average
+                : TagLib.ReadStyle.Average | TagLib.ReadStyle.PictureLazy;
+            file = TagLib.File.Create(filePath, readStyle);
         }
         finally
         {
@@ -47,7 +54,7 @@ public sealed class TagLibMetadataReader : IMetadataReader
             byte[]? albumArt = null;
             string? albumArtMime = null;
 
-            if (tag.Pictures.Length > 0)
+            if (readPictures && tag.Pictures.Length > 0)
             {
                 var picture = tag.Pictures[0];
                 albumArt = picture.Data.Data;

@@ -39,6 +39,34 @@ public static class PlaylistFileWriter
         }
     }
 
+    /// <summary>
+    /// Write a playlist to an arbitrary stream. Used on Android where SAF streams
+    /// are the only reliable write path. Paths in the output are always absolute
+    /// since no base directory is available.
+    /// </summary>
+    public static void WriteToStream(Playlist playlist, Stream stream, string fileNameOrExtension,
+        Format? format = null)
+    {
+        ArgumentNullException.ThrowIfNull(playlist);
+        ArgumentNullException.ThrowIfNull(stream);
+
+        var fmt = format ?? InferFormat(fileNameOrExtension);
+        using var writer = new StreamWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
+
+        // No real base directory — use absolute paths only.
+        switch (fmt)
+        {
+            case Format.M3U:
+                WriteM3U(playlist, writer, baseDir: null);
+                break;
+            case Format.PLS:
+                WritePLS(playlist, writer, baseDir: null);
+                break;
+            default:
+                throw new NotSupportedException($"Unsupported format: {fmt}");
+        }
+    }
+
     private static Format InferFormat(string filePath)
     {
         var ext = Path.GetExtension(filePath);
@@ -51,9 +79,12 @@ public static class PlaylistFileWriter
         };
     }
 
-    private static void WriteM3U(Playlist playlist, StreamWriter writer, string filePath)
+    private static void WriteM3U(Playlist playlist, StreamWriter writer, string? filePath = null,
+        string? baseDir = null)
     {
-        var baseDir = Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? ".";
+        baseDir ??= filePath is not null
+            ? Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? "."
+            : null;
 
         writer.WriteLine("#EXTM3U");
 
@@ -74,9 +105,12 @@ public static class PlaylistFileWriter
         }
     }
 
-    private static void WritePLS(Playlist playlist, StreamWriter writer, string filePath)
+    private static void WritePLS(Playlist playlist, StreamWriter writer, string? filePath = null,
+        string? baseDir = null)
     {
-        var baseDir = Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? ".";
+        baseDir ??= filePath is not null
+            ? Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? "."
+            : null;
 
         writer.WriteLine("[playlist]");
         writer.WriteLine();
@@ -112,23 +146,25 @@ public static class PlaylistFileWriter
     /// <summary>
     /// For local files, try to write a relative path. For URIs, write the full URI.
     /// </summary>
-    private static string GetWritablePath(Uri uri, string baseDir)
+    private static string GetWritablePath(Uri uri, string? baseDir)
     {
         if (uri.IsFile)
         {
             var localPath = uri.LocalPath;
-            try
+            if (baseDir is not null)
             {
-                var relativePath = Path.GetRelativePath(baseDir, localPath);
-                // Only use relative if it doesn't start with ".." deeply.
-                if (!relativePath.StartsWith(".." + Path.DirectorySeparatorChar + ".." + Path.DirectorySeparatorChar))
-                    return relativePath;
+                try
+                {
+                    var relativePath = Path.GetRelativePath(baseDir, localPath);
+                    // Only use relative if it doesn't start with ".." deeply.
+                    if (!relativePath.StartsWith(".." + Path.DirectorySeparatorChar + ".." + Path.DirectorySeparatorChar))
+                        return relativePath;
+                }
+                catch
+                {
+                    // Fall through to absolute.
+                }
             }
-            catch
-            {
-                // Fall through to absolute.
-            }
-
             return localPath;
         }
 

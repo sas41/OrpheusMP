@@ -192,6 +192,24 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         return tracks.Count > 0 ? tracks[0] : null;
     }
 
+    public async Task<Dictionary<string, (long FileSize, long LastModifiedTicks)>> GetTrackedFileSnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(cancellationToken);
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT file_path, file_size, last_modified_ticks FROM tracks";
+
+        var snapshot = new Dictionary<string, (long, long)>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            snapshot[reader.GetString(0)] = (reader.GetInt64(1), reader.GetInt64(2));
+        }
+        return snapshot;
+    }
+
     public async Task<IReadOnlyList<LibraryTrack>> SearchAsync(
         string query, CancellationToken cancellationToken = default)
     {
@@ -581,46 +599,52 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
 
         await using var transaction = await conn.BeginTransactionAsync(cancellationToken);
 
+        // Prepare the command once and rebind parameters for each track.
+        // Creating a new SqliteCommand per row inside the loop allocates a
+        // fresh object (plus parameter collection) for every track, adding GC
+        // pressure proportional to the library size.
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = (SqliteTransaction)transaction;
+        cmd.CommandText = """
+            INSERT INTO tracks (
+                file_path, file_size, last_modified_ticks, date_added_ticks,
+                title, artist, album, album_artist,
+                track_number, track_count, disc_number, year, genre,
+                duration_ms, bitrate, sample_rate, channels, codec
+            ) VALUES (
+                @file_path, @file_size, @last_modified_ticks, @date_added_ticks,
+                @title, @artist, @album, @album_artist,
+                @track_number, @track_count, @disc_number, @year, @genre,
+                @duration_ms, @bitrate, @sample_rate, @channels, @codec
+            )
+            ON CONFLICT(file_path) DO UPDATE SET
+                file_size = excluded.file_size,
+                last_modified_ticks = excluded.last_modified_ticks,
+                title = excluded.title,
+                artist = excluded.artist,
+                album = excluded.album,
+                album_artist = excluded.album_artist,
+                track_number = excluded.track_number,
+                track_count = excluded.track_count,
+                disc_number = excluded.disc_number,
+                year = excluded.year,
+                genre = excluded.genre,
+                duration_ms = excluded.duration_ms,
+                bitrate = excluded.bitrate,
+                sample_rate = excluded.sample_rate,
+                channels = excluded.channels,
+                codec = excluded.codec
+            RETURNING id
+            """;
+
+        // Pre-create all parameter slots once; values are overwritten per row.
+        AddTrackParameters(cmd, tracks[0]);
+        await cmd.PrepareAsync(cancellationToken);
+
         foreach (var track in tracks)
         {
             cancellationToken.ThrowIfCancellationRequested();
-
-            await using var cmd = conn.CreateCommand();
-            cmd.Transaction = (SqliteTransaction)transaction;
-            cmd.CommandText = """
-                INSERT INTO tracks (
-                    file_path, file_size, last_modified_ticks, date_added_ticks,
-                    title, artist, album, album_artist,
-                    track_number, track_count, disc_number, year, genre,
-                    duration_ms, bitrate, sample_rate, channels, codec
-                ) VALUES (
-                    @file_path, @file_size, @last_modified_ticks, @date_added_ticks,
-                    @title, @artist, @album, @album_artist,
-                    @track_number, @track_count, @disc_number, @year, @genre,
-                    @duration_ms, @bitrate, @sample_rate, @channels, @codec
-                )
-                ON CONFLICT(file_path) DO UPDATE SET
-                    file_size = excluded.file_size,
-                    last_modified_ticks = excluded.last_modified_ticks,
-                    title = excluded.title,
-                    artist = excluded.artist,
-                    album = excluded.album,
-                    album_artist = excluded.album_artist,
-                    track_number = excluded.track_number,
-                    track_count = excluded.track_count,
-                    disc_number = excluded.disc_number,
-                    year = excluded.year,
-                    genre = excluded.genre,
-                    duration_ms = excluded.duration_ms,
-                    bitrate = excluded.bitrate,
-                    sample_rate = excluded.sample_rate,
-                    channels = excluded.channels,
-                    codec = excluded.codec
-                RETURNING id
-                """;
-
-            AddTrackParameters(cmd, track);
-
+            UpdateTrackParameters(cmd, track);
             var id = await cmd.ExecuteScalarAsync(cancellationToken);
             track.Id = Convert.ToInt64(id);
         }
@@ -823,6 +847,34 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         cmd.Parameters.AddWithValue("@sample_rate", track.SampleRate.HasValue ? (object)track.SampleRate.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@channels", track.Channels.HasValue ? (object)track.Channels.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@codec", (object?)track.Codec ?? DBNull.Value);
+    }
+
+    /// <summary>
+    /// Rebinds the values of parameters that were already added via
+    /// <see cref="AddTrackParameters"/>. Used by <see cref="BatchUpsertTracksAsync"/>
+    /// to reuse a single prepared <see cref="SqliteCommand"/> across all rows in
+    /// a batch, avoiding per-row command/parameter allocation.
+    /// </summary>
+    private static void UpdateTrackParameters(SqliteCommand cmd, LibraryTrack track)
+    {
+        cmd.Parameters["@file_path"].Value         = Path.GetFullPath(track.FilePath);
+        cmd.Parameters["@file_size"].Value         = track.FileSize;
+        cmd.Parameters["@last_modified_ticks"].Value = track.LastModifiedTicks;
+        cmd.Parameters["@date_added_ticks"].Value  = track.DateAddedTicks;
+        cmd.Parameters["@title"].Value             = (object?)track.Title ?? DBNull.Value;
+        cmd.Parameters["@artist"].Value            = (object?)track.Artist ?? DBNull.Value;
+        cmd.Parameters["@album"].Value             = (object?)track.Album ?? DBNull.Value;
+        cmd.Parameters["@album_artist"].Value      = (object?)track.AlbumArtist ?? DBNull.Value;
+        cmd.Parameters["@track_number"].Value      = track.TrackNumber.HasValue ? (object)track.TrackNumber.Value : DBNull.Value;
+        cmd.Parameters["@track_count"].Value       = track.TrackCount.HasValue  ? (object)track.TrackCount.Value  : DBNull.Value;
+        cmd.Parameters["@disc_number"].Value       = track.DiscNumber.HasValue  ? (object)track.DiscNumber.Value  : DBNull.Value;
+        cmd.Parameters["@year"].Value              = track.Year.HasValue         ? (object)track.Year.Value        : DBNull.Value;
+        cmd.Parameters["@genre"].Value             = (object?)track.Genre ?? DBNull.Value;
+        cmd.Parameters["@duration_ms"].Value       = track.DurationMs.HasValue  ? (object)track.DurationMs.Value  : DBNull.Value;
+        cmd.Parameters["@bitrate"].Value           = track.Bitrate.HasValue      ? (object)track.Bitrate.Value     : DBNull.Value;
+        cmd.Parameters["@sample_rate"].Value       = track.SampleRate.HasValue   ? (object)track.SampleRate.Value  : DBNull.Value;
+        cmd.Parameters["@channels"].Value          = track.Channels.HasValue     ? (object)track.Channels.Value    : DBNull.Value;
+        cmd.Parameters["@codec"].Value             = (object?)track.Codec ?? DBNull.Value;
     }
 
     private static string? GetNullableString(SqliteDataReader reader, string column)

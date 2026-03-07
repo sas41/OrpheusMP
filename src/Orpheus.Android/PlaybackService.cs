@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
 using Android.Graphics;
@@ -41,6 +42,10 @@ public class PlaybackService : Service
     // Tracks whether the last metadata push had a zero duration so we know
     // to re-push once the real duration arrives from the player.
     private bool _metadataHasZeroDuration;
+    // Album art cache — avoid re-reading the file on every metadata refresh.
+    // Keyed by file path; null bitmap means the file has no embedded art.
+    private string?  _cachedArtPath;
+    private Bitmap?  _cachedArtBitmap;
 
     // ──────────────────────────────────────────────────────────────────
     // Service lifecycle
@@ -256,17 +261,14 @@ public class PlaybackService : Service
         var durationMs = (long)(_vm.PlaybackDuration * 1000);
         _metadataHasZeroDuration = durationMs <= 0;
 
-        var builder = new MediaMetadata.Builder()
-            .PutString(MediaMetadata.MetadataKeyTitle,  _vm.NowPlayingTitle)
-            .PutString(MediaMetadata.MetadataKeyArtist, _vm.NowPlayingArtist)
-            .PutString(MediaMetadata.MetadataKeyAlbum,  _vm.NowPlayingAlbum)
-            .PutLong(MediaMetadata.MetadataKeyDuration, durationMs);
+        // Push metadata immediately with whatever art is already cached.
+        // If the file path changed, kick off an async art load in the background;
+        // the session will be updated again once the bitmap is ready.
+        // This keeps the UI thread free — TagLib reads are never done inline.
+        var filePath = _vm.CurrentFilePath;
+        var artBitmap = GetCachedArtOrScheduleLoad(filePath);
 
-        var art = TryLoadAlbumArt();
-        if (art is not null)
-            builder.PutBitmap(MediaMetadata.MetadataKeyAlbumArt, art);
-
-        _session!.SetMetadata(builder.Build());
+        PushSessionMetadata(durationMs, artBitmap);
 
         // Refresh the foreground notification so the system media widget
         // picks up the new title/artist/album immediately.
@@ -274,21 +276,76 @@ public class PlaybackService : Service
             ShowNotification();
     }
 
-    private Bitmap? TryLoadAlbumArt()
+    /// <summary>
+    /// Returns the cached album art bitmap if the file path matches the last
+    /// loaded path. If the path has changed, clears the cache and starts an
+    /// async background load; returns null so metadata is pushed immediately
+    /// without art, and the session is updated again when art arrives.
+    /// </summary>
+    private Bitmap? GetCachedArtOrScheduleLoad(string? filePath)
     {
+        if (string.IsNullOrEmpty(filePath))
+        {
+            _cachedArtPath   = null;
+            _cachedArtBitmap = null;
+            return null;
+        }
+
+        // Same file as last time — return the cached bitmap (may be null if
+        // the file had no embedded art, which is also a valid cached result).
+        if (filePath == _cachedArtPath)
+            return _cachedArtBitmap;
+
+        // New file — clear the cache and start loading asynchronously.
+        _cachedArtPath   = filePath;
+        _cachedArtBitmap = null;
+
+        _ = Task.Run(() => LoadAlbumArtAsync(filePath));
+        return null;
+    }
+
+    private async Task LoadAlbumArtAsync(string filePath)
+    {
+        Bitmap? bitmap = null;
         try
         {
-            var filePath = _vm?.CurrentFilePath;
-            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
-                return null;
-
-            var meta = new TagLibMetadataReader().ReadFromFile(filePath);
-            if (meta.AlbumArt is null || meta.AlbumArt.Length == 0)
-                return null;
-
-            return BitmapFactory.DecodeByteArray(meta.AlbumArt, 0, meta.AlbumArt.Length);
+            bitmap = await Task.Run(() =>
+            {
+                var meta = new TagLibMetadataReader().ReadFromFile(filePath, readPictures: true);
+                if (meta.AlbumArt is null || meta.AlbumArt.Length == 0)
+                    return null;
+                return BitmapFactory.DecodeByteArray(meta.AlbumArt, 0, meta.AlbumArt.Length);
+            });
         }
-        catch { return null; }
+        catch { /* art is optional — ignore any read errors */ }
+
+        // Only apply the result if the track hasn't changed while we were loading.
+        if (_cachedArtPath != filePath) return;
+
+        _cachedArtBitmap = bitmap;
+
+        // Re-push metadata with the now-loaded bitmap.
+        if (_vm is null || _session is null) return;
+        var durationMs = (long)(_vm.PlaybackDuration * 1000);
+        PushSessionMetadata(durationMs, bitmap);
+        if (_isForeground)
+            ShowNotification();
+    }
+
+    private void PushSessionMetadata(long durationMs, Bitmap? art)
+    {
+        if (_vm is null || _session is null) return;
+
+        var builder = new MediaMetadata.Builder()
+            .PutString(MediaMetadata.MetadataKeyTitle,  _vm.NowPlayingTitle)
+            .PutString(MediaMetadata.MetadataKeyArtist, _vm.NowPlayingArtist)
+            .PutString(MediaMetadata.MetadataKeyAlbum,  _vm.NowPlayingAlbum)
+            .PutLong(MediaMetadata.MetadataKeyDuration, durationMs);
+
+        if (art is not null)
+            builder.PutBitmap(MediaMetadata.MetadataKeyAlbumArt, art);
+
+        _session.SetMetadata(builder.Build());
     }
 
     // ──────────────────────────────────────────────────────────────────

@@ -234,7 +234,7 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
 
-            <!-- Sub-folder nodes -->
+            <!-- Sub-folder and playlist nodes -->
             <ItemsControl ItemsSource="{Binding DisplayedNodes}"
                           IsVisible="{Binding DisplayedNodes.Count,
                               Converter={x:Static local:CountToBoolConverter.Instance}}">
@@ -246,13 +246,14 @@
                           Padding="12,0">
                     <Grid ColumnDefinitions="*,Auto,Auto" Height="52">
 
-                      <!-- Drill into folder -->
+                      <!-- Folder: drill in / Playlist: load into queue -->
                       <Button x:Name="FolderDrillButton"
                               Grid.Column="0"
                               Background="Transparent"
                               Padding="0"
                               HorizontalAlignment="Stretch"
-                              VerticalAlignment="Stretch">
+                              VerticalAlignment="Stretch"
+                              IsVisible="{Binding IsFolder}">
                         <StackPanel VerticalAlignment="Center" Spacing="1">
                           <TextBlock Text="{Binding Name}"
                                      FontSize="15"
@@ -266,7 +267,26 @@
                         </StackPanel>
                       </Button>
 
-                      <!-- Play folder -->
+                      <!-- Playlist: name + format badge -->
+                      <Button x:Name="PlaylistLoadButton"
+                              Grid.Column="0"
+                              Background="Transparent"
+                              Padding="0"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              IsVisible="{Binding IsPlaylist}">
+                        <StackPanel VerticalAlignment="Center" Spacing="1">
+                          <TextBlock Text="{Binding Name}"
+                                     FontSize="15"
+                                     Foreground="{DynamicResource TextPrimary}"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Meta}"
+                                     FontSize="11"
+                                     Foreground="{DynamicResource TextMuted}" />
+                        </StackPanel>
+                      </Button>
+
+                      <!-- Play folder / playlist -->
                       <Button x:Name="FolderPlayButton"
                               Grid.Column="1"
                               Background="Transparent"
@@ -276,7 +296,7 @@
                                    Foreground="{DynamicResource AccentColor}" />
                       </Button>
 
-                      <!-- Enqueue folder -->
+                      <!-- Enqueue folder / playlist -->
                       <Button x:Name="FolderEnqueueButton"
                               Grid.Column="2"
                               Background="Transparent"
@@ -389,14 +409,24 @@
                 BorderBrush="{DynamicResource PanelStroke}"
                 BorderThickness="0,0,0,1"
                 Padding="12,8">
-          <Grid ColumnDefinitions="*,Auto">
+          <Grid ColumnDefinitions="*,Auto,Auto">
             <TextBlock Grid.Column="0"
                        Text="{Binding QueueSummary}"
                        FontSize="13"
                        Foreground="{DynamicResource TextMuted}"
                        VerticalAlignment="Center" />
-            <Button x:Name="ClearQueueButton"
+            <Button x:Name="SaveQueueButton"
                     Grid.Column="1"
+                    Background="Transparent"
+                    Padding="4,2"
+                    Margin="0,0,4,0"
+                    IsVisible="{Binding Queue.Count,
+                        Converter={x:Static local:CountToBoolConverter.Instance}}">
+              <TextBlock Text="Save" FontSize="13"
+                         Foreground="{DynamicResource TextMuted}" />
+            </Button>
+            <Button x:Name="ClearQueueButton"
+                    Grid.Column="2"
                     Background="Transparent"
                     Padding="4,2"
                     IsVisible="{Binding Queue.Count,
@@ -407,10 +437,30 @@
           </Grid>
         </Border>
 
-        <!-- Queue list -->
-        <ScrollViewer Grid.Row="1">
-          <ItemsControl ItemsSource="{Binding Queue}">
-            <ItemsControl.ItemTemplate>
+        <!-- Queue list + drag-preview overlay share the same cell -->
+        <Grid Grid.Row="1">
+
+          <!-- ListBox uses VirtualizingStackPanel by default,
+               so only visible items are rendered regardless of queue size. -->
+          <ListBox x:Name="QueueList"
+                   ItemsSource="{Binding Queue}"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+            <ListBox.ItemContainerTheme>
+              <ControlTheme TargetType="ListBoxItem">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Template">
+                  <ControlTemplate>
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}"
+                                      HorizontalContentAlignment="Stretch" />
+                  </ControlTemplate>
+                </Setter>
+              </ControlTheme>
+            </ListBox.ItemContainerTheme>
+            <ListBox.ItemTemplate>
               <DataTemplate x:DataType="local:QueueItem">
                 <Border Background="Transparent"
                         BorderBrush="{DynamicResource PanelStroke}"
@@ -418,7 +468,7 @@
                         Padding="12,0">
                   <Grid ColumnDefinitions="*,Auto,Auto" Height="56">
 
-                    <!-- Play queue item -->
+                    <!-- Play queue item — long-press anywhere on the row starts drag -->
                     <Button x:Name="QueueItemPlayButton"
                             Grid.Column="0"
                             Background="Transparent"
@@ -460,9 +510,30 @@
                   </Grid>
                 </Border>
               </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </ScrollViewer>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <!-- Drag preview — shown while a long-press drag is active.
+               IsHitTestVisible=False so it never captures touches itself. -->
+          <Canvas x:Name="QueueDragPreviewCanvas"
+                  IsHitTestVisible="False"
+                  IsVisible="False">
+            <Border x:Name="QueueDragPreviewBorder"
+                    Background="{DynamicResource PanelFill}"
+                    BorderBrush="{DynamicResource AccentBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="12,8"
+                    Opacity="0.92">
+              <TextBlock x:Name="QueueDragPreviewText"
+                         FontSize="14"
+                         Foreground="{DynamicResource TextPrimary}"
+                         MaxWidth="280"
+                         TextTrimming="CharacterEllipsis" />
+            </Border>
+          </Canvas>
+
+        </Grid>
       </Grid>
 
       <!-- ── Transport footer ───────────────────────────── -->

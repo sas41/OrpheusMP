@@ -4,7 +4,7 @@
     <color android:color="@color/splash_background" />
   </item>
   <item
-    android:drawable="@drawable/icon"
+    android:drawable="@drawable/splash_icon"
     android:width="108dp"
     android:height="108dp"
     android:gravity="center" />

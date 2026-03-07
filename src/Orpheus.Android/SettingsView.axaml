@@ -176,44 +176,102 @@
           <StackPanel>
 
             <!-- Track display mode -->
-            <Border Padding="16,0"
+            <Border Padding="16,10"
                     BorderBrush="{DynamicResource PanelStroke}"
                     BorderThickness="0,0,0,1">
-              <Grid ColumnDefinitions="*,Auto" Height="52">
-                <TextBlock Grid.Column="0"
-                           Text="Track Display"
+              <StackPanel Spacing="6">
+                <TextBlock Text="Track Display"
                            FontSize="14"
-                           Foreground="{DynamicResource TextPrimary}"
-                           VerticalAlignment="Center" />
-                <ComboBox Grid.Column="1"
-                          ItemsSource="{Binding DisplayModes}"
+                           Foreground="{DynamicResource TextPrimary}" />
+                <ComboBox ItemsSource="{Binding DisplayModes}"
                           SelectedItem="{Binding SelectedDisplayMode}"
-                          MinWidth="140"
-                          VerticalAlignment="Center"
+                          HorizontalAlignment="Stretch"
                           Background="{DynamicResource ButtonFill}"
                           Foreground="{DynamicResource TextPrimary}" />
-              </Grid>
+              </StackPanel>
             </Border>
 
             <!-- Color variant -->
-            <Border Padding="16,0">
-              <Grid ColumnDefinitions="*,Auto" Height="52">
-                <TextBlock Grid.Column="0"
-                           Text="Color Variant"
+            <Border Padding="16,10">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Color Variant"
                            FontSize="14"
-                           Foreground="{DynamicResource TextPrimary}"
-                           VerticalAlignment="Center" />
-                <ComboBox Grid.Column="1"
-                          ItemsSource="{Binding Variants}"
+                           Foreground="{DynamicResource TextPrimary}" />
+                <ComboBox ItemsSource="{Binding Variants}"
                           SelectedItem="{Binding SelectedVariant}"
-                          MinWidth="120"
-                          VerticalAlignment="Center"
+                          HorizontalAlignment="Stretch"
                           Background="{DynamicResource ButtonFill}"
                           Foreground="{DynamicResource TextPrimary}" />
-              </Grid>
+              </StackPanel>
             </Border>
 
           </StackPanel>
+        </Border>
+
+        <!-- ── Licenses section ───────────────────────────── -->
+        <Border Padding="16,12,16,4">
+          <TextBlock Text="LICENSES"
+                     FontSize="11"
+                     FontWeight="SemiBold"
+                     Foreground="{DynamicResource TextMuted}"
+                     LetterSpacing="1" />
+        </Border>
+
+        <Border Background="{DynamicResource PanelFill}"
+                BorderBrush="{DynamicResource PanelStroke}"
+                BorderThickness="0,1,0,1">
+          <ItemsControl ItemsSource="{Binding Licenses}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="local:MobileLicenseEntry">
+                <Border BorderBrush="{DynamicResource PanelStroke}"
+                        BorderThickness="0,0,0,1">
+                  <StackPanel>
+
+                    <!-- License row header — tap to expand/collapse -->
+                    <Button x:Name="LicenseToggleButton"
+                            Background="Transparent"
+                            Padding="16,0"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Stretch">
+                      <Grid ColumnDefinitions="*,Auto" Height="48">
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                          <TextBlock Text="{Binding DisplayName}"
+                                     FontSize="14"
+                                     Foreground="{DynamicResource TextPrimary}"
+                                     TextTrimming="CharacterEllipsis" />
+                          <TextBlock Text="{Binding Url}"
+                                     FontSize="11"
+                                     Foreground="{DynamicResource AccentColor}"
+                                     TextTrimming="CharacterEllipsis"
+                                     IsVisible="{Binding Url,
+                                         Converter={x:Static local:StringToBoolConverter.Instance}}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding IsExpanded,
+                                       Converter={x:Static local:BoolToChevronConverter.Instance}}"
+                                   FontSize="14"
+                                   Foreground="{DynamicResource TextMuted}"
+                                   VerticalAlignment="Center"
+                                   Margin="8,0,0,0" />
+                      </Grid>
+                    </Button>
+
+                    <!-- License full text — visible when expanded -->
+                    <Border IsVisible="{Binding IsExpanded}"
+                            Padding="16,8"
+                            Background="{DynamicResource AppSurfaceBrush}">
+                      <TextBlock Text="{Binding Text}"
+                                 FontSize="11"
+                                 Foreground="{DynamicResource TextMuted}"
+                                 TextWrapping="Wrap"
+                                 FontFamily="Monospace" />
+                    </Border>
+
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </Border>
 
       </StackPanel>

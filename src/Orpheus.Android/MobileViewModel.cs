@@ -11,6 +11,7 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using Orpheus.Core.Library;
@@ -76,7 +77,10 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string _librarySummary = "";
 
     // ── Collections ───────────────────────────────────────────────────
-    private readonly ObservableCollection<QueueItem>   _queue        = new();
+    // Queue is a plain list — rebuilt in bulk and exposed via a property-change
+    // notification so Avalonia replaces the ItemsSource in one pass instead of
+    // firing CollectionChanged once per item (catastrophic at 6000+ tracks).
+    private List<QueueItem> _queue = new();
     private readonly ObservableCollection<LibraryNode> _libraryRoots = new();
     // The items shown in the library tab body (either root nodes or the
     // sub-folders + tracks of the current navigation node).
@@ -310,7 +314,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     // ── Collections ───────────────────────────────────────────────────
 
-    public ObservableCollection<QueueItem>   Queue          => _queue;
+    public List<QueueItem>                   Queue           => _queue;
     public ObservableCollection<LibraryNode> LibraryRoots   => _libraryRoots;
     public ObservableCollection<LibraryNode> DisplayedNodes  => _displayedNodes;
     public ObservableCollection<TrackRow>    DisplayedTracks => _displayedTracks;
@@ -620,6 +624,43 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     ///   primary  → /storage/emulated/0
     ///   XXXX-XXXX → /storage/XXXX-XXXX   (SD card)
     /// </summary>
+    /// <summary>
+    /// Resolves an <see cref="Avalonia.Platform.Storage.IStorageFile"/> to a real
+    /// filesystem path on Android. SAF document URIs look like:
+    ///   content://com.android.externalstorage.documents/document/primary%3AMusic%2FQueue.m3u
+    /// The document ID encodes root:relative/path identically to tree URIs.
+    /// </summary>
+    public static string? ResolveStorageFilePath(Avalonia.Platform.Storage.IStorageFile file)
+    {
+        // Fast path: real filesystem URI (file://)
+        var local = file.TryGetLocalPath();
+        if (!string.IsNullOrEmpty(local))
+            return local;
+
+        var uri = file.Path;
+        if (uri is null) return null;
+
+        // SAF document URI: /document/primary%3AMusic%2FQueue.m3u
+        var segments = uri.AbsolutePath.Split('/');
+        var docIdx   = Array.IndexOf(segments, "document");
+        if (docIdx < 0 || docIdx + 1 >= segments.Length) return null;
+
+        var docId  = Uri.UnescapeDataString(segments[docIdx + 1]);
+        var colon  = docId.IndexOf(':');
+        if (colon < 0) return null;
+
+        var root = docId[..colon];
+        var rel  = docId[(colon + 1)..].Replace('/', Path.DirectorySeparatorChar);
+
+        var rootPath = root.Equals("primary", StringComparison.OrdinalIgnoreCase)
+            ? "/storage/emulated/0"
+            : $"/storage/{root}";
+
+        return string.IsNullOrEmpty(rel)
+            ? rootPath
+            : Path.Combine(rootPath, rel);
+    }
+
     public static string? ResolveStorageFolderPath(Avalonia.Platform.Storage.IStorageFolder folder)
     {
         // Fast path: real filesystem URI (file://)
@@ -735,14 +776,35 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         if (index < 0 || index >= _queue.Count) return;
         _controller.Playlist.RemoveAt(index);
+        _queue = new List<QueueItem>(_queue);
         _queue.RemoveAt(index);
+        NotifyQueueChanged();
         ScheduleStateSave();
     }
 
     public async Task ClearQueueAsync()
     {
         _controller.Playlist.Clear();
-        _queue.Clear();
+        _queue = new List<QueueItem>();
+        NotifyQueueChanged();
+        ScheduleStateSave();
+    }
+
+    /// <summary>Move a queue item from <paramref name="fromIndex"/> to <paramref name="toIndex"/>.</summary>
+    public void MoveQueueItem(int fromIndex, int toIndex)
+    {
+        if (fromIndex == toIndex) return;
+        if (fromIndex < 0 || fromIndex >= _queue.Count) return;
+        if (toIndex < 0 || toIndex >= _queue.Count) return;
+
+        _controller.Playlist.Move(fromIndex, toIndex);
+
+        var newQueue = new List<QueueItem>(_queue);
+        var item = newQueue[fromIndex];
+        newQueue.RemoveAt(fromIndex);
+        newQueue.Insert(toIndex, item);
+        _queue = newQueue;
+        NotifyQueueChanged();
         ScheduleStateSave();
     }
 
@@ -791,24 +853,120 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         ScheduleStateSave();
     }
 
+    /// <summary>Load a playlist file and replace the queue, then start playing.</summary>
+    public async Task LoadPlaylistAsync(LibraryNode node)
+    {
+        if (node.NodeType != LibraryNodeType.Playlist) return;
+
+        var items = await Task.Run(() =>
+            Orpheus.Core.Playlist.PlaylistFileReader.ReadFile(node.Path));
+
+        if (items.Count == 0) return;
+
+        _controller.Playlist.Clear();
+        _controller.Playlist.AddRange(items);
+        UpdateQueueDisplay();
+        await _controller.PlayAtIndexAsync(0).ConfigureAwait(false);
+        ActiveTab = MobileTab.Queue;
+        ScheduleStateSave();
+    }
+
+    /// <summary>Append a playlist file's tracks to the end of the queue.</summary>
+    public async Task EnqueuePlaylistAsync(LibraryNode node)
+    {
+        if (node.NodeType != LibraryNodeType.Playlist) return;
+
+        var items = await Task.Run(() =>
+            Orpheus.Core.Playlist.PlaylistFileReader.ReadFile(node.Path));
+
+        if (items.Count == 0) return;
+
+        _controller.Playlist.AddRange(items);
+        UpdateQueueDisplay();
+        ScheduleStateSave();
+    }
+
+    /// <summary>Save the current queue as a playlist file chosen by the user.</summary>
+    public async Task SaveQueueAsPlaylistAsync(TopLevel topLevel)
+    {
+        if (_controller.Playlist.Count == 0) return;
+
+        var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title              = "Save Queue as Playlist",
+            SuggestedFileName  = "Queue",
+            DefaultExtension   = "m3u",
+            FileTypeChoices    = new[]
+            {
+                new FilePickerFileType("M3U Playlist") { Patterns = new[] { "*.m3u" } },
+                new FilePickerFileType("PLS Playlist") { Patterns = new[] { "*.pls" } },
+            }
+        });
+
+        if (file is null) return;
+
+        // Always write via the SAF stream — direct filesystem writes are blocked
+        // by Android scoped storage on API 29+. The resolved path is only used
+        // to provide relative paths in the M3U; it is not used for the write itself.
+        var resolvedPath = ResolveStorageFilePath(file);
+        var ext = System.IO.Path.GetExtension(file.Name).ToLowerInvariant();
+        var playlist = _controller.Playlist;
+
+        await using (var stream = await file.OpenWriteAsync())
+        {
+            await Task.Run(() =>
+                Orpheus.Core.Playlist.PlaylistFileWriter.WriteToStream(playlist, stream, ext));
+        }
+
+        // Rebuild the folder tree so the new playlist file appears immediately.
+        // Works when the resolved path lands inside a watched folder.
+        await RefreshFolderTreeAsync();
+    }
+
+    /// <summary>
+    /// Rebuilds the library folder tree from disk without re-scanning the audio database
+    /// or resetting navigation. Used after a playlist file is saved so it appears
+    /// immediately in the library view.
+    /// </summary>
+    private async Task RefreshFolderTreeAsync()
+    {
+        var folders = _watchedFolders.ToList();
+        var tracks  = _allTracks;
+        var roots   = await Task.Run(() => BuildFolderTree(folders, tracks));
+
+        _libraryRoots.Clear();
+        foreach (var n in roots) _libraryRoots.Add(n);
+
+        // If we're at the root level, refresh the displayed nodes too.
+        if (_currentNode is null)
+            ShowRootNodes();
+    }
+
     /// <summary>Play all tracks in the current folder (replaces queue).</summary>
     public async Task PlayFolderAsync(LibraryNode node)
     {
         if (!Directory.Exists(node.Path)) return;
 
-        var tracks = _allTracks
-            .Where(t => t.FilePath.StartsWith(node.Path, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(t => t.TrackNumber ?? 0)
-            .ThenBy(t => t.Title ?? "", StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        // Filter + sort on the thread pool — iterating _allTracks (6000+ items)
+        // and building PlaylistItems is measurable work that blocks the UI thread.
+        var tracks = await Task.Run(() =>
+            _allTracks
+                .Where(t => t.FilePath.StartsWith(node.Path, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(t => t.TrackNumber ?? 0)
+                .ThenBy(t => t.Title ?? "", StringComparer.OrdinalIgnoreCase)
+                .ToList());
 
         if (tracks.Count == 0) return;
 
+        // Build PlaylistItems on thread pool — one Changed event via AddRange instead of N×Add.
+        var items = await Task.Run(() => tracks.Select(TrackToPlaylistItem).ToList());
         _controller.Playlist.Clear();
-        _queue.Clear();
-        foreach (var t in tracks) AddTrackToPlaylist(t);
+        _controller.Playlist.AddRange(items);
+
         UpdateQueueDisplay();
-        await _controller.PlayAtIndexAsync(0);
+
+        await _controller.PlayAtIndexAsync(0).ConfigureAwait(false);
+
         ActiveTab = MobileTab.Queue;
         ScheduleStateSave();
     }
@@ -822,19 +980,35 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     }
 
     /// <summary>Add all tracks in a folder to the end of the queue.</summary>
-    public void EnqueueFolder(LibraryNode node)
+    public async Task EnqueueFolder(LibraryNode node)
     {
         if (!Directory.Exists(node.Path)) return;
 
-        var tracks = _allTracks
-            .Where(t => t.FilePath.StartsWith(node.Path, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(t => t.TrackNumber ?? 0)
-            .ThenBy(t => t.Title ?? "", StringComparer.OrdinalIgnoreCase);
+        var tracks = await Task.Run(() =>
+            _allTracks
+                .Where(t => t.FilePath.StartsWith(node.Path, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(t => t.TrackNumber ?? 0)
+                .ThenBy(t => t.Title ?? "", StringComparer.OrdinalIgnoreCase)
+                .ToList());
 
-        foreach (var t in tracks) AddTrackToPlaylist(t);
+        var items = await Task.Run(() => tracks.Select(TrackToPlaylistItem).ToList());
+        _controller.Playlist.AddRange(items);
         UpdateQueueDisplay();
         ScheduleStateSave();
     }
+
+    private static PlaylistItem TrackToPlaylistItem(LibraryTrack track) =>
+        new PlaylistItem
+        {
+            Source = MediaSource.FromFile(track.FilePath),
+            Metadata = new TrackMetadata
+            {
+                Title    = track.Title,
+                Artist   = track.Artist,
+                Album    = track.Album,
+                Duration = track.Duration,
+            }
+        };
 
     private void AddTrackToPlaylist(LibraryTrack track)
     {
@@ -853,19 +1027,42 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void UpdateQueueDisplay()
     {
-        _queue.Clear();
-        foreach (var item in _controller.Playlist)
+        // Snapshot the playlist items so background work doesn't race with
+        // mutations on the UI thread.
+        var mode  = _trackDisplayMode;
+        var items = _controller.Playlist.ToList();
+
+        // Build the display list on the thread pool — for large libraries this
+        // loop is measurable work (string allocations, path operations, etc.).
+        _ = Task.Run(() =>
         {
-            ResolveDisplayText(_trackDisplayMode, item.Metadata,
-                item.Source.Type == Orpheus.Core.Media.MediaSourceType.LocalFile
-                    ? item.Source.Uri.LocalPath : item.Source.Uri.ToString(),
-                item.DisplayName,
-                out var primary, out var secondary);
-            _queue.Add(new QueueItem(
-                primary,
-                secondary,
-                FormatTime(item.Metadata?.Duration ?? TimeSpan.Zero)));
-        }
+            var newQueue = new List<QueueItem>(items.Count);
+            foreach (var item in items)
+            {
+                ResolveDisplayText(mode, item.Metadata,
+                    item.Source.Type == Orpheus.Core.Media.MediaSourceType.LocalFile
+                        ? item.Source.Uri.LocalPath : item.Source.Uri.ToString(),
+                    item.DisplayName,
+                    out var primary, out var secondary);
+                newQueue.Add(new QueueItem(
+                    primary,
+                    secondary,
+                    FormatTime(item.Metadata?.Duration ?? TimeSpan.Zero)));
+            }
+            return newQueue;
+        }).ContinueWith(t =>
+        {
+            if (t.IsCompletedSuccessfully)
+            {
+                _queue = t.Result;
+                NotifyQueueChanged();
+            }
+        }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    private void NotifyQueueChanged()
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Queue)));
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QueueSummary)));
     }
 
@@ -1078,6 +1275,18 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
                     if (childNode is not null)
                         children.Add(childNode);
                 }
+
+                // Playlist files — always shown, sorted by name
+                foreach (var file in Directory.EnumerateFiles(path)
+                             .Where(f => Orpheus.Core.Library.FolderScanner.PlaylistExtensions
+                                 .Contains(Path.GetExtension(f)))
+                             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+                {
+                    var ext = Path.GetExtension(file).TrimStart('.').ToUpperInvariant();
+                    children.Add(new LibraryNode(
+                        Path.GetFileNameWithoutExtension(file), ext, file,
+                        nodeType: LibraryNodeType.Playlist));
+                }
             }
             catch { /* permission denied etc. */ }
         }
@@ -1097,8 +1306,10 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
             : "";
 
         // Skip empty leaf folders that have no tracks anywhere underneath
+        // (but keep folders that contain playlist files)
         var totalTracks = CountTracksUnder(path, tracks);
-        if (totalTracks == 0 && children.Count == 0)
+        var hasPlaylists = children.Any(c => c.NodeType == LibraryNodeType.Playlist);
+        if (totalTracks == 0 && children.Count == 0 && !hasPlaylists)
             return null;
 
         return new LibraryNode(name, meta, path, children);
@@ -1129,13 +1340,16 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
 // ── Supporting types ──────────────────────────────────────────────────
 
+public enum LibraryNodeType { Folder, Playlist }
+
 public sealed class LibraryNode : INotifyPropertyChanged
 {
     private bool _isExpanded;
 
-    public string Name { get; }
-    public string Meta { get; set; }
-    public string Path { get; }
+    public string          Name     { get; }
+    public string          Meta     { get; set; }
+    public string          Path     { get; }
+    public LibraryNodeType NodeType { get; }
     public ObservableCollection<LibraryNode> Children { get; }
 
     public bool IsExpanded
@@ -1149,14 +1363,18 @@ public sealed class LibraryNode : INotifyPropertyChanged
         }
     }
 
-    public bool HasChildren => Children.Count > 0;
+    public bool HasChildren  => Children.Count > 0;
+    public bool IsPlaylist   => NodeType == LibraryNodeType.Playlist;
+    public bool IsFolder     => NodeType == LibraryNodeType.Folder;
 
     public LibraryNode(string name, string meta, string path,
-        IList<LibraryNode>? children = null)
+        IList<LibraryNode>? children = null,
+        LibraryNodeType nodeType = LibraryNodeType.Folder)
     {
         Name     = name;
         Meta     = meta;
         Path     = path;
+        NodeType = nodeType;
         Children = children != null
             ? new ObservableCollection<LibraryNode>(children)
             : new ObservableCollection<LibraryNode>();

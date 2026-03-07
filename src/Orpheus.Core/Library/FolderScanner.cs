@@ -43,6 +43,20 @@ public sealed class FolderScanner
     public event EventHandler<LibraryScanProgress>? Progress;
 
     /// <summary>
+    /// Maximum number of concurrent metadata reads.
+    /// TagLib# is CPU-bound per file; more threads than logical cores is
+    /// counter-productive. 8 gives good throughput on mobile (4–8 cores)
+    /// without monopolising them.
+    /// </summary>
+    private const int MaxParallelReads = 8;
+
+    /// <summary>
+    /// Number of tracks to accumulate before flushing to the database
+    /// in a single batched transaction.
+    /// </summary>
+    private const int BatchSize = 100;
+
+    /// <summary>
     /// Scan all watched folders in the library.
     /// </summary>
     public async Task ScanAsync(CancellationToken cancellationToken = default)
@@ -50,18 +64,6 @@ public sealed class FolderScanner
         var folders = await _library.GetWatchedFoldersAsync(cancellationToken);
         await ScanFoldersAsync(folders, cancellationToken);
     }
-
-    /// <summary>
-    /// Maximum number of concurrent metadata reads.
-    /// Bounded to avoid overwhelming disk I/O or starving other work.
-    /// </summary>
-    private const int MaxParallelReads = 4;
-
-    /// <summary>
-    /// Number of tracks to accumulate before flushing to the database
-    /// in a single batched transaction.
-    /// </summary>
-    private const int BatchSize = 50;
 
     /// <summary>
     /// Scan specific folders.
@@ -72,23 +74,42 @@ public sealed class FolderScanner
     {
         ArgumentNullException.ThrowIfNull(folderPaths);
 
-        // Phase 1: Discover all audio files.
+        // All heavy work (file I/O, metadata reads, DB writes) is pushed onto
+        // the thread pool so the calling thread (Avalonia UI dispatcher) is
+        // never blocked.
+        await Task.Run(() => ScanFoldersInternalAsync(folderPaths, cancellationToken), cancellationToken);
+    }
+
+    private async Task ScanFoldersInternalAsync(
+        IEnumerable<string> folderPaths,
+        CancellationToken cancellationToken)
+    {
+        // Phase 0: Load a lightweight snapshot of everything already in the DB
+        // (path → file size + last-modified ticks) in a single query.
+        // This replaces the per-file GetTrackByPathAsync calls that previously
+        // caused N database round-trips inside the parallel loop.
+        var existingSnapshot = await _library.GetTrackedFileSnapshotAsync(cancellationToken);
+
+        // Phase 1: Discover all audio files. EnumerateFiles is synchronous and
+        // can block for hundreds of milliseconds on large directory trees, so we
+        // run it here inside Task.Run (already on the thread pool).
         var audioFiles = new List<string>();
         foreach (var folder in folderPaths)
         {
             if (!Directory.Exists(folder)) continue;
 
-            var files = Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDirectories)
-                .Where(f => AudioExtensions.Contains(Path.GetExtension(f)));
-
-            audioFiles.AddRange(files);
+            foreach (var f in Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDirectories))
+            {
+                if (AudioExtensions.Contains(Path.GetExtension(f)))
+                    audioFiles.Add(f);
+            }
         }
 
         var totalFiles = audioFiles.Count;
-        var processed = 0;
-        var newTracks = 0;
+        var processed  = 0;
+        var newTracks  = 0;
         var updatedTracks = 0;
-        var errors = 0;
+        var errors     = 0;
 
         // Phase 2: Process files with parallel metadata reads and batched DB writes.
         var pendingUpserts = new List<LibraryTrack>();
@@ -110,46 +131,53 @@ public sealed class FolderScanner
                     var fileInfo = new FileInfo(filePath);
                     if (!fileInfo.Exists) return;
 
-                    var existing = await _library.GetTrackByPathAsync(filePath, ct);
+                    var fullPath = fileInfo.FullName;
 
-                    // Skip if file hasn't changed.
-                    if (existing is not null &&
-                        existing.FileSize == fileInfo.Length &&
-                        existing.LastModifiedTicks == fileInfo.LastWriteTimeUtc.Ticks)
+                    // Change detection: compare against the pre-loaded snapshot
+                    // instead of querying the DB per file.
+                    if (existingSnapshot.TryGetValue(fullPath, out var snap) &&
+                        snap.FileSize == fileInfo.Length &&
+                        snap.LastModifiedTicks == fileInfo.LastWriteTimeUtc.Ticks)
                     {
                         Interlocked.Increment(ref processed);
                         return;
                     }
 
-                    var metadata = _metadataReader.ReadFromFile(filePath);
+                    // Skip album art (readPictures: false) — the library database
+                    // does not store cover art, so decoding it wastes CPU time and
+                    // creates large short-lived byte[] allocations that the GC
+                    // must collect while scanning hundreds of files.
+                    var metadata = _metadataReader.ReadFromFile(filePath, readPictures: false);
 
-                    track = existing ?? new LibraryTrack
+                    isNew = !existingSnapshot.ContainsKey(fullPath);
+
+                    track = new LibraryTrack
                     {
-                        FilePath = fileInfo.FullName,
-                        DateAddedTicks = DateTimeOffset.UtcNow.Ticks
+                        FilePath          = fullPath,
+                        FileSize          = fileInfo.Length,
+                        LastModifiedTicks = fileInfo.LastWriteTimeUtc.Ticks,
+                        // For new tracks record now as the added timestamp.
+                        // For updated tracks the DB upsert preserves the original
+                        // date_added_ticks value via ON CONFLICT DO UPDATE (it only
+                        // updates the columns listed, not date_added_ticks).
+                        DateAddedTicks    = DateTimeOffset.UtcNow.Ticks,
+                        Title       = metadata.Title,
+                        Artist      = metadata.Artist,
+                        Album       = metadata.Album,
+                        AlbumArtist = metadata.AlbumArtist,
+                        TrackNumber = metadata.TrackNumber,
+                        TrackCount  = metadata.TrackCount,
+                        DiscNumber  = metadata.DiscNumber,
+                        Year        = metadata.Year,
+                        Genre       = metadata.Genre,
+                        DurationMs  = metadata.Duration.HasValue
+                            ? (long)metadata.Duration.Value.TotalMilliseconds
+                            : null,
+                        Bitrate     = metadata.Bitrate,
+                        SampleRate  = metadata.SampleRate,
+                        Channels    = metadata.Channels,
+                        Codec       = metadata.Codec,
                     };
-
-                    isNew = existing is null;
-
-                    track.FilePath = fileInfo.FullName;
-                    track.FileSize = fileInfo.Length;
-                    track.LastModifiedTicks = fileInfo.LastWriteTimeUtc.Ticks;
-                    track.Title = metadata.Title;
-                    track.Artist = metadata.Artist;
-                    track.Album = metadata.Album;
-                    track.AlbumArtist = metadata.AlbumArtist;
-                    track.TrackNumber = metadata.TrackNumber;
-                    track.TrackCount = metadata.TrackCount;
-                    track.DiscNumber = metadata.DiscNumber;
-                    track.Year = metadata.Year;
-                    track.Genre = metadata.Genre;
-                    track.DurationMs = metadata.Duration.HasValue
-                        ? (long)metadata.Duration.Value.TotalMilliseconds
-                        : null;
-                    track.Bitrate = metadata.Bitrate;
-                    track.SampleRate = metadata.SampleRate;
-                    track.Channels = metadata.Channels;
-                    track.Codec = metadata.Codec;
                 }
                 catch (OperationCanceledException)
                 {
@@ -165,7 +193,7 @@ public sealed class FolderScanner
                 if (track is not null)
                 {
                     if (isNew) Interlocked.Increment(ref newTracks);
-                    else Interlocked.Increment(ref updatedTracks);
+                    else       Interlocked.Increment(ref updatedTracks);
 
                     // Collect tracks for batch upsert. Flush when batch is full.
                     List<LibraryTrack>? batchToFlush = null;
@@ -191,35 +219,33 @@ public sealed class FolderScanner
                 {
                     Progress?.Invoke(this, new LibraryScanProgress
                     {
-                        TotalFiles = totalFiles,
+                        TotalFiles     = totalFiles,
                         ProcessedFiles = currentProcessed,
-                        NewTracks = Volatile.Read(ref newTracks),
-                        UpdatedTracks = Volatile.Read(ref updatedTracks),
-                        ErrorCount = Volatile.Read(ref errors),
-                        CurrentFile = filePath,
-                        IsComplete = currentProcessed == totalFiles
+                        NewTracks      = Volatile.Read(ref newTracks),
+                        UpdatedTracks  = Volatile.Read(ref updatedTracks),
+                        ErrorCount     = Volatile.Read(ref errors),
+                        CurrentFile    = filePath,
+                        IsComplete     = currentProcessed == totalFiles
                     });
                 }
             });
 
         // Flush any remaining tracks.
         if (pendingUpserts.Count > 0)
-        {
             await _library.BatchUpsertTracksAsync(pendingUpserts, cancellationToken);
-        }
 
         // Phase 3: Remove tracks whose files no longer exist.
         var removed = await _library.RemoveMissingTracksAsync(cancellationToken);
 
         Progress?.Invoke(this, new LibraryScanProgress
         {
-            TotalFiles = totalFiles,
+            TotalFiles     = totalFiles,
             ProcessedFiles = totalFiles,
-            NewTracks = newTracks,
-            UpdatedTracks = updatedTracks,
-            RemovedTracks = removed,
-            ErrorCount = errors,
-            IsComplete = true
+            NewTracks      = newTracks,
+            UpdatedTracks  = updatedTracks,
+            RemovedTracks  = removed,
+            ErrorCount     = errors,
+            IsComplete     = true
         });
     }
 }

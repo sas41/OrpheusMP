@@ -49,6 +49,11 @@ public partial class SettingsView : UserControl
             case "SettingsResetLibraryButton":
                 if (vm is not null) _ = vm.ResetLibraryAsync();
                 break;
+
+            case "LicenseToggleButton":
+                if (btn.DataContext is MobileLicenseEntry entry)
+                    entry.IsExpanded = !entry.IsExpanded;
+                break;
         }
     }
 

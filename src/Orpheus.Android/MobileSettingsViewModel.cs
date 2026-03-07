@@ -1,6 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -167,13 +170,129 @@ public sealed class MobileSettingsViewModel : INotifyPropertyChanged
         }
     }
 
+    // ── Licenses ─────────────────────────────────────────────────────
+
+    public ObservableCollection<MobileLicenseEntry> Licenses { get; } =
+        new(LoadLicenses());
+
+    private static IEnumerable<MobileLicenseEntry> LoadLicenses()
+    {
+        var searchDirs = new[]
+        {
+            Path.Combine(AppContext.BaseDirectory, "LICENSES"),
+            // Dev build: walk up from the Android project output to the Desktop LICENSES folder
+            Path.Combine(AppContext.BaseDirectory,
+                "..", "..", "..", "..", "Orpheus.Desktop", "LICENSES"),
+        };
+
+        var seen    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var entries = new List<MobileLicenseEntry>();
+
+        foreach (var dir in searchDirs)
+        {
+            if (!Directory.Exists(dir)) continue;
+            foreach (var file in Directory.EnumerateFiles(dir, "*.txt").OrderBy(f => f))
+            {
+                var name = Path.GetFileNameWithoutExtension(file);
+                if (!seen.Add(name)) continue;
+                try
+                {
+                    var text = File.ReadAllText(file);
+                    var (project, url, body) = ParseLicenseHeaders(text);
+                    entries.Add(new MobileLicenseEntry(name, body, project, url));
+                }
+                catch
+                {
+                    entries.Add(new MobileLicenseEntry(name, "(Could not read license file)"));
+                }
+            }
+        }
+
+        return entries;
+    }
+
+    private static (string? Project, string? Url, string Body) ParseLicenseHeaders(string text)
+    {
+        string? project = null;
+        string? url     = null;
+
+        using var reader = new StringReader(text);
+        var bodyStart    = 0;
+        var linesConsumed = 0;
+
+        while (reader.ReadLine() is { } line)
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.StartsWith("Project:", StringComparison.OrdinalIgnoreCase))
+            {
+                project = trimmed["Project:".Length..].Trim();
+                linesConsumed++;
+            }
+            else if (trimmed.StartsWith("URL:", StringComparison.OrdinalIgnoreCase))
+            {
+                url = trimmed["URL:".Length..].Trim();
+                linesConsumed++;
+            }
+            else if (string.IsNullOrWhiteSpace(line) && linesConsumed > 0)
+            {
+                linesConsumed++;
+            }
+            else
+            {
+                break;
+            }
+            bodyStart += line.Length + 1;
+        }
+
+        var body = linesConsumed > 0 && bodyStart < text.Length
+            ? text[bodyStart..]
+            : text;
+
+        return (project, url, body);
+    }
+
     // ── INotifyPropertyChanged ────────────────────────────────────────
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {
-        if (System.Collections.Generic.EqualityComparer<T>.Default.Equals(field, value)) return false;
+        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         return true;
     }
+}
+
+public sealed class MobileLicenseEntry : INotifyPropertyChanged
+{
+    private bool _isExpanded;
+
+    public string  Name        { get; }
+    public string  Text        { get; }
+    public string? Project     { get; }
+    public string? Url         { get; }
+    public string  DisplayName => Project ?? Name;
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set
+        {
+            if (_isExpanded == value) return;
+            _isExpanded = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsCollapsed)));
+        }
+    }
+
+    public bool IsCollapsed => !_isExpanded;
+
+    public MobileLicenseEntry(string name, string text, string? project = null, string? url = null)
+    {
+        Name    = name;
+        Text    = text;
+        Project = project;
+        Url     = url;
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 }
