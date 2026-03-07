@@ -20,6 +20,7 @@ using System;
 using System.Threading.Tasks;
 using System.IO;
 using System.Net.Http;
+using System.Threading;
 using Orpheus.Desktop.Lang;
 using Orpheus.Desktop.Theming;
 
@@ -272,6 +273,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private readonly IMediaLibrary _library;
     private readonly FolderScanner _scanner;
     private readonly PlayerController _controller;
+    private readonly ILibraryChangeMonitor _changeMonitor;
+    private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private CancellationTokenSource? _changeDebounceCts;
     private VlcEqualizer? _equalizer;
     private readonly ObservableCollection<LibraryNode> _libraryRoots = new();
     private readonly BulkObservableCollection<TrackRow> _tracks = new();
@@ -1003,6 +1007,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _library = new SqliteMediaLibrary(_databasePath);
         _scanner = new FolderScanner(_library, new TagLibMetadataReader());
         _scanner.Progress += OnScanProgress;
+        _changeMonitor = new DesktopFileSystemLibraryChangeMonitor();
+        _changeMonitor.Changed += OnLibraryChanged;
 
         var player = new VlcPlayer();
         _controller = new PlayerController(player, state.AudioDevice, _volume);
@@ -1078,8 +1084,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             return;
 
         await _library.AddWatchedFolderAsync(folder);
-        await _scanner.ScanFoldersAsync(new[] { folder });
-        await LoadLibraryAsync();
+        await ScanFoldersAsync([folder]);
+        await RefreshLibraryChangeMonitorAsync();
     }
 
     /// <summary>
@@ -1088,6 +1094,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public async Task RefreshLibraryAsync()
     {
         await LoadLibraryAsync();
+        await RefreshLibraryChangeMonitorAsync();
     }
 
     /// <summary>
@@ -1095,8 +1102,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     /// </summary>
     public async Task RescanAllFoldersAsync()
     {
-        await _scanner.ScanAsync();
-        await LoadLibraryAsync();
+        await ScanAllFoldersAsync();
     }
 
     /// <summary>
@@ -1143,9 +1149,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             await LoadPlaylistAsync();
         }
 
-        // Scan watched folders in the background so the UI is responsive
-        // while the database is brought up to date with any file changes.
-        _ = _scanner.ScanAsync();
+        _ = ScanAllFoldersAsync();
     }
 
     private async Task EnsureDefaultLibraryAsync()
@@ -1154,8 +1158,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (watched.Count == 0 && Directory.Exists(_musicFolder))
         {
             await _library.AddWatchedFolderAsync(_musicFolder);
-            await _scanner.ScanAsync();
+            watched = [_musicFolder];
         }
+
+        await RefreshLibraryChangeMonitorAsync(watched);
     }
 
     private async Task LoadLibraryAsync(string? query = null)
@@ -1186,7 +1192,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         IsTrackOrderDirty = false;
         IsTrackSortEnabled = true;
 
-        var folders = await _library.GetWatchedFoldersAsync();
+        var folders = (await _library.GetWatchedFoldersAsync())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
         var treeNodes = await Task.Run(() => BuildFolderTree(folders, tracks, pruneEmpty: isSearch || tracks.Count == 0, showFiles: _showLibraryFiles));
 
         var state = ((App)Application.Current!).State;
@@ -1311,6 +1319,65 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             // Refresh the library tree but don't touch the play queue — the user
             // may have a restored or manually curated queue we shouldn't overwrite.
             _ = LoadLibraryAsync();
+        }
+    }
+
+    private async Task RefreshLibraryChangeMonitorAsync(IReadOnlyList<string>? watchedFolders = null)
+    {
+        watchedFolders ??= await _library.GetWatchedFoldersAsync();
+        _changeMonitor.UpdateWatchedFolders(watchedFolders);
+    }
+
+    private async Task ScanAllFoldersAsync()
+    {
+        await RunScanAsync(static (scanner, cancellationToken) => scanner.ScanAsync(cancellationToken));
+    }
+
+    private async Task ScanFoldersAsync(IReadOnlyList<string> folders)
+    {
+        if (folders.Count == 0)
+            return;
+
+        await RunScanAsync((scanner, cancellationToken) => scanner.ScanFoldersAsync(folders, cancellationToken));
+    }
+
+    private async Task RunScanAsync(Func<FolderScanner, CancellationToken, Task> scanAction)
+    {
+        await _scanGate.WaitAsync();
+        try
+        {
+            await scanAction(_scanner, CancellationToken.None);
+        }
+        finally
+        {
+            _scanGate.Release();
+        }
+    }
+
+    private async void OnLibraryChanged(object? sender, LibraryChangeDetectedEventArgs e)
+    {
+        if (_scanGate.CurrentCount == 0)
+            return;
+
+        var previous = Interlocked.Exchange(ref _changeDebounceCts, new CancellationTokenSource());
+        previous?.Cancel();
+        previous?.Dispose();
+
+        var cts = _changeDebounceCts;
+        if (cts is null)
+            return;
+
+        try
+        {
+            await Task.Delay(1000, cts.Token);
+
+            if (e.RequiresFullRescan || e.FolderPaths.Count == 0)
+                await ScanAllFoldersAsync();
+            else
+                await ScanFoldersAsync(e.FolderPaths);
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -2790,9 +2857,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         // Persist queue and playback state before tearing down
         SaveQueueState();
 
+        _changeDebounceCts?.Cancel();
+        _changeDebounceCts?.Dispose();
         App.LanguageChanged -= OnLanguageChanged;
         if (((App)Application.Current!).ThemeManager is { } tm)
             tm.ThemeChanged -= OnThemeChanged;
+        _changeMonitor.Changed -= OnLibraryChanged;
         _scanner.Progress -= OnScanProgress;
         _controller.Playlist.Changed -= OnPlaylistChanged;
         _controller.Playlist.CurrentIndexChanged -= OnPlaylistIndexChanged;
@@ -2801,6 +2871,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _controller.StateChanged -= OnControllerStateChanged;
         _controller.PositionChanged -= OnControllerPositionChanged;
         _controller.VolumeChanged -= OnControllerVolumeChanged;
+        await _changeMonitor.DisposeAsync().ConfigureAwait(false);
+        _scanGate.Dispose();
         _equalizer?.Dispose();
         await _controller.DisposeAsync().ConfigureAwait(false);
         _library.Dispose();

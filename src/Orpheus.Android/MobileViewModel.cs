@@ -42,6 +42,9 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly IMediaLibrary _library;
     private readonly FolderScanner _scanner;
     private readonly PlayerController _controller;
+    private readonly ILibraryChangeMonitor _changeMonitor;
+    private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private CancellationTokenSource? _changeDebounceCts;
 
     // ── Playback state ────────────────────────────────────────────────
     private string _nowPlayingTitle  = "Nothing Playing";
@@ -386,6 +389,9 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         _library = new SqliteMediaLibrary(databasePath);
         _scanner = new FolderScanner(_library, new TagLibMetadataReader());
+        _scanner.Progress += OnScanProgress;
+        _changeMonitor = new AndroidMediaStoreLibraryChangeMonitor(global::Android.App.Application.Context);
+        _changeMonitor.Changed += OnLibraryChanged;
 
         // Android: libvlc.so is already loaded by the runtime. We pre-set the
         // internal _libvlcLoaded flag via reflection so EnsureLoaded() is a no-op.
@@ -447,7 +453,11 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         {
             await _library.AddWatchedFolderAsync(musicFolder);
             await ScanFoldersAsync([musicFolder]);
+            await RefreshLibraryChangeMonitorAsync();
+            return;
         }
+
+        await RefreshLibraryChangeMonitorAsync(watched);
         // If folders are already watched the library was loaded in InitializeAsync;
         // nothing more to do.
     }
@@ -468,49 +478,29 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     // Scan all watched folders (e.g. on rescan)
     public async Task ScanAsync()
     {
-        IsScanning = true;
-        StatusMessage = "Scanning…";
-        try
-        {
-            await _scanner.ScanAsync();
-            await LoadLibraryAsync();
-            StatusMessage = "";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Scan error: {ex.Message}";
-        }
-        finally
-        {
-            IsScanning = false;
-        }
+        await RunScanAsync(static (scanner, cancellationToken) => scanner.ScanAsync(cancellationToken));
     }
 
     // Scan only the given folders (used on add, to avoid re-scanning everything)
     private async Task ScanFoldersAsync(IEnumerable<string> folders)
     {
-        IsScanning = true;
-        StatusMessage = "Scanning…";
-        try
-        {
-            await _scanner.ScanFoldersAsync(folders);
-            await LoadLibraryAsync();
-            StatusMessage = "";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Scan error: {ex.Message}";
-        }
-        finally
-        {
-            IsScanning = false;
-        }
+        var folderList = folders
+            .Where(static path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (folderList.Count == 0)
+            return;
+
+        await RunScanAsync((scanner, cancellationToken) => scanner.ScanFoldersAsync(folderList, cancellationToken));
     }
 
     private async Task LoadLibraryAsync()
     {
         _allTracks = await _library.GetAllTracksAsync();
-        var folders = await _library.GetWatchedFoldersAsync();
+        var folders = (await _library.GetWatchedFoldersAsync())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
         var roots = await Task.Run(() => BuildFolderTree(folders, _allTracks));
 
@@ -519,6 +509,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         _watchedFolders.Clear();
         foreach (var f in folders) _watchedFolders.Add(f);
+        _changeMonitor.UpdateWatchedFolders(folders);
 
         // Reset navigation
         _navStack.Clear();
@@ -705,6 +696,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         // to proceed. Guarding here caused re-added folders to silently do nothing.
         await _library.AddWatchedFolderAsync(path);
         await ScanFoldersAsync([path]);   // scan only the newly added folder
+        await RefreshLibraryChangeMonitorAsync();
     }
 
     public async Task RemoveFolderAsync(string path)
@@ -712,12 +704,14 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         await _library.RemoveWatchedFolderAsync(path);
         await _library.RemoveTracksUnderFolderAsync(path);
         await LoadLibraryAsync();
+        await RefreshLibraryChangeMonitorAsync();
     }
 
     public async Task ResetLibraryAsync()
     {
         await _library.ClearAsync();
         await LoadLibraryAsync();
+        _changeMonitor.UpdateWatchedFolders([]);
     }
 
     public async Task RescanAsync() => await ScanAsync();
@@ -1333,8 +1327,76 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         SaveState();
+        _changeDebounceCts?.Cancel();
+        _changeDebounceCts?.Dispose();
+        _changeMonitor.Changed -= OnLibraryChanged;
+        _scanner.Progress -= OnScanProgress;
+        await _changeMonitor.DisposeAsync();
+        _scanGate.Dispose();
         await _controller.DisposeAsync();
         _library.Dispose();
+    }
+
+    private async Task RunScanAsync(Func<FolderScanner, CancellationToken, Task> scanAction)
+    {
+        await _scanGate.WaitAsync();
+        try
+        {
+            IsScanning = true;
+            StatusMessage = "Scanning…";
+            await scanAction(_scanner, CancellationToken.None);
+            StatusMessage = "";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Scan error: {ex.Message}";
+        }
+        finally
+        {
+            IsScanning = false;
+            _scanGate.Release();
+        }
+    }
+
+    private async void OnLibraryChanged(object? sender, LibraryChangeDetectedEventArgs e)
+    {
+        if (IsScanning)
+            return;
+
+        var previous = Interlocked.Exchange(ref _changeDebounceCts, new CancellationTokenSource());
+        previous?.Cancel();
+        previous?.Dispose();
+
+        var cts = _changeDebounceCts;
+        if (cts is null)
+            return;
+
+        try
+        {
+            await Task.Delay(1000, cts.Token);
+
+            if (e.RequiresFullRescan || e.FolderPaths.Count == 0)
+                await ScanAsync();
+            else
+                await ScanFoldersAsync(e.FolderPaths);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task RefreshLibraryChangeMonitorAsync(IReadOnlyList<string>? watchedFolders = null)
+    {
+        watchedFolders ??= await _library.GetWatchedFoldersAsync();
+        _changeMonitor.UpdateWatchedFolders(watchedFolders);
+    }
+
+    private void OnScanProgress(object? sender, LibraryScanProgress e)
+    {
+        if (!e.IsComplete)
+            return;
+
+        _ = LoadLibraryAsync();
     }
 }
 

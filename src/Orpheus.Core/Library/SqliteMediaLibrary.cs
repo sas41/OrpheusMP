@@ -69,6 +69,16 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     folder_path TEXT NOT NULL UNIQUE
                 );
+
+                DELETE FROM watched_folders
+                WHERE id NOT IN (
+                    SELECT MIN(id)
+                    FROM watched_folders
+                    GROUP BY folder_path
+                );
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_watched_folders_path
+                ON watched_folders(folder_path);
                 """;
             cmd.ExecuteNonQuery();
         }

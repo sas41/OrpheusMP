@@ -9,9 +9,22 @@ CONFIGURATION="${CONFIGURATION:-Release}"
 FRAMEWORK="${FRAMEWORK:-net10.0-android}"
 ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
 PACKAGE_NAME="${PACKAGE_NAME:-net.orpheusmp.android}"
+UNINSTALL_ON_SIGNATURE_MISMATCH="${UNINSTALL_ON_SIGNATURE_MISMATCH:-true}"
 
 find_apk() {
-    find src/Orpheus.Android -path "*/publish/*.apk" | head -1
+    local signed_apk
+    local unsigned_apk
+
+    signed_apk=$(find src/Orpheus.Android -path "*/publish/*-Signed.apk" | sort | head -1)
+    if [ -n "$signed_apk" ]; then
+        printf '%s\n' "$signed_apk"
+        return 0
+    fi
+
+    unsigned_apk=$(find src/Orpheus.Android -path "*/publish/*.apk" ! -name "*-Signed.apk" | sort | head -1)
+    if [ -n "$unsigned_apk" ]; then
+        printf '%s\n' "$unsigned_apk"
+    fi
 }
 
 publish_apk() {
@@ -25,6 +38,9 @@ publish_apk() {
 
 install_apk() {
     local apk
+    local output
+    local status
+
     apk=$(find_apk)
     if [ -z "$apk" ]; then
         echo "APK not found, publishing first..."
@@ -37,7 +53,26 @@ install_apk() {
         exit 1
     fi
 
-    adb -e install -r "$apk"
+    set +e
+    output=$(adb -e install -r "$apk" 2>&1)
+    status=$?
+    set -e
+
+    if [ $status -eq 0 ]; then
+        printf '%s\n' "$output"
+        return 0
+    fi
+
+    printf '%s\n' "$output" >&2
+
+    if [[ "$output" == *"INSTALL_FAILED_UPDATE_INCOMPATIBLE"* ]] && [ "$UNINSTALL_ON_SIGNATURE_MISMATCH" = "true" ]; then
+        echo "Signature mismatch detected for $PACKAGE_NAME; uninstalling existing app and retrying..."
+        adb -e uninstall "$PACKAGE_NAME"
+        adb -e install -r "$apk"
+        return 0
+    fi
+
+    return $status
 }
 
 run_app() {
