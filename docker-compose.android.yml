@@ -11,11 +11,16 @@
 ##   docker compose -f docker-compose.android.yml run --rm android emulator
 ##   docker compose -f docker-compose.android.yml run --rm android shell
 ##
+## Release examples:
+##   docker compose -f docker-compose.android.yml run --rm -e CONFIGURATION=Release android publish
+##   docker compose -f docker-compose.android.yml run --rm -e CONFIGURATION=Release android deploy
+##
 ## Intended flow:
 ##   1. Start the emulator on the host (or use the `emulator` command here).
 ##   2. Run `deploy` from this compose file to publish, install, and launch.
 ##
 ## Notes:
+##   - `CONFIGURATION` defaults to `Debug`; set `-e CONFIGURATION=Release` for release APKs.
 ##   - `network_mode: host` lets container `adb` talk to the host emulator.
 ##   - The repo is mounted at `/workspace`.
 

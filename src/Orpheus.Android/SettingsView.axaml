@@ -274,6 +274,22 @@
           </ItemsControl>
         </Border>
 
+        <Border Padding="16,20,16,24"
+                IsVisible="{Binding HasBuildString}">
+          <StackPanel Spacing="4">
+            <TextBlock Text="BUILD"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextMuted}"
+                       LetterSpacing="1" />
+            <TextBlock Text="{Binding BuildString}"
+                       FontSize="11"
+                       Foreground="{DynamicResource TextMuted}"
+                       FontFamily="Monospace"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
       </StackPanel>
     </ScrollViewer>
 

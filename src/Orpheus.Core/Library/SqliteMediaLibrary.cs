@@ -41,9 +41,11 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
                 CREATE TABLE IF NOT EXISTS tracks (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     file_path TEXT NOT NULL UNIQUE,
+                    folder_path TEXT NOT NULL DEFAULT '',
                     file_size INTEGER NOT NULL DEFAULT 0,
                     last_modified_ticks INTEGER NOT NULL DEFAULT 0,
                     date_added_ticks INTEGER NOT NULL DEFAULT 0,
+                    metadata_status INTEGER NOT NULL DEFAULT 1,
                     title TEXT,
                     artist TEXT,
                     album TEXT,
@@ -82,6 +84,40 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
                 """;
             cmd.ExecuteNonQuery();
         }
+
+        EnsureColumn(conn, "tracks", "folder_path", "TEXT NOT NULL DEFAULT ''");
+        EnsureColumn(conn, "tracks", "metadata_status", "INTEGER NOT NULL DEFAULT 1");
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = """
+                UPDATE tracks
+                SET metadata_status = CASE
+                    WHEN title IS NULL
+                     AND artist IS NULL
+                     AND album IS NULL
+                     AND album_artist IS NULL
+                     AND track_number IS NULL
+                     AND track_count IS NULL
+                     AND disc_number IS NULL
+                     AND year IS NULL
+                     AND genre IS NULL
+                     AND duration_ms IS NULL
+                     AND bitrate IS NULL
+                     AND sample_rate IS NULL
+                     AND channels IS NULL
+                     AND codec IS NULL
+                    THEN 0
+                    ELSE 1
+                END
+                WHERE metadata_status NOT IN (0, 1, 2);
+
+                CREATE INDEX IF NOT EXISTS idx_tracks_folder_path ON tracks(folder_path);
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        BackfillFolderPaths(conn);
 
         // ── FTS5 migration ───────────────────────────────────────────────────
         // Check whether tracks_fts already exists. We cannot use
@@ -139,6 +175,64 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
     }
 
     private SqliteConnection OpenConnection() => new(_connectionString);
+
+    private static void EnsureColumn(SqliteConnection conn, string tableName, string columnName, string definition)
+    {
+        using var info = conn.CreateCommand();
+        info.CommandText = $"PRAGMA table_info({tableName})";
+
+        var exists = false;
+        using (var reader = info.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+        }
+
+        if (exists)
+            return;
+
+        using var alter = conn.CreateCommand();
+        alter.CommandText = $"ALTER TABLE {tableName} ADD COLUMN {columnName} {definition}";
+        alter.ExecuteNonQuery();
+    }
+
+    private static void BackfillFolderPaths(SqliteConnection conn)
+    {
+        var pending = new List<(long Id, string FolderPath)>();
+
+        using (var select = conn.CreateCommand())
+        {
+            select.CommandText = "SELECT id, file_path FROM tracks WHERE folder_path = '' OR folder_path IS NULL";
+            using var reader = select.ExecuteReader();
+            while (reader.Read())
+            {
+                var id = reader.GetInt64(0);
+                var filePath = reader.GetString(1);
+                pending.Add((id, Path.GetDirectoryName(filePath) ?? string.Empty));
+            }
+        }
+
+        if (pending.Count == 0)
+            return;
+
+        using var update = conn.CreateCommand();
+        update.CommandText = "UPDATE tracks SET folder_path = @folder_path WHERE id = @id";
+        update.Parameters.Add("@folder_path", SqliteType.Text);
+        update.Parameters.Add("@id", SqliteType.Integer);
+
+        foreach (var row in pending)
+        {
+            update.Parameters["@folder_path"].Value = row.FolderPath;
+            update.Parameters["@id"].Value = row.Id;
+            update.ExecuteNonQuery();
+        }
+    }
 
     public async Task<int> GetTrackCountAsync(CancellationToken cancellationToken = default)
     {
@@ -561,19 +655,21 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             INSERT INTO tracks (
-                file_path, file_size, last_modified_ticks, date_added_ticks,
+                file_path, folder_path, file_size, last_modified_ticks, date_added_ticks, metadata_status,
                 title, artist, album, album_artist,
                 track_number, track_count, disc_number, year, genre,
                 duration_ms, bitrate, sample_rate, channels, codec
             ) VALUES (
-                @file_path, @file_size, @last_modified_ticks, @date_added_ticks,
+                @file_path, @folder_path, @file_size, @last_modified_ticks, @date_added_ticks, @metadata_status,
                 @title, @artist, @album, @album_artist,
                 @track_number, @track_count, @disc_number, @year, @genre,
                 @duration_ms, @bitrate, @sample_rate, @channels, @codec
             )
             ON CONFLICT(file_path) DO UPDATE SET
+                folder_path = excluded.folder_path,
                 file_size = excluded.file_size,
                 last_modified_ticks = excluded.last_modified_ticks,
+                metadata_status = excluded.metadata_status,
                 title = excluded.title,
                 artist = excluded.artist,
                 album = excluded.album,
@@ -617,19 +713,21 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         cmd.Transaction = (SqliteTransaction)transaction;
         cmd.CommandText = """
             INSERT INTO tracks (
-                file_path, file_size, last_modified_ticks, date_added_ticks,
+                file_path, folder_path, file_size, last_modified_ticks, date_added_ticks, metadata_status,
                 title, artist, album, album_artist,
                 track_number, track_count, disc_number, year, genre,
                 duration_ms, bitrate, sample_rate, channels, codec
             ) VALUES (
-                @file_path, @file_size, @last_modified_ticks, @date_added_ticks,
+                @file_path, @folder_path, @file_size, @last_modified_ticks, @date_added_ticks, @metadata_status,
                 @title, @artist, @album, @album_artist,
                 @track_number, @track_count, @disc_number, @year, @genre,
                 @duration_ms, @bitrate, @sample_rate, @channels, @codec
             )
             ON CONFLICT(file_path) DO UPDATE SET
+                folder_path = excluded.folder_path,
                 file_size = excluded.file_size,
                 last_modified_ticks = excluded.last_modified_ticks,
+                metadata_status = excluded.metadata_status,
                 title = excluded.title,
                 artist = excluded.artist,
                 album = excluded.album,
@@ -660,6 +758,34 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         }
 
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    public async Task<int> RemoveTracksByPathAsync(IReadOnlyList<string> filePaths, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(filePaths);
+        if (filePaths.Count == 0)
+            return 0;
+
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(cancellationToken);
+        await using var transaction = await conn.BeginTransactionAsync(cancellationToken);
+
+        var removed = 0;
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = (SqliteTransaction)transaction;
+        cmd.CommandText = "DELETE FROM tracks WHERE file_path = @path";
+        cmd.Parameters.Add("@path", SqliteType.Text);
+        await cmd.PrepareAsync(cancellationToken);
+
+        foreach (var filePath in filePaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            cmd.Parameters["@path"].Value = Path.GetFullPath(filePath);
+            removed += await cmd.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return removed;
     }
 
     public async Task RemoveTrackAsync(long id, CancellationToken cancellationToken = default)
@@ -729,7 +855,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
     public async Task AddWatchedFolderAsync(string folderPath, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folderPath);
-        var fullPath = Path.GetFullPath(folderPath);
+        var fullPath = LibraryPathNormalizer.NormalizeFolderPath(folderPath);
 
         await using var conn = OpenConnection();
         await conn.OpenAsync(cancellationToken);
@@ -743,7 +869,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
     public async Task RemoveWatchedFolderAsync(string folderPath, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(folderPath);
-        var fullPath = Path.GetFullPath(folderPath);
+        var fullPath = LibraryPathNormalizer.NormalizeFolderPath(folderPath);
 
         await using var conn = OpenConnection();
         await conn.OpenAsync(cancellationToken);
@@ -760,7 +886,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
 
         // Ensure the prefix ends with the directory separator so we don't
         // accidentally match a folder like /music/pop when asked to remove /music/po.
-        var fullPath = Path.GetFullPath(folderPath);
+        var fullPath = LibraryPathNormalizer.NormalizeFolderPath(folderPath);
         var prefix = fullPath.EndsWith(Path.DirectorySeparatorChar)
             ? fullPath
             : fullPath + Path.DirectorySeparatorChar;
@@ -817,9 +943,11 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         {
             Id = reader.GetInt64(reader.GetOrdinal("id")),
             FilePath = reader.GetString(reader.GetOrdinal("file_path")),
+            FolderPath = reader.GetString(reader.GetOrdinal("folder_path")),
             FileSize = reader.GetInt64(reader.GetOrdinal("file_size")),
             LastModifiedTicks = reader.GetInt64(reader.GetOrdinal("last_modified_ticks")),
             DateAddedTicks = reader.GetInt64(reader.GetOrdinal("date_added_ticks")),
+            MetadataStatus = (LibraryMetadataStatus)reader.GetInt32(reader.GetOrdinal("metadata_status")),
             Title = GetNullableString(reader, "title"),
             Artist = GetNullableString(reader, "artist"),
             Album = GetNullableString(reader, "album"),
@@ -840,9 +968,11 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
     private static void AddTrackParameters(SqliteCommand cmd, LibraryTrack track)
     {
         cmd.Parameters.AddWithValue("@file_path", Path.GetFullPath(track.FilePath));
+        cmd.Parameters.AddWithValue("@folder_path", track.FolderPath);
         cmd.Parameters.AddWithValue("@file_size", track.FileSize);
         cmd.Parameters.AddWithValue("@last_modified_ticks", track.LastModifiedTicks);
         cmd.Parameters.AddWithValue("@date_added_ticks", track.DateAddedTicks);
+        cmd.Parameters.AddWithValue("@metadata_status", (int)track.MetadataStatus);
         cmd.Parameters.AddWithValue("@title", (object?)track.Title ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@artist", (object?)track.Artist ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@album", (object?)track.Album ?? DBNull.Value);
@@ -868,9 +998,11 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
     private static void UpdateTrackParameters(SqliteCommand cmd, LibraryTrack track)
     {
         cmd.Parameters["@file_path"].Value         = Path.GetFullPath(track.FilePath);
+        cmd.Parameters["@folder_path"].Value       = track.FolderPath;
         cmd.Parameters["@file_size"].Value         = track.FileSize;
         cmd.Parameters["@last_modified_ticks"].Value = track.LastModifiedTicks;
         cmd.Parameters["@date_added_ticks"].Value  = track.DateAddedTicks;
+        cmd.Parameters["@metadata_status"].Value   = (int)track.MetadataStatus;
         cmd.Parameters["@title"].Value             = (object?)track.Title ?? DBNull.Value;
         cmd.Parameters["@artist"].Value            = (object?)track.Artist ?? DBNull.Value;
         cmd.Parameters["@album"].Value             = (object?)track.Album ?? DBNull.Value;

@@ -6,8 +6,13 @@ namespace Orpheus.Core.Library;
 public sealed class LibraryScanProgress
 {
     /// <summary>
-    /// Total files discovered so far.
+    /// Incremental library changes flushed during this progress event.
     /// </summary>
+    public LibraryScanBatch Batch { get; init; } = new();
+
+    /// <summary>
+     /// Total files discovered so far.
+     /// </summary>
     public int TotalFiles { get; init; }
 
     /// <summary>

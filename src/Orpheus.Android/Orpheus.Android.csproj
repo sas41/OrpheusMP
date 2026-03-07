@@ -17,7 +17,15 @@
 
   <PropertyGroup>
     <AndroidManifest>Properties/AndroidManifest.xml</AndroidManifest>
+    <BuildTimeUtc>$([System.DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm:ss')) UTC</BuildTimeUtc>
   </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildTimeUtc</_Parameter1>
+      <_Parameter2>$(BuildTimeUtc)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <ItemGroup>
     <AndroidResource Include="Resources/**" />

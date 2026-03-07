@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -79,6 +80,32 @@ public sealed class MobileSettingsViewModel : INotifyPropertyChanged
     {
         get => _isScanning;
         private set => SetField(ref _isScanning, value);
+    }
+
+    public string BuildString => GetBuildString();
+
+    public bool HasBuildString => !string.IsNullOrWhiteSpace(BuildString);
+
+    private static string GetBuildString()
+        => AppendBuildTime(GetBuildLabel(), GetBuildTimeUtc());
+
+    private static string? GetBuildTimeUtc()
+        => typeof(MobileSettingsViewModel)
+            .Assembly
+            .GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(attr => string.Equals(attr.Key, "BuildTimeUtc", StringComparison.Ordinal))
+            ?.Value;
+
+    private static string AppendBuildTime(string baseText, string? buildTime)
+        => string.IsNullOrWhiteSpace(buildTime) ? baseText : $"{baseText} - {buildTime}";
+
+    private static string GetBuildLabel()
+    {
+#if DEBUG
+        return "Debug build";
+#else
+        return "Version";
+#endif
     }
 
     public async Task AddFolderAsync(string path)

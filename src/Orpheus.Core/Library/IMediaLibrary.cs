@@ -94,6 +94,12 @@ public interface IMediaLibrary : IDisposable
     Task BatchUpsertTracksAsync(IReadOnlyList<LibraryTrack> tracks, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Remove multiple tracks by path in one operation.
+    /// Returns the number of rows removed.
+    /// </summary>
+    Task<int> RemoveTracksByPathAsync(IReadOnlyList<string> filePaths, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Remove a track from the library by ID.
     /// </summary>
     Task RemoveTrackAsync(long id, CancellationToken cancellationToken = default);

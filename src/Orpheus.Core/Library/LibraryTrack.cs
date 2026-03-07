@@ -31,6 +31,16 @@ public sealed class LibraryTrack
     /// </summary>
     public long DateAddedTicks { get; set; }
 
+    /// <summary>
+    /// Parent folder path cached for faster folder-tree and folder filtering operations.
+    /// </summary>
+    public string FolderPath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Current metadata extraction state for the track row.
+    /// </summary>
+    public LibraryMetadataStatus MetadataStatus { get; set; } = LibraryMetadataStatus.Ready;
+
     // --- Cached metadata ---
 
     public string? Title { get; set; }

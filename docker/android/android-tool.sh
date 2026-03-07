@@ -5,7 +5,7 @@ set -euo pipefail
 cd /workspace
 
 PROJECT="src/Orpheus.Android/Orpheus.Android.csproj"
-CONFIGURATION="${CONFIGURATION:-Release}"
+CONFIGURATION="${CONFIGURATION:-Debug}"
 FRAMEWORK="${FRAMEWORK:-net10.0-android}"
 ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
 PACKAGE_NAME="${PACKAGE_NAME:-net.orpheusmp.android}"
@@ -28,9 +28,17 @@ find_apk() {
 }
 
 publish_apk() {
+    dotnet restore "$PROJECT" \
+      -p:TargetFramework="$FRAMEWORK"
+
+    dotnet clean "$PROJECT" \
+      --configuration "$CONFIGURATION" \
+      --framework "$FRAMEWORK"
+
     dotnet publish "$PROJECT" \
       --configuration "$CONFIGURATION" \
       --framework "$FRAMEWORK" \
+      --no-restore \
       -p:AndroidSdkDirectory="$ANDROID_HOME" \
       -p:AndroidPackageFormat=apk \
       -p:AndroidKeyStore=false
