@@ -7,7 +7,9 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Avalonia.Platform;
 using Avalonia.Threading;
+using Orpheus.Core.Library;
 
 namespace Orpheus.Android;
 
@@ -30,20 +32,39 @@ public sealed class MobileSettingsViewModel : INotifyPropertyChanged
     {
         _mainVm = mainVm;
 
-        MusicFolders = new ObservableCollection<string>(mainVm.WatchedFolders);
+        MusicFolders = new ObservableCollection<MobileFolderScanStatus>(
+            mainVm.WatchedFolders.Select(f => new MobileFolderScanStatus(f)));
         // Keep in sync if the main VM's folder list changes
         mainVm.WatchedFolders.CollectionChanged += (_, _) =>
         {
             Dispatcher.UIThread.Post(() =>
             {
-                MusicFolders.Clear();
+                var existing = MusicFolders.ToDictionary(s => s.Path, StringComparer.OrdinalIgnoreCase);
+                // Remove entries no longer in watched folders
+                var watchedSet = new HashSet<string>(mainVm.WatchedFolders, StringComparer.OrdinalIgnoreCase);
+                for (var i = MusicFolders.Count - 1; i >= 0; i--)
+                {
+                    if (!watchedSet.Contains(MusicFolders[i].Path))
+                        MusicFolders.RemoveAt(i);
+                }
+                // Add new entries
                 foreach (var f in mainVm.WatchedFolders)
-                    MusicFolders.Add(f);
+                {
+                    if (!existing.ContainsKey(f))
+                        MusicFolders.Add(new MobileFolderScanStatus(f));
+                }
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasNoFolders)));
             });
         };
         MusicFolders.CollectionChanged += (_, _) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasNoFolders)));
+
+        // Subscribe to scan progress so folder rows update live
+        mainVm.ScannerProgress  += OnScannerProgress;
+        mainVm.MetadataProgress += OnMetadataProgress;
+
+        // Seed progress bars from the DB for folders already scanned in the past
+        _ = SeedFolderStatsAsync();
 
         Variants = new ObservableCollection<string>(App.AvailableVariants);
 
@@ -67,8 +88,82 @@ public sealed class MobileSettingsViewModel : INotifyPropertyChanged
 
     // ── Library ───────────────────────────────────────────────────────
 
-    public ObservableCollection<string> MusicFolders { get; }
+    public ObservableCollection<MobileFolderScanStatus> MusicFolders { get; }
     public bool HasNoFolders => MusicFolders.Count == 0;
+
+    public void Dispose()
+    {
+        _mainVm.ScannerProgress  -= OnScannerProgress;
+        _mainVm.MetadataProgress -= OnMetadataProgress;
+    }
+
+    private async Task SeedFolderStatsAsync()
+    {
+        try
+        {
+            var stats = await _mainVm.GetFolderStatsAsync().ConfigureAwait(false);
+            Dispatcher.UIThread.Post(() =>
+            {
+                foreach (var (folderPath, s) in stats)
+                {
+                    if (s.Total == 0) continue;
+
+                    var entry = MusicFolders.FirstOrDefault(f =>
+                        string.Equals(f.Path, folderPath, StringComparison.OrdinalIgnoreCase));
+                    if (entry is null) continue;   // folder no longer watched
+
+                    // Only seed when live scan events haven't already populated higher values
+                    if (entry.FsScanTotal == 0)
+                    {
+                        entry.FsScanTotal = s.Total;
+                        entry.FsScanDone  = s.Total;   // files were all indexed in a previous scan
+                    }
+                    if (entry.MetaTotal == 0)
+                    {
+                        entry.MetaTotal = s.Total;
+                        entry.MetaDone  = s.Total - s.Pending;
+                    }
+                }
+            });
+        }
+        catch { /* non-critical — UI just stays at 0/0 */ }
+    }
+
+    private void OnScannerProgress(object? sender, LibraryScanProgress e)
+    {
+        if (e.FolderPath is null) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            var entry = MusicFolders.FirstOrDefault(f =>
+                string.Equals(f.Path, e.FolderPath, StringComparison.OrdinalIgnoreCase));
+            if (entry is null)
+            {
+                entry = new MobileFolderScanStatus(e.FolderPath);
+                MusicFolders.Add(entry);
+            }
+            entry.FsScanTotal = Math.Max(entry.FsScanTotal, e.TotalFiles);
+            entry.FsScanDone  = e.IsComplete ? entry.FsScanTotal : Math.Min(e.TotalFiles, entry.FsScanTotal);
+            entry.IsFsScanning = !e.IsComplete;
+        });
+    }
+
+    private void OnMetadataProgress(object? sender, LibraryScanProgress e)
+    {
+        if (e.FolderPath is null) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            var entry = MusicFolders.FirstOrDefault(f =>
+                string.Equals(f.Path, e.FolderPath, StringComparison.OrdinalIgnoreCase));
+            if (entry is null)
+            {
+                entry = new MobileFolderScanStatus(e.FolderPath);
+                MusicFolders.Add(entry);
+            }
+            entry.MetaTotal = Math.Max(entry.MetaTotal, e.TotalFiles);
+            entry.MetaDone  = e.IsComplete ? entry.MetaTotal : e.ProcessedFiles;
+            entry.IsMetaScanning = !e.IsComplete;
+        });
+    }
 
     public string StatusMessage
     {
@@ -112,6 +207,9 @@ public sealed class MobileSettingsViewModel : INotifyPropertyChanged
     {
         IsScanning = true;
         StatusMessage = "Scanning…";
+        // Pre-add the entry so progress bars appear immediately
+        if (!MusicFolders.Any(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase)))
+            MusicFolders.Add(new MobileFolderScanStatus(path));
         try
         {
             await _mainVm.AddFolderAsync(path);
@@ -204,17 +302,46 @@ public sealed class MobileSettingsViewModel : INotifyPropertyChanged
 
     private static IEnumerable<MobileLicenseEntry> LoadLicenses()
     {
+        var entries = new List<MobileLicenseEntry>();
+
+        // Primary: load from Avalonia resources (embedded in the APK at build time)
+        try
+        {
+            var assets = AssetLoader.GetAssets(new Uri("avares://Orpheus.Android/LICENSES/"), null);
+            foreach (var uri in assets.OrderBy(u => u.ToString(), StringComparer.OrdinalIgnoreCase))
+            {
+                var name = Path.GetFileNameWithoutExtension(uri.AbsolutePath);
+                try
+                {
+                    using var stream = AssetLoader.Open(uri);
+                    using var reader = new StreamReader(stream);
+                    var text = reader.ReadToEnd();
+                    var (project, url, body) = ParseLicenseHeaders(text);
+                    entries.Add(new MobileLicenseEntry(name, body, project, url));
+                }
+                catch
+                {
+                    entries.Add(new MobileLicenseEntry(name, "(Could not read license file)"));
+                }
+            }
+        }
+        catch
+        {
+            // AssetLoader not available or no assets — fall back to filesystem
+        }
+
+        if (entries.Count > 0)
+            return entries;
+
+        // Fallback: filesystem (development / desktop preview)
         var searchDirs = new[]
         {
             Path.Combine(AppContext.BaseDirectory, "LICENSES"),
-            // Dev build: walk up from the Android project output to the Desktop LICENSES folder
             Path.Combine(AppContext.BaseDirectory,
                 "..", "..", "..", "..", "Orpheus.Desktop", "LICENSES"),
         };
 
-        var seen    = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var entries = new List<MobileLicenseEntry>();
-
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var dir in searchDirs)
         {
             if (!Directory.Exists(dir)) continue;
@@ -287,6 +414,75 @@ public sealed class MobileSettingsViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         return true;
     }
+}
+
+/// <summary>
+/// Observable scan-progress model for a single watched folder row in the mobile Settings screen.
+/// Mirrors the desktop FolderScanStatus, tracking filesystem-scan and metadata-scan progress.
+/// </summary>
+public sealed class MobileFolderScanStatus : INotifyPropertyChanged
+{
+    private int  _fsScanTotal;
+    private int  _fsScanDone;
+    private bool _isFsScanning;
+    private int  _metaTotal;
+    private int  _metaDone;
+    private bool _isMetaScanning;
+
+    public MobileFolderScanStatus(string path) { Path = path; }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string Path { get; }
+
+    // ── Filesystem scan ──────────────────────────────────────────
+
+    public int FsScanTotal
+    {
+        get => _fsScanTotal;
+        set { if (_fsScanTotal == value) return; _fsScanTotal = value; Notify(); Notify(nameof(FsScanProgress)); Notify(nameof(FsScanIsIndeterminate)); }
+    }
+
+    public int FsScanDone
+    {
+        get => _fsScanDone;
+        set { if (_fsScanDone == value) return; _fsScanDone = value; Notify(); Notify(nameof(FsScanProgress)); }
+    }
+
+    public bool IsFsScanning
+    {
+        get => _isFsScanning;
+        set { if (_isFsScanning == value) return; _isFsScanning = value; Notify(); Notify(nameof(FsScanIsIndeterminate)); }
+    }
+
+    public double FsScanProgress => _fsScanTotal > 0 ? Math.Min(100.0, _fsScanDone * 100.0 / _fsScanTotal) : 0;
+    public bool   FsScanIsIndeterminate => _isFsScanning && _fsScanTotal == 0;
+
+    // ── Metadata scan ────────────────────────────────────────────
+
+    public int MetaTotal
+    {
+        get => _metaTotal;
+        set { if (_metaTotal == value) return; _metaTotal = value; Notify(); Notify(nameof(MetaProgress)); Notify(nameof(MetaIsIndeterminate)); }
+    }
+
+    public int MetaDone
+    {
+        get => _metaDone;
+        set { if (_metaDone == value) return; _metaDone = value; Notify(); Notify(nameof(MetaProgress)); }
+    }
+
+    public bool IsMetaScanning
+    {
+        get => _isMetaScanning;
+        set { if (_isMetaScanning == value) return; _isMetaScanning = value; Notify(); Notify(nameof(MetaIsIndeterminate)); }
+    }
+
+    public double MetaProgress => _metaTotal > 0 ? Math.Min(100.0, _metaDone * 100.0 / _metaTotal) : 0;
+    public bool   MetaIsIndeterminate => _isMetaScanning && _metaTotal == 0;
+
+    private void Notify([CallerMemberName] string? name = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
 public sealed class MobileLicenseEntry : INotifyPropertyChanged

@@ -202,38 +202,6 @@
         <ScrollViewer Grid.Row="1">
           <StackPanel>
 
-            <!-- Watched folders list shown at root, before sub-folder tree nodes.
-                 Each row shows the folder path with a remove button. -->
-            <ItemsControl ItemsSource="{Binding WatchedFolders}"
-                          IsVisible="{Binding CanNavigateBack,
-                              Converter={x:Static local:BoolInverseConverter.Instance}}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="x:String">
-                  <Border Background="Transparent"
-                          BorderBrush="{DynamicResource PanelStroke}"
-                          BorderThickness="0,0,0,1"
-                          Padding="12,0">
-                    <Grid ColumnDefinitions="*,Auto" Height="44">
-                      <TextBlock Grid.Column="0"
-                                 Text="{Binding}"
-                                 FontSize="12"
-                                 Foreground="{DynamicResource TextMuted}"
-                                 VerticalAlignment="Center"
-                                 TextTrimming="CharacterEllipsis" />
-                      <Button x:Name="RemoveFolderButton"
-                              Grid.Column="1"
-                              Background="Transparent"
-                              Padding="8,4"
-                              VerticalAlignment="Center">
-                        <TextBlock Text="✕" FontSize="13"
-                                   Foreground="{DynamicResource TextMuted}" />
-                      </Button>
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-
             <!-- Sub-folder and playlist nodes -->
             <ItemsControl ItemsSource="{Binding DisplayedNodes}"
                           IsVisible="{Binding DisplayedNodes.Count,

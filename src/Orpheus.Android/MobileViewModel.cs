@@ -112,6 +112,13 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    // ── Scan progress events (forwarded for SettingsViewModel) ────────
+
+    /// <summary>Forwarded from the internal FolderScanner so the Settings UI can show per-folder progress bars.</summary>
+    public event EventHandler<LibraryScanProgress>? ScannerProgress;
+    /// <summary>Forwarded from the internal MetadataWorker so the Settings UI can show per-folder metadata bars.</summary>
+    public event EventHandler<LibraryScanProgress>? MetadataProgress;
+
     // ── Playback properties ───────────────────────────────────────────
 
     public string NowPlayingTitle
@@ -406,9 +413,11 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         _library = new SqliteMediaLibrary(databasePath);
         _scanner = new FolderScanner(_library);
         _scanner.Progress += OnScanProgress;
+        _scanner.Progress += OnScannerProgressForward;
         _scanner.PendingTracksAdded += OnPendingTracksAdded;
         _metadataWorker = new MetadataWorker(_library, new TagLibMetadataReader());
         _metadataWorker.Progress += OnScanProgress;
+        _metadataWorker.Progress += OnMetadataProgressForward;
         _changeMonitor = new AndroidMediaStoreLibraryChangeMonitor(global::Android.App.Application.Context);
         _changeMonitor.Changed += OnLibraryChanged;
 
@@ -1045,6 +1054,16 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public async Task RescanAsync() => await ScanAsync();
 
+    /// <summary>Rescans a single watched folder (or any sub-folder path).</summary>
+    public async Task RescanFolderAsync(string path) => await ScanFoldersAsync([path]);
+
+    /// <summary>
+    /// Returns per-folder track totals and pending-metadata counts from the DB.
+    /// Used by the Settings screen to seed progress bars after a past scan.
+    /// </summary>
+    public Task<IReadOnlyDictionary<string, (int Total, int Pending)>> GetFolderStatsAsync()
+        => _library.GetFolderStatsAsync();
+
     // ── Playback commands ─────────────────────────────────────────────
 
     /// <summary>Seek to an absolute position in seconds. Safe to call from PointerReleased.</summary>
@@ -1653,9 +1672,25 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         var name = Path.GetFileName(path);
         if (string.IsNullOrWhiteSpace(name)) name = path;
 
-        var meta = directTrackCount > 0
-            ? $"{directTrackCount} track{(directTrackCount == 1 ? "" : "s")}"
-            : "";
+        // Count playlist files anywhere in this subtree
+        var playlistCount = children.Sum(c => c.NodeType == LibraryNodeType.Playlist ? 1 : CountPlaylists(c));
+
+        // Build meta: total tracks in subtree + playlist count, for all folder nodes.
+        // Root nodes also prepend the full path so two libraries with the same name are distinguishable.
+        var metaParts = new System.Text.StringBuilder();
+        if (isRoot)
+            metaParts.Append(path);
+        if (totalTracks > 0)
+        {
+            if (metaParts.Length > 0) metaParts.Append("  ·  ");
+            metaParts.Append($"{totalTracks} track{(totalTracks == 1 ? "" : "s")}");
+        }
+        if (playlistCount > 0)
+        {
+            if (metaParts.Length > 0) metaParts.Append("  ·  ");
+            metaParts.Append($"{playlistCount} playlist{(playlistCount == 1 ? "" : "s")}");
+        }
+        var meta = metaParts.ToString();
 
         // Prune empty leaf folders (no tracks anywhere underneath, no playlist files).
         // Always keep the root watched folder even if it happens to be empty.
@@ -1664,6 +1699,14 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
             return (null, 0);
 
         return (new LibraryNode(name, meta, path, children), totalTracks);
+    }
+
+    private static int CountPlaylists(LibraryNode node)
+    {
+        var count = 0;
+        foreach (var child in node.Children)
+            count += child.NodeType == LibraryNodeType.Playlist ? 1 : CountPlaylists(child);
+        return count;
     }
 
     private void RefreshDisplayedTracks()
@@ -1716,8 +1759,10 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         _changeDebounceCts?.Dispose();
         _changeMonitor.Changed -= OnLibraryChanged;
         _scanner.Progress -= OnScanProgress;
+        _scanner.Progress -= OnScannerProgressForward;
         _scanner.PendingTracksAdded -= OnPendingTracksAdded;
         _metadataWorker.Progress -= OnScanProgress;
+        _metadataWorker.Progress -= OnMetadataProgressForward;
         await _changeMonitor.DisposeAsync();
         _scanGate.Dispose();
         _snapshotSemaphore.Dispose();
@@ -1840,6 +1885,12 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
                 ApplyScanBatch(e.Batch);
         });
     }
+
+    private void OnScannerProgressForward(object? sender, LibraryScanProgress e)
+        => ScannerProgress?.Invoke(this, e);
+
+    private void OnMetadataProgressForward(object? sender, LibraryScanProgress e)
+        => MetadataProgress?.Invoke(this, e);
 
     private const string RootNodePath = "__root__";
 

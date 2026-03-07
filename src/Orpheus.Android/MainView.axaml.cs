@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -45,6 +46,12 @@ public partial class MainView : UserControl
 
         // Queue long-press drag reorder
         WireQueueDrag();
+
+        // Rescan confirmation overlay
+        WireRescanOverlay();
+
+        // Long-press on library folder nodes
+        WireFolderLongPress();
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -57,6 +64,9 @@ public partial class MainView : UserControl
             _subscribedVm.PropertyChanged -= OnVmPropertyChanged;
             _subscribedVm = null;
         }
+
+        // Dispose previous settings VM before replacing
+        _settingsVm?.Dispose();
 
         if (Vm is { } vm)
         {
@@ -108,11 +118,6 @@ public partial class MainView : UserControl
             // ── Library folder management (quick-add in header) ───
             case "AddFolderButton":
                 _ = PickAndAddFolderAsync(this, vm);
-                break;
-
-            case "RemoveFolderButton":
-                if (btn.DataContext is string folderPath)
-                    _ = vm.RemoveFolderAsync(folderPath);
                 break;
 
             // ── Library navigation ────────────────────────────────
@@ -191,6 +196,17 @@ public partial class MainView : UserControl
             case "NextButton":      _ = vm.PlayNextAsync();        break;
             case "ShuffleButton":   _ = vm.ToggleShuffleAsync();   break;
             case "RepeatButton":    _ = vm.ToggleRepeatAsync();    break;
+
+            // ── Rescan confirmation overlay ───────────────────────
+            case "RescanConfirmYesButton":
+                if (_rescanPendingPath is { } rescanPath)
+                    _ = vm.RescanFolderAsync(rescanPath);
+                HideRescanConfirm();
+                break;
+
+            case "RescanConfirmNoButton":
+                HideRescanConfirm();
+                break;
         }
     }
 
@@ -222,6 +238,42 @@ public partial class MainView : UserControl
     // Minimum pixels of movement required to reorder (avoids jitter).
     private const double ReorderThreshold = 4.0;
 
+    // ── Rescan confirmation overlay ───────────────────────────────────
+
+    private Grid?      _rescanOverlay;
+    private TextBlock? _rescanLabel;
+    private string?    _rescanPendingPath;
+
+    private void WireRescanOverlay()
+    {
+        EventHandler? handler = null;
+        handler = (_, _) =>
+        {
+            _rescanOverlay = FindDescendantByName<Grid>(this, "RescanConfirmOverlay");
+            _rescanLabel   = FindDescendantByName<TextBlock>(this, "RescanConfirmLabel");
+            if (_rescanOverlay is null) return;
+            LayoutUpdated -= handler;
+        };
+        LayoutUpdated += handler;
+    }
+
+    private void ShowRescanConfirm(LibraryNode node)
+    {
+        if (_rescanOverlay is null || _rescanLabel is null) return;
+        _rescanPendingPath = node.Path;
+        _rescanLabel.Text = $"Rescan \"{node.Name}\"?";
+        _rescanOverlay.IsVisible = true;
+    }
+
+    private void HideRescanConfirm()
+    {
+        _rescanPendingPath = null;
+        if (_rescanOverlay is not null)
+            _rescanOverlay.IsVisible = false;
+    }
+
+    // ── Queue long-press drag reorder ────────────────────────────────
+
     private ListBox?   _queueList;
     private Canvas?    _dragPreviewCanvas;
     private Border?    _dragPreviewBorder;
@@ -232,6 +284,79 @@ public partial class MainView : UserControl
     private int    _dragFromIndex;
     private int    _dragCurrentIndex;
     private Point  _dragPressPoint;
+
+    // ── Folder long-press (rescan) ────────────────────────────────────
+
+    private CancellationTokenSource? _folderLongPressCts;
+    private Point _folderPressPoint;
+    private LibraryNode? _folderLongPressNode;
+
+    private void WireFolderLongPress()
+    {
+        AddHandler(PointerPressedEvent,  OnFolderPointerPressed,  RoutingStrategies.Tunnel);
+        AddHandler(PointerMovedEvent,    OnFolderPointerMoved,    RoutingStrategies.Tunnel);
+        AddHandler(PointerReleasedEvent, OnFolderPointerReleased, RoutingStrategies.Tunnel);
+    }
+
+    private void OnFolderPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        // Only track presses that originate on a FolderDrillButton
+        if (!IsFolderDrillSource(e.Source, out var node)) return;
+
+        _folderLongPressCts?.Cancel();
+        _folderLongPressCts = new CancellationTokenSource();
+        _folderPressPoint   = e.GetPosition(this);
+        _folderLongPressNode = node;
+
+        var token = _folderLongPressCts.Token;
+        _ = Task.Delay(LongPressMs, token).ContinueWith(t =>
+        {
+            if (t.IsCanceled || token.IsCancellationRequested) return;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (token.IsCancellationRequested || _folderLongPressNode is null) return;
+                ShowRescanConfirm(_folderLongPressNode);
+            });
+        });
+    }
+
+    private void OnFolderPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (_folderLongPressCts is null || _folderLongPressNode is null) return;
+        var pos   = e.GetPosition(this);
+        var delta = pos - _folderPressPoint;
+        if (Math.Abs(delta.X) > LongPressCancelDistance || Math.Abs(delta.Y) > LongPressCancelDistance)
+        {
+            _folderLongPressCts.Cancel();
+            _folderLongPressNode = null;
+        }
+    }
+
+    private void OnFolderPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        _folderLongPressCts?.Cancel();
+        _folderLongPressNode = null;
+    }
+
+    private static bool IsFolderDrillSource(object? source, out LibraryNode? node)
+    {
+        node = null;
+        // Walk up the visual tree from the event source to find a FolderDrillButton
+        var element = source as Avalonia.Visual;
+        while (element is not null)
+        {
+            if (element is Button btn && btn.Name == "FolderDrillButton"
+                && btn.DataContext is LibraryNode n && n.IsFolder)
+            {
+                node = n;
+                return true;
+            }
+            element = element.GetVisualParent() as Avalonia.Visual;
+        }
+        return false;
+    }
+
+    // ── Queue long-press drag reorder ────────────────────────────────
 
     private void WireQueueDrag()
     {

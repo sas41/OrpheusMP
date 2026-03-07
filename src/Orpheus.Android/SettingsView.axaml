@@ -6,6 +6,44 @@
              x:CompileBindings="False"
              Background="{DynamicResource AppSurfaceBrush}">
 
+  <UserControl.Resources>
+    <!--
+      SettingsActionRow — a full-width tappable row button.
+      Background matches the panel (ButtonFill) so it sits inside a card,
+      with a dimmed pressed state so the tap is clearly visible.
+    -->
+    <ControlTheme x:Key="SettingsActionRow" TargetType="Button">
+      <Setter Property="Background"              Value="{DynamicResource ButtonFill}" />
+      <Setter Property="Foreground"              Value="{DynamicResource TextPrimary}" />
+      <Setter Property="BorderThickness"         Value="0" />
+      <Setter Property="HorizontalAlignment"     Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment"   Value="Center" />
+      <Setter Property="Padding"                 Value="16,0" />
+      <Setter Property="Height"                  Value="52" />
+      <Setter Property="CornerRadius"            Value="0" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="PART_Root"
+                  Background="{TemplateBinding Background}"
+                  CornerRadius="{TemplateBinding CornerRadius}">
+            <ContentPresenter HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                              Padding="{TemplateBinding Padding}"
+                              Content="{TemplateBinding Content}"
+                              ContentTemplate="{TemplateBinding ContentTemplate}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+      <Style Selector="^:pressed /template/ Border#PART_Root">
+        <Setter Property="Background" Value="{DynamicResource ButtonPressed}" />
+      </Style>
+      <Style Selector="^:disabled">
+        <Setter Property="Opacity" Value="0.45" />
+      </Style>
+    </ControlTheme>
+  </UserControl.Resources>
+
   <Grid RowDefinitions="Auto,*">
 
     <!-- Header bar -->
@@ -51,7 +89,7 @@
                      LetterSpacing="1.5" />
         </Border>
 
-        <!-- Music folders list -->
+        <!-- Music folders list with scan progress -->
         <Border Background="{DynamicResource PanelFill}"
                 BorderBrush="{DynamicResource PanelStroke}"
                 BorderThickness="0,1,0,1">
@@ -59,27 +97,84 @@
 
             <ItemsControl ItemsSource="{Binding MusicFolders}">
               <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="x:String">
+                <DataTemplate x:DataType="local:MobileFolderScanStatus">
                   <Border BorderBrush="{DynamicResource PanelStroke}"
                           BorderThickness="0,0,0,1"
-                          Padding="16,0">
-                    <Grid ColumnDefinitions="*,Auto" Height="52">
-                      <TextBlock Grid.Column="0"
-                                 Text="{Binding}"
-                                 FontSize="13"
-                                 Foreground="{DynamicResource TextPrimary}"
-                                 VerticalAlignment="Center"
-                                 TextTrimming="CharacterEllipsis" />
-                      <Button x:Name="SettingsRemoveFolderButton"
-                              Grid.Column="1"
-                              Background="Transparent"
-                              Padding="12,4"
-                              VerticalAlignment="Center">
-                        <TextBlock Text="Remove"
+                          Padding="16,10">
+                    <StackPanel Spacing="6">
+
+                      <!-- Folder path -->
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding Path}"
                                    FontSize="13"
-                                   Foreground="{DynamicResource AccentColor}" />
-                      </Button>
-                    </Grid>
+                                   Foreground="{DynamicResource TextPrimary}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                        <Button x:Name="SettingsRemoveFolderButton"
+                                Grid.Column="1"
+                                Background="Transparent"
+                                Padding="12,4"
+                                VerticalAlignment="Center">
+                          <TextBlock Text="Remove"
+                                     FontSize="13"
+                                     Foreground="{DynamicResource AccentColor}" />
+                        </Button>
+                      </Grid>
+
+                      <!-- Files scan progress -->
+                      <Grid ColumnDefinitions="64,*,Auto" ColumnSpacing="6">
+                        <TextBlock Grid.Column="0"
+                                   Text="Files"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextMuted}"
+                                   VerticalAlignment="Center" />
+                        <ProgressBar Grid.Column="1"
+                                     Minimum="0" Maximum="100"
+                                     Value="{Binding FsScanProgress}"
+                                     IsIndeterminate="{Binding FsScanIsIndeterminate}"
+                                     Height="5"
+                                     VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextMuted}"
+                                   VerticalAlignment="Center">
+                          <TextBlock.Text>
+                            <MultiBinding StringFormat="{}{0}/{1}">
+                              <Binding Path="FsScanDone" />
+                              <Binding Path="FsScanTotal" />
+                            </MultiBinding>
+                          </TextBlock.Text>
+                        </TextBlock>
+                      </Grid>
+
+                      <!-- Metadata scan progress -->
+                      <Grid ColumnDefinitions="64,*,Auto" ColumnSpacing="6">
+                        <TextBlock Grid.Column="0"
+                                   Text="Metadata"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextMuted}"
+                                   VerticalAlignment="Center" />
+                        <ProgressBar Grid.Column="1"
+                                     Minimum="0" Maximum="100"
+                                     Value="{Binding MetaProgress}"
+                                     IsIndeterminate="{Binding MetaIsIndeterminate}"
+                                     Height="5"
+                                     VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextMuted}"
+                                   VerticalAlignment="Center">
+                          <TextBlock.Text>
+                            <MultiBinding StringFormat="{}{0}/{1}">
+                              <Binding Path="MetaDone" />
+                              <Binding Path="MetaTotal" />
+                            </MultiBinding>
+                          </TextBlock.Text>
+                        </TextBlock>
+                      </Grid>
+
+                    </StackPanel>
                   </Border>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
@@ -97,11 +192,7 @@
             <Border BorderBrush="{DynamicResource PanelStroke}"
                     BorderThickness="0,1,0,0">
               <Button x:Name="SettingsAddFolderButton"
-                      Background="Transparent"
-                      Padding="16,0"
-                      HorizontalAlignment="Stretch"
-                      HorizontalContentAlignment="Left"
-                      Height="52">
+                      Theme="{StaticResource SettingsActionRow}">
                 <TextBlock Text="Add Music Folder…"
                            FontSize="14"
                            Foreground="{DynamicResource AccentColor}" />
@@ -119,11 +210,7 @@
           <StackPanel>
 
             <Button x:Name="SettingsRescanButton"
-                    Background="Transparent"
-                    Padding="16,0"
-                    HorizontalAlignment="Stretch"
-                    HorizontalContentAlignment="Left"
-                    Height="52"
+                    Theme="{StaticResource SettingsActionRow}"
                     IsEnabled="{Binding IsScanning,
                         Converter={x:Static local:BoolInverseConverter.Instance}}">
               <TextBlock FontSize="14"
@@ -138,11 +225,7 @@
             <Border BorderBrush="{DynamicResource PanelStroke}"
                     BorderThickness="0,1,0,0">
               <Button x:Name="SettingsResetLibraryButton"
-                      Background="Transparent"
-                      Padding="16,0"
-                      HorizontalAlignment="Stretch"
-                      HorizontalContentAlignment="Left"
-                      Height="52">
+                      Theme="{StaticResource SettingsActionRow}">
                 <TextBlock Text="Reset Library Database"
                            FontSize="14"
                            Foreground="#E05555" />

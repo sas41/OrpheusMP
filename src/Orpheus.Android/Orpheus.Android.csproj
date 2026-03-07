@@ -46,6 +46,11 @@
     <ProjectReference Include="../Orpheus.Core/Orpheus.Core.csproj" />
   </ItemGroup>
 
+  <!-- License files — embedded as Avalonia resources so they're accessible on Android -->
+  <ItemGroup>
+    <AvaloniaResource Include="../Orpheus.Desktop/LICENSES/*.txt" Link="LICENSES/%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- Shared top-level assets: icons + themes -->
   <ItemGroup>
     <AvaloniaResource Include="../../assets/icons/**/*" Link="assets/icons/%(RecursiveDir)%(Filename)%(Extension)" />
