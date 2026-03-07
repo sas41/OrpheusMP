@@ -272,10 +272,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 {
     private readonly IMediaLibrary _library;
     private readonly FolderScanner _scanner;
+    private readonly MetadataWorker _metadataWorker;
     private readonly PlayerController _controller;
     private readonly ILibraryChangeMonitor _changeMonitor;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private CancellationTokenSource? _changeDebounceCts;
+
+    // Folders that received change events while a scan was already running.
+    // Drained and scanned after the current scan completes.
+    private readonly HashSet<string> _pendingScanFolders = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _pendingScanLock = new();
     private int _pendingMetadataCount;
     private int _watchedFolderCount;
     private string? _selectedFolderPath;
@@ -1008,8 +1014,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _volume = state.Volume;
 
         _library = new SqliteMediaLibrary(_databasePath);
-        _scanner = new FolderScanner(_library, new TagLibMetadataReader());
+        _scanner = new FolderScanner(_library);
         _scanner.Progress += OnScanProgress;
+        _scanner.PendingTracksAdded += OnPendingTracksAdded;
+        _metadataWorker = new MetadataWorker(_library, new TagLibMetadataReader());
+        _metadataWorker.Progress += OnScanProgress;
         _changeMonitor = new DesktopFileSystemLibraryChangeMonitor();
         _changeMonitor.Changed += OnLibraryChanged;
 
@@ -1130,6 +1139,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             app.State,
             _controller,
             _library,
+            _scanner,
+            _metadataWorker,
             onLibraryReset: RefreshLibraryAsync,
             onRescanAll: RescanAllFoldersAsync,
             addLibraryFolder: AddLibraryFolderAsync,
@@ -1151,6 +1162,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         {
             await LoadPlaylistAsync();
         }
+
+        // Resume any metadata enrichment interrupted by a previous crash/close —
+        // processes Pending rows already in the DB without requiring a filesystem scan.
+        _ = _metadataWorker.TriggerAsync();
 
         // Scan watched folders in the background so startup stays responsive
         // while the library is brought up to date with on-disk changes.
@@ -1431,13 +1446,28 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         {
             _scanGate.Release();
         }
+
+        // Drain any folder scan requests that arrived while this scan was running.
+        List<string> pending;
+        lock (_pendingScanLock)
+        {
+            pending = [.. _pendingScanFolders];
+            _pendingScanFolders.Clear();
+        }
+
+        if (pending.Count > 0)
+            await ScanFoldersAsync(pending);
+    }
+
+    private void OnPendingTracksAdded(object? sender, EventArgs e)
+    {
+        // The filesystem scanner wrote new Pending stubs — wake the metadata worker.
+        _ = _metadataWorker.TriggerAsync();
     }
 
     private async void OnLibraryChanged(object? sender, LibraryChangeDetectedEventArgs e)
     {
-        if (_scanGate.CurrentCount == 0)
-            return;
-
+        // Debounce: cancel any pending delayed trigger and restart the timer.
         var previous = Interlocked.Exchange(ref _changeDebounceCts, new CancellationTokenSource());
         previous?.Cancel();
         previous?.Dispose();
@@ -1451,9 +1481,39 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             await Task.Delay(1000, cts.Token);
 
             if (e.RequiresFullRescan || e.FolderPaths.Count == 0)
-                await ScanAllFoldersAsync();
+            {
+                if (_scanGate.CurrentCount == 0)
+                {
+                    // Queue all watched folders for a follow-up scan.
+                    var watched = await _library.GetWatchedFoldersAsync(cts.Token);
+                    lock (_pendingScanLock)
+                    {
+                        foreach (var f in watched)
+                            _pendingScanFolders.Add(f);
+                    }
+                }
+                else
+                {
+                    await ScanAllFoldersAsync();
+                }
+            }
             else
-                await ScanFoldersAsync(e.FolderPaths);
+            {
+                var toScanNow = new List<string>();
+                lock (_pendingScanLock)
+                {
+                    foreach (var folder in e.FolderPaths)
+                    {
+                        if (_scanGate.CurrentCount == 0)
+                            _pendingScanFolders.Add(folder);
+                        else
+                            toScanNow.Add(folder);
+                    }
+                }
+
+                if (toScanNow.Count > 0)
+                    await ScanFoldersAsync(toScanNow);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -2946,6 +3006,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             tm.ThemeChanged -= OnThemeChanged;
         _changeMonitor.Changed -= OnLibraryChanged;
         _scanner.Progress -= OnScanProgress;
+        _scanner.PendingTracksAdded -= OnPendingTracksAdded;
+        _metadataWorker.Progress -= OnScanProgress;
         _controller.Playlist.Changed -= OnPlaylistChanged;
         _controller.Playlist.CurrentIndexChanged -= OnPlaylistIndexChanged;
         _controller.ShufflePlayChanged -= OnShufflePlayChanged;

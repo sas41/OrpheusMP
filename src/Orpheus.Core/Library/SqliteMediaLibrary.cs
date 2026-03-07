@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 
 namespace Orpheus.Core.Library;
@@ -237,11 +238,11 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
     public async Task<int> GetTrackCountAsync(CancellationToken cancellationToken = default)
     {
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT COUNT(*) FROM tracks";
-        var result = await cmd.ExecuteScalarAsync(cancellationToken);
+        var result = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         return Convert.ToInt32(result);
     }
 
@@ -249,6 +250,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         TrackSortOrder sortOrder = TrackSortOrder.Title,
         CancellationToken cancellationToken = default)
     {
+        var sw = Stopwatch.StartNew();
         var orderBy = sortOrder switch
         {
             TrackSortOrder.Title => "title COLLATE NOCASE, artist COLLATE NOCASE",
@@ -263,55 +265,108 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         };
 
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = $"SELECT * FROM tracks ORDER BY {orderBy}";
-        return await ReadTracksAsync(cmd, cancellationToken);
+        var result = await ReadTracksAsync(cmd, cancellationToken).ConfigureAwait(false);
+        Console.WriteLine($"[PERF] SqliteMediaLibrary: GetAllTracks returned {result.Count} tracks in {sw.ElapsedMilliseconds} ms");
+        return result;
     }
 
     public async Task<LibraryTrack?> GetTrackByIdAsync(long id, CancellationToken cancellationToken = default)
     {
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT * FROM tracks WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", id);
 
-        var tracks = await ReadTracksAsync(cmd, cancellationToken);
+        var tracks = await ReadTracksAsync(cmd, cancellationToken).ConfigureAwait(false);
         return tracks.Count > 0 ? tracks[0] : null;
     }
 
     public async Task<LibraryTrack?> GetTrackByPathAsync(string filePath, CancellationToken cancellationToken = default)
     {
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT * FROM tracks WHERE file_path = @path";
         cmd.Parameters.AddWithValue("@path", Path.GetFullPath(filePath));
 
-        var tracks = await ReadTracksAsync(cmd, cancellationToken);
+        var tracks = await ReadTracksAsync(cmd, cancellationToken).ConfigureAwait(false);
         return tracks.Count > 0 ? tracks[0] : null;
     }
 
     public async Task<Dictionary<string, (long FileSize, long LastModifiedTicks)>> GetTrackedFileSnapshotAsync(
         CancellationToken cancellationToken = default)
     {
+        var sw = Stopwatch.StartNew();
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT file_path, file_size, last_modified_ticks FROM tracks";
 
         var snapshot = new Dictionary<string, (long, long)>(StringComparer.OrdinalIgnoreCase);
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             snapshot[reader.GetString(0)] = (reader.GetInt64(1), reader.GetInt64(2));
         }
+        Console.WriteLine($"[PERF] SqliteMediaLibrary: GetTrackedFileSnapshot returned {snapshot.Count} entries in {sw.ElapsedMilliseconds} ms");
         return snapshot;
+    }
+
+    public async Task<IReadOnlyList<LibraryTrack>> GetPendingTracksAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var sw = Stopwatch.StartNew();
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT * FROM tracks WHERE metadata_status = {(int)LibraryMetadataStatus.Pending}";
+        var result = await ReadTracksAsync(cmd, cancellationToken).ConfigureAwait(false);
+        Console.WriteLine($"[PERF] SqliteMediaLibrary: GetPendingTracks returned {result.Count} tracks in {sw.ElapsedMilliseconds} ms");
+        return result;
+    }
+
+    public async Task<IReadOnlyDictionary<string, (int Total, int Pending)>> GetFolderStatsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
+
+        // One pass: count total tracks and pending tracks grouped by the watched
+        // folder root.  We join against watched_folders so only known root paths
+        // are returned, and we use a conditional aggregate to avoid two queries.
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT
+                wf.folder_path,
+                COUNT(t.id)                                                 AS total,
+                SUM(CASE WHEN t.metadata_status = 0 THEN 1 ELSE 0 END)    AS pending
+            FROM watched_folders wf
+            LEFT JOIN tracks t
+                ON t.file_path LIKE (wf.folder_path || '/%')
+                OR t.file_path = wf.folder_path
+            GROUP BY wf.folder_path
+            """;
+
+        var result = new Dictionary<string, (int, int)>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            var folder  = reader.GetString(0);
+            var total   = reader.IsDBNull(1) ? 0 : (int)reader.GetInt64(1);
+            var pending = reader.IsDBNull(2) ? 0 : (int)reader.GetInt64(2);
+            result[folder] = (total, pending);
+        }
+
+        return result;
     }
 
     public async Task<IReadOnlyList<LibraryTrack>> SearchAsync(
@@ -320,7 +375,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         ArgumentException.ThrowIfNullOrWhiteSpace(query);
 
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         // ── Stage 1: FTS5 exact/prefix search ────────────────────────────────
         // Returns tracks where every query token matches as a prefix somewhere
@@ -336,7 +391,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
                 ORDER BY rank, t.title COLLATE NOCASE
                 """;
             cmd.Parameters.AddWithValue("@q", ftsQuery);
-            ftsResults = await ReadTracksAsync(cmd, cancellationToken);
+            ftsResults = await ReadTracksAsync(cmd, cancellationToken).ConfigureAwait(false);
         }
 
         // ── Stage 2: fuzzy in-memory search over all tracks ──────────────────
@@ -347,7 +402,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         await using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = "SELECT * FROM tracks";
-            allTracks = await ReadTracksAsync(cmd, cancellationToken);
+            allTracks = await ReadTracksAsync(cmd, cancellationToken).ConfigureAwait(false);
         }
 
         var queryTokens = query.ToLowerInvariant()
@@ -544,14 +599,14 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
 
     public async Task<IReadOnlyList<string>> GetArtistsAsync(CancellationToken cancellationToken = default)
     {
-        return await GetDistinctValuesAsync("artist", cancellationToken);
+        return await GetDistinctValuesAsync("artist", cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<string>> GetAlbumsAsync(
         string? artist = null, CancellationToken cancellationToken = default)
     {
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         if (artist is not null)
@@ -573,8 +628,8 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         }
 
         var results = new List<string>();
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             results.Add(reader.GetString(0));
         }
@@ -583,14 +638,14 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
 
     public async Task<IReadOnlyList<string>> GetGenresAsync(CancellationToken cancellationToken = default)
     {
-        return await GetDistinctValuesAsync("genre", cancellationToken);
+        return await GetDistinctValuesAsync("genre", cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<LibraryTrack>> GetTracksByArtistAsync(
         string artist, CancellationToken cancellationToken = default)
     {
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -599,14 +654,14 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
             ORDER BY album COLLATE NOCASE, disc_number, track_number
             """;
         cmd.Parameters.AddWithValue("@artist", artist);
-        return await ReadTracksAsync(cmd, cancellationToken);
+        return await ReadTracksAsync(cmd, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<LibraryTrack>> GetTracksByAlbumAsync(
         string album, string? artist = null, CancellationToken cancellationToken = default)
     {
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         if (artist is not null)
@@ -626,14 +681,14 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
                 """;
         }
         cmd.Parameters.AddWithValue("@album", album);
-        return await ReadTracksAsync(cmd, cancellationToken);
+        return await ReadTracksAsync(cmd, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<LibraryTrack>> GetTracksByGenreAsync(
         string genre, CancellationToken cancellationToken = default)
     {
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -641,7 +696,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
             ORDER BY artist COLLATE NOCASE, album COLLATE NOCASE, track_number
             """;
         cmd.Parameters.AddWithValue("@genre", genre);
-        return await ReadTracksAsync(cmd, cancellationToken);
+        return await ReadTracksAsync(cmd, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<LibraryTrack> UpsertTrackAsync(
@@ -650,7 +705,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         ArgumentNullException.ThrowIfNull(track);
 
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
@@ -689,7 +744,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
 
         AddTrackParameters(cmd, track);
 
-        var id = await cmd.ExecuteScalarAsync(cancellationToken);
+        var id = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
         track.Id = Convert.ToInt64(id);
         return track;
     }
@@ -700,8 +755,9 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         ArgumentNullException.ThrowIfNull(tracks);
         if (tracks.Count == 0) return;
 
+        var sw = Stopwatch.StartNew();
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var transaction = await conn.BeginTransactionAsync(cancellationToken);
 
@@ -747,17 +803,19 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
 
         // Pre-create all parameter slots once; values are overwritten per row.
         AddTrackParameters(cmd, tracks[0]);
-        await cmd.PrepareAsync(cancellationToken);
+        await cmd.PrepareAsync(cancellationToken).ConfigureAwait(false);
 
         foreach (var track in tracks)
         {
             cancellationToken.ThrowIfCancellationRequested();
             UpdateTrackParameters(cmd, track);
-            var id = await cmd.ExecuteScalarAsync(cancellationToken);
+            var id = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             track.Id = Convert.ToInt64(id);
         }
 
-        await transaction.CommitAsync(cancellationToken);
+        var commitSw = Stopwatch.StartNew();
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        Console.WriteLine($"[PERF] SqliteMediaLibrary: BatchUpsert {tracks.Count} tracks — commit {commitSw.ElapsedMilliseconds} ms, total {sw.ElapsedMilliseconds} ms");
     }
 
     public async Task<int> RemoveTracksByPathAsync(IReadOnlyList<string> filePaths, CancellationToken cancellationToken = default)
@@ -767,7 +825,7 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
             return 0;
 
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
         await using var transaction = await conn.BeginTransactionAsync(cancellationToken);
 
         var removed = 0;
@@ -775,33 +833,33 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         cmd.Transaction = (SqliteTransaction)transaction;
         cmd.CommandText = "DELETE FROM tracks WHERE file_path = @path";
         cmd.Parameters.Add("@path", SqliteType.Text);
-        await cmd.PrepareAsync(cancellationToken);
+        await cmd.PrepareAsync(cancellationToken).ConfigureAwait(false);
 
         foreach (var filePath in filePaths)
         {
             cancellationToken.ThrowIfCancellationRequested();
             cmd.Parameters["@path"].Value = Path.GetFullPath(filePath);
-            removed += await cmd.ExecuteNonQueryAsync(cancellationToken);
+            removed += await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await transaction.CommitAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return removed;
     }
 
     public async Task RemoveTrackAsync(long id, CancellationToken cancellationToken = default)
     {
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = "DELETE FROM tracks WHERE id = @id";
         cmd.Parameters.AddWithValue("@id", id);
-        await cmd.ExecuteNonQueryAsync(cancellationToken);
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<int> RemoveMissingTracksAsync(CancellationToken cancellationToken = default)
     {
-        var allTracks = await GetAllTracksAsync(cancellationToken: cancellationToken);
+        var allTracks = await GetAllTracksAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
 
         // Check file existence in parallel to avoid serial I/O stalls
         // (especially on network drives where each File.Exists can block).
@@ -812,12 +870,12 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
                 .Where(t => !File.Exists(t.FilePath))
                 .Select(t => t.Id)
                 .ToList(),
-            cancellationToken);
+            cancellationToken).ConfigureAwait(false);
 
         if (missingIds.Count == 0) return 0;
 
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         // SQLite doesn't support array parameters, so batch delete.
         await using var transaction = await conn.BeginTransactionAsync(cancellationToken);
@@ -828,24 +886,24 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
             cmd.Transaction = (SqliteTransaction)transaction;
             cmd.CommandText = "DELETE FROM tracks WHERE id = @id";
             cmd.Parameters.AddWithValue("@id", id);
-            await cmd.ExecuteNonQueryAsync(cancellationToken);
+            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        await transaction.CommitAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return missingIds.Count;
     }
 
     public async Task<IReadOnlyList<string>> GetWatchedFoldersAsync(CancellationToken cancellationToken = default)
     {
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT folder_path FROM watched_folders ORDER BY folder_path";
 
         var results = new List<string>();
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             results.Add(reader.GetString(0));
         }
@@ -858,12 +916,12 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         var fullPath = LibraryPathNormalizer.NormalizeFolderPath(folderPath);
 
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = "INSERT OR IGNORE INTO watched_folders (folder_path) VALUES (@path)";
         cmd.Parameters.AddWithValue("@path", fullPath);
-        await cmd.ExecuteNonQueryAsync(cancellationToken);
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task RemoveWatchedFolderAsync(string folderPath, CancellationToken cancellationToken = default)
@@ -872,12 +930,12 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         var fullPath = LibraryPathNormalizer.NormalizeFolderPath(folderPath);
 
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = "DELETE FROM watched_folders WHERE folder_path = @path";
         cmd.Parameters.AddWithValue("@path", fullPath);
-        await cmd.ExecuteNonQueryAsync(cancellationToken);
+        await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<int> RemoveTracksUnderFolderAsync(string folderPath, CancellationToken cancellationToken = default)
@@ -892,13 +950,13 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
             : fullPath + Path.DirectorySeparatorChar;
 
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         // Match tracks stored directly in the folder or any sub-folder.
         cmd.CommandText = "DELETE FROM tracks WHERE file_path LIKE @prefix ESCAPE '\\'";
         cmd.Parameters.AddWithValue("@prefix", EscapeLike(prefix) + "%");
-        return await cmd.ExecuteNonQueryAsync(cancellationToken);
+        return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Escapes LIKE special characters in a literal path prefix.</summary>
@@ -909,14 +967,14 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         string column, CancellationToken cancellationToken)
     {
         await using var conn = OpenConnection();
-        await conn.OpenAsync(cancellationToken);
+        await conn.OpenAsync(cancellationToken).ConfigureAwait(false);
 
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = $"SELECT DISTINCT {column} FROM tracks WHERE {column} IS NOT NULL ORDER BY {column} COLLATE NOCASE";
 
         var results = new List<string>();
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             results.Add(reader.GetString(0));
         }
@@ -927,9 +985,9 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         SqliteCommand cmd, CancellationToken cancellationToken)
     {
         var tracks = new List<LibraryTrack>();
-        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
+        await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
-        while (await reader.ReadAsync(cancellationToken))
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {
             tracks.Add(MapTrack(reader));
         }

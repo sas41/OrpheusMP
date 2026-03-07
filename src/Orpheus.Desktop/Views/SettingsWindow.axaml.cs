@@ -25,6 +25,7 @@ public partial class SettingsWindow : Window
     public SettingsWindow()
     {
         InitializeComponent();
+        Closed += (_, _) => (DataContext as SettingsViewModel)?.Dispose();
     }
 
     private SettingsViewModel? ViewModel => DataContext as SettingsViewModel;
@@ -39,8 +40,8 @@ public partial class SettingsWindow : Window
     {
         if (ViewModel is null) return;
         var list = this.FindControl<ListBox>("FolderList");
-        if (list?.SelectedItem is string folder)
-            await ViewModel.RemoveFolderAsync(folder);
+        if (list?.SelectedItem is FolderScanStatus status)
+            await ViewModel.RemoveFolderAsync(status.Path);
     }
 
     public async void OnResetLibrary(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
@@ -323,13 +324,15 @@ public partial class SettingsWindow : Window
     }
 }
 
-public sealed class SettingsViewModel : INotifyPropertyChanged
+public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly ThemeManager _themeManager;
     private readonly AppConfig _config;
     private readonly AppState _state;
     private readonly PlayerController _controller;
     private readonly IMediaLibrary _library;
+    private readonly FolderScanner _scanner;
+    private readonly MetadataWorker _metadataWorker;
     private readonly Func<Task> _onLibraryReset;
     private readonly Func<Task> _onRescanAll;
     private readonly Func<string, Task> _addLibraryFolder;
@@ -349,6 +352,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AppState state,
         PlayerController controller,
         IMediaLibrary library,
+        FolderScanner scanner,
+        MetadataWorker metadataWorker,
         Func<Task> onLibraryReset,
         Func<Task> onRescanAll,
         Func<string, Task> addLibraryFolder,
@@ -359,6 +364,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _state = state;
         _controller = controller;
         _library = library;
+        _scanner = scanner;
+        _metadataWorker = metadataWorker;
         _onLibraryReset = onLibraryReset;
         _onRescanAll = onRescanAll;
         _addLibraryFolder = addLibraryFolder;
@@ -370,7 +377,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         Themes = new ObservableCollection<string>(_themeManager.GetAvailableLayouts());
         Variants = new ObservableCollection<string>(GetVariantsWithDefault());
         AudioDevices = new ObservableCollection<AudioDeviceItem>(GetAudioDevices());
-        MusicFolders = new ObservableCollection<string>();
+        MusicFolders = new ObservableCollection<FolderScanStatus>();
 
         _controller.AudioDevicesChanged += OnAudioDevicesChanged;
         Licenses = new ObservableCollection<LicenseEntry>(LoadLicenses());
@@ -404,7 +411,62 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         // Refresh locale-dependent parts when the language is changed in this window
         App.LanguageChanged += OnLanguageChanged;
 
+        // Subscribe to scan progress so folder rows update live.
+        _scanner.Progress += OnScannerProgress;
+        _metadataWorker.Progress += OnMetadataWorkerProgress;
+
         _ = LoadMusicFoldersAsync();
+    }
+
+    public void Dispose()
+    {
+        _scanner.Progress -= OnScannerProgress;
+        _metadataWorker.Progress -= OnMetadataWorkerProgress;
+        App.LanguageChanged -= OnLanguageChanged;
+        _controller.AudioDevicesChanged -= OnAudioDevicesChanged;
+    }
+
+    // ── Scan progress handlers ────────────────────────────────
+
+    private void OnScannerProgress(object? sender, LibraryScanProgress e)
+    {
+        if (e.FolderPath is null) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            var entry = MusicFolders.FirstOrDefault(f =>
+                string.Equals(f.Path, e.FolderPath, StringComparison.OrdinalIgnoreCase));
+            if (entry is null)
+            {
+                // The entry hasn't been created yet by LoadMusicFoldersAsync — create it
+                // now so the filesystem scan bars are visible from the very first event.
+                entry = new FolderScanStatus(e.FolderPath);
+                MusicFolders.Add(entry);
+            }
+
+            entry.FsScanTotal = Math.Max(entry.FsScanTotal, e.TotalFiles);
+            entry.FsScanDone = e.IsComplete ? entry.FsScanTotal : Math.Min(e.TotalFiles, entry.FsScanTotal);
+            entry.IsFsScanning = !e.IsComplete;
+        });
+    }
+
+    private void OnMetadataWorkerProgress(object? sender, LibraryScanProgress e)
+    {
+        if (e.FolderPath is null) return;
+        Dispatcher.UIThread.Post(() =>
+        {
+            var entry = MusicFolders.FirstOrDefault(f =>
+                string.Equals(f.Path, e.FolderPath, StringComparison.OrdinalIgnoreCase));
+            if (entry is null)
+            {
+                // Same guard as OnScannerProgress — create on demand if missing.
+                entry = new FolderScanStatus(e.FolderPath);
+                MusicFolders.Add(entry);
+            }
+
+            entry.MetaTotal = Math.Max(entry.MetaTotal, e.TotalFiles);
+            entry.MetaDone = e.IsComplete ? entry.MetaTotal : e.ProcessedFiles;
+            entry.IsMetaScanning = !e.IsComplete;
+        });
     }
 
     private void OnLanguageChanged()
@@ -816,7 +878,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     // ── Music Library Folders ────────────────────────────────
 
-    public ObservableCollection<string> MusicFolders { get; }
+    public ObservableCollection<FolderScanStatus> MusicFolders { get; }
 
     public string StatusMessage
     {
@@ -826,12 +888,46 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     private async Task LoadMusicFoldersAsync()
     {
-        var folders = await _library.GetWatchedFoldersAsync();
+        var folders = await _library.GetWatchedFoldersAsync().ConfigureAwait(false);
+        var stats   = await _library.GetFolderStatsAsync().ConfigureAwait(false);
         Dispatcher.UIThread.Post(() =>
         {
-            MusicFolders.Clear();
+            // Remove entries for folders that are no longer watched.
+            var folderSet = new HashSet<string>(folders, StringComparer.OrdinalIgnoreCase);
+            for (var i = MusicFolders.Count - 1; i >= 0; i--)
+            {
+                if (!folderSet.Contains(MusicFolders[i].Path))
+                    MusicFolders.RemoveAt(i);
+            }
+
             foreach (var f in folders)
-                MusicFolders.Add(f);
+            {
+                // If the progress handler already created the entry, keep it and
+                // only backfill the DB-seeded counts where nothing live has arrived.
+                var existing = MusicFolders.FirstOrDefault(e =>
+                    string.Equals(e.Path, f, StringComparison.OrdinalIgnoreCase));
+
+                if (existing is null)
+                {
+                    existing = new FolderScanStatus(f);
+                    MusicFolders.Add(existing);
+                }
+
+                // Seed from DB only when a live scan hasn't already set higher values.
+                if (stats.TryGetValue(f, out var s) && s.Total > 0)
+                {
+                    if (existing.FsScanTotal == 0)
+                    {
+                        existing.FsScanTotal = s.Total;
+                        existing.FsScanDone  = s.Total;
+                    }
+                    if (existing.MetaTotal == 0)
+                    {
+                        existing.MetaTotal = s.Total;
+                        existing.MetaDone  = s.Total - s.Pending;
+                    }
+                }
+            }
         });
     }
 
@@ -851,7 +947,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
         StatusMessage = string.Format(Resources.ScanningFmt, path);
         await _addLibraryFolder(path);
-        MusicFolders.Add(path);
+        // The progress handler may have already created the entry; only add if absent.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!MusicFolders.Any(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase)))
+                MusicFolders.Add(new FolderScanStatus(path));
+        });
         StatusMessage = Resources.ScanComplete;
     }
 
@@ -859,7 +960,13 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         await _library.RemoveWatchedFolderAsync(folder);
         await _library.RemoveTracksUnderFolderAsync(folder);
-        MusicFolders.Remove(folder);
+        Dispatcher.UIThread.Post(() =>
+        {
+            var entry = MusicFolders.FirstOrDefault(f =>
+                string.Equals(f.Path, folder, StringComparison.OrdinalIgnoreCase));
+            if (entry is not null)
+                MusicFolders.Remove(entry);
+        });
         await _onLibraryReset();
     }
 
@@ -1130,4 +1237,93 @@ public sealed class KeyBindingEntry : INotifyPropertyChanged
     internal void OnComboChanged(string combo) => _onChanged(combo);
 
     public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+/// <summary>
+/// Observable model for a single watched folder row in the Library settings tab.
+/// Tracks filesystem-scan and metadata-scan progress independently so the UI can
+/// show two progress bars per folder.
+/// </summary>
+public sealed class FolderScanStatus : INotifyPropertyChanged
+{
+    private int _fsScanTotal;
+    private int _fsScanDone;
+    private bool _isFsScanning;
+    private int _metaTotal;
+    private int _metaDone;
+    private bool _isMetaScanning;
+
+    public FolderScanStatus(string path)
+    {
+        Path = path;
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>The absolute path to the watched folder root.</summary>
+    public string Path { get; }
+
+    /// <summary>Display name — just the last path segment for brevity.</summary>
+    public string DisplayName => System.IO.Path.GetFileName(Path.TrimEnd('/', '\\')) is { Length: > 0 } name ? name : Path;
+
+    // ── Filesystem scan progress ─────────────────────────────
+
+    /// <summary>Total audio files found in this folder so far.</summary>
+    public int FsScanTotal
+    {
+        get => _fsScanTotal;
+        set { if (_fsScanTotal == value) return; _fsScanTotal = value; Notify(); Notify(nameof(FsScanProgress)); Notify(nameof(FsScanIsIndeterminate)); }
+    }
+
+    /// <summary>Files that have been written to the DB (stub or updated).</summary>
+    public int FsScanDone
+    {
+        get => _fsScanDone;
+        set { if (_fsScanDone == value) return; _fsScanDone = value; Notify(); Notify(nameof(FsScanProgress)); }
+    }
+
+    /// <summary>True while a filesystem scan pass for this folder is in progress.</summary>
+    public bool IsFsScanning
+    {
+        get => _isFsScanning;
+        set { if (_isFsScanning == value) return; _isFsScanning = value; Notify(); Notify(nameof(FsScanIsIndeterminate)); }
+    }
+
+    /// <summary>0–100 progress value for the filesystem scan bar, or 0 when indeterminate.</summary>
+    public double FsScanProgress => _fsScanTotal > 0 ? Math.Min(100.0, _fsScanDone * 100.0 / _fsScanTotal) : 0;
+
+    /// <summary>True when the bar should display as indeterminate (scanning but no total yet).</summary>
+    public bool FsScanIsIndeterminate => _isFsScanning && _fsScanTotal == 0;
+
+    // ── Metadata scan progress ───────────────────────────────
+
+    /// <summary>Total tracks pending metadata enrichment for this folder.</summary>
+    public int MetaTotal
+    {
+        get => _metaTotal;
+        set { if (_metaTotal == value) return; _metaTotal = value; Notify(); Notify(nameof(MetaProgress)); Notify(nameof(MetaIsIndeterminate)); }
+    }
+
+    /// <summary>Tracks that have been enriched with real metadata.</summary>
+    public int MetaDone
+    {
+        get => _metaDone;
+        set { if (_metaDone == value) return; _metaDone = value; Notify(); Notify(nameof(MetaProgress)); }
+    }
+
+    /// <summary>True while a metadata pass for this folder is in progress.</summary>
+    public bool IsMetaScanning
+    {
+        get => _isMetaScanning;
+        set { if (_isMetaScanning == value) return; _isMetaScanning = value; Notify(); Notify(nameof(MetaIsIndeterminate)); }
+    }
+
+    /// <summary>0–100 progress value for the metadata bar.</summary>
+    public double MetaProgress => _metaTotal > 0 ? Math.Min(100.0, _metaDone * 100.0 / _metaTotal) : 0;
+
+    /// <summary>True when the metadata bar should display as indeterminate.</summary>
+    public bool MetaIsIndeterminate => _isMetaScanning && _metaTotal == 0;
+
+    private void Notify([System.Runtime.CompilerServices.CallerMemberName] string? name = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }

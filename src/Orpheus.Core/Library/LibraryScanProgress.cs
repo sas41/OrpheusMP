@@ -49,4 +49,17 @@ public sealed class LibraryScanProgress
     /// Whether the scan is complete.
     /// </summary>
     public bool IsComplete { get; init; }
+
+    /// <summary>
+    /// The root watched folder this progress event belongs to.
+    /// Null on the aggregate-complete event that closes out a multi-folder scan.
+    /// </summary>
+    public string? FolderPath { get; init; }
+
+    /// <summary>
+    /// True when this event originates from <see cref="FolderScanner"/> (filesystem
+    /// discovery pass); false when it originates from <see cref="MetadataWorker"/>
+    /// (tag-reading pass).
+    /// </summary>
+    public bool IsFilesystemScan { get; init; }
 }

@@ -37,6 +37,21 @@ public interface IMediaLibrary : IDisposable
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Get all tracks whose metadata has not yet been read (MetadataStatus = Pending).
+    /// Used by <see cref="MetadataWorker"/> to resume interrupted scans on startup
+    /// and to process newly discovered files independently of the filesystem scanner.
+    /// </summary>
+    Task<IReadOnlyList<LibraryTrack>> GetPendingTracksAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// For each watched folder, return the total track count and the number of
+    /// tracks still awaiting metadata enrichment (Pending).
+    /// Used by the settings UI to seed progress bars with current DB state.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, (int Total, int Pending)>> GetFolderStatsAsync(
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Search tracks by a query string. Matches against title, artist, album,
     /// album artist, and file path using full-text search with prefix matching.
     /// </summary>
