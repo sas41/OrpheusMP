@@ -79,13 +79,8 @@ jobs:
             -p:AndroidSigningKeyStore="$(pwd)/orpheus-release.jks" \
             -p:AndroidSigningKeyAlias="$SIGNING_KEY_ALIAS" \
             -p:AndroidSigningStorePass="$SIGNING_STORE_PASS" \
-            -p:AndroidSigningKeyPass="$SIGNING_STORE_PASS"
-
-      - name: Locate APK
-        id: locate-apk
-        run: |
-          apk=$(find src/Orpheus.Android -name "*-signed.apk" -o -name "*.apk" | grep -v unsigned | head -1)
-          echo "apk-path=$apk" >> "$GITHUB_OUTPUT"
+            -p:AndroidSigningKeyPass="$SIGNING_STORE_PASS" \
+            --output publish/android
 
       - name: Set artifact metadata
         id: meta
@@ -95,8 +90,7 @@ jobs:
 
       - name: Rename APK
         run: |
-          cp "${{ steps.locate-apk.outputs.apk-path }}" \
-            "${{ steps.meta.outputs.artifact-name }}.apk"
+          cp publish/android/*.apk "${{ steps.meta.outputs.artifact-name }}.apk"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
