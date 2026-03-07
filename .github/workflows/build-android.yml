@@ -6,6 +6,13 @@ on:
       version:
         required: true
         type: string
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: true
+      ANDROID_KEY_ALIAS:
+        required: true
+      ANDROID_STORE_PASSWORD:
+        required: true
     outputs:
       artifact-name:
         description: "Name of the Android APK artifact"
@@ -54,19 +61,29 @@ jobs:
           dotnet restore src/Orpheus.Android/Orpheus.Android.csproj \
             -p:AndroidSdkDirectory="$ANDROID_HOME"
 
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > orpheus-release.jks
+
       - name: Publish APK (Release)
+        env:
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SIGNING_STORE_PASS: ${{ secrets.ANDROID_STORE_PASSWORD }}
         run: |
           dotnet publish src/Orpheus.Android/Orpheus.Android.csproj \
             --configuration Release \
             --framework net10.0-android \
             -p:AndroidSdkDirectory="$ANDROID_HOME" \
             -p:AndroidPackageFormat=apk \
-            -p:AndroidKeyStore=false
+            -p:AndroidKeyStore=true \
+            -p:AndroidSigningKeyStore="$(pwd)/orpheus-release.jks" \
+            -p:AndroidSigningKeyAlias="$SIGNING_KEY_ALIAS" \
+            -p:AndroidSigningStorePass="$SIGNING_STORE_PASS"
 
       - name: Locate APK
         id: locate-apk
         run: |
-          apk=$(find src/Orpheus.Android -name "*.apk" | head -1)
+          apk=$(find src/Orpheus.Android -name "*-signed.apk" -o -name "*.apk" | grep -v unsigned | head -1)
           echo "apk-path=$apk" >> "$GITHUB_OUTPUT"
 
       - name: Set artifact metadata

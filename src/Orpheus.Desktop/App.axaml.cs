@@ -150,6 +150,14 @@ public partial class App : Application
             return;
         }
 
+        // Allow OS-initiated shutdown (e.g. system logout/restart/shutdown)
+        // to close the application instead of hiding it to the tray.
+        if (e.CloseReason == WindowCloseReason.OSShutdown)
+        {
+            QuitApplication();
+            return;
+        }
+
         // Hide to tray instead of closing
         e.Cancel = true;
         window.Hide();

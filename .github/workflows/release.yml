@@ -42,6 +42,10 @@ jobs:
     uses: ./.github/workflows/build-android.yml
     with:
       version: ${{ needs.version.outputs.tag }}
+    secrets:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
 
   # ── Create GitHub Release ─────────────────────────────────────────────────
   release:
