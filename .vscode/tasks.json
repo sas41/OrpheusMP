@@ -137,24 +137,69 @@
 
     {
       "label": "android-emulator",
-      "command": "fish",
+      "command": "bash",
       "type": "process",
       "args": [
-        "${workspaceFolder}/scripts/android-emulator.fish"
+        "${workspaceFolder}/scripts/android-emulator.sh"
       ],
       "isBackground": true,
       "problemMatcher": []
     },
     {
       "label": "android-emulator-cold",
-      "command": "fish",
+      "command": "bash",
       "type": "process",
       "args": [
-        "${workspaceFolder}/scripts/android-emulator.fish",
+        "${workspaceFolder}/scripts/android-emulator.sh",
         "--cold"
       ],
       "isBackground": true,
       "problemMatcher": []
+    },
+    {
+      "label": "ensure-android-emulator",
+      "type": "shell",
+      "command": "bash",
+      "args": [
+        "${workspaceFolder}/scripts/android-emulator.sh",
+        "--ensure"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "ensure-android-emulator",
+        "pattern": {
+          "regexp": "^NEVER_MATCHES$",
+          "message": 1,
+          "file": 2,
+          "location": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^==>",
+          "endsPattern": "^EMULATOR_READY$"
+        }
+      }
+    },
+    {
+      "label": "build-android-debug",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/src/Orpheus.Android/Orpheus.Android.slnx",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary;ForceNoAlign",
+        "-p:AndroidAttachDebugger=true"
+      ],
+      "options": {
+        "env": {
+          "JAVA_HOME": "/usr/lib/jvm/java-21-openjdk"
+        }
+      },
+      "problemMatcher": "$msCompile",
+      "group": "build",
+      "dependsOn": "ensure-android-emulator",
+      "dependsOrder": "sequence"
     },
     {
       "label": "clean",

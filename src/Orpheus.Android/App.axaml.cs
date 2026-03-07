@@ -159,7 +159,7 @@ internal sealed class MobileConfig
 
     /// <summary>Queue/transport display mode: "TitleAlbum", "FileNameFolder", or "TitleAlbumWithFallback".</summary>
     [JsonPropertyName("trackDisplayMode")]
-    public string TrackDisplayMode { get; set; } = "TitleAlbum";
+    public string TrackDisplayMode { get; set; } = "TitleAlbumWithFallback";
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 

@@ -720,6 +720,31 @@ public sealed class SqliteMediaLibrary : IMediaLibrary
         await cmd.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    public async Task<int> RemoveTracksUnderFolderAsync(string folderPath, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(folderPath);
+
+        // Ensure the prefix ends with the directory separator so we don't
+        // accidentally match a folder like /music/pop when asked to remove /music/po.
+        var fullPath = Path.GetFullPath(folderPath);
+        var prefix = fullPath.EndsWith(Path.DirectorySeparatorChar)
+            ? fullPath
+            : fullPath + Path.DirectorySeparatorChar;
+
+        await using var conn = OpenConnection();
+        await conn.OpenAsync(cancellationToken);
+
+        await using var cmd = conn.CreateCommand();
+        // Match tracks stored directly in the folder or any sub-folder.
+        cmd.CommandText = "DELETE FROM tracks WHERE file_path LIKE @prefix ESCAPE '\\'";
+        cmd.Parameters.AddWithValue("@prefix", EscapeLike(prefix) + "%");
+        return await cmd.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>Escapes LIKE special characters in a literal path prefix.</summary>
+    private static string EscapeLike(string value)
+        => value.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+
     private async Task<IReadOnlyList<string>> GetDistinctValuesAsync(
         string column, CancellationToken cancellationToken)
     {

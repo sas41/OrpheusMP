@@ -12,6 +12,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using Orpheus.Core.Library;
 using Orpheus.Core.Metadata;
 using Orpheus.Core.Playback;
@@ -114,6 +115,22 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         get => _nowPlayingAlbum;
         private set => SetField(ref _nowPlayingAlbum, value);
+    }
+
+    /// <summary>
+    /// The local filesystem path of the currently playing track, or null when nothing is loaded.
+    /// Used by <see cref="PlaybackService"/> to read album art for the media session.
+    /// </summary>
+    public string? CurrentFilePath
+    {
+        get
+        {
+            var item = _controller.Playlist.CurrentItem;
+            if (item is null) return null;
+            return item.Source.Type == Orpheus.Core.Media.MediaSourceType.LocalFile
+                ? item.Source.Uri.LocalPath
+                : null;
+        }
     }
 
     public string NowPlayingTime
@@ -590,9 +607,61 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     // ── Library folder management ─────────────────────────────────────
 
+    /// <summary>
+    /// Resolves an <see cref="Avalonia.Platform.Storage.IStorageFolder"/> to a real
+    /// filesystem path on Android.
+    ///
+    /// Avalonia's StorageProvider wraps SAF URIs on Android, so
+    /// <c>TryGetLocalPath()</c> always returns <c>null</c>.  For the common
+    /// external-storage provider the tree URI looks like:
+    ///   content://com.android.externalstorage.documents/tree/primary%3AMusic
+    /// The document-tree ID ("primary:Music", "XXXX-XXXX:Podcasts", …) encodes
+    /// the root and relative path:
+    ///   primary  → /storage/emulated/0
+    ///   XXXX-XXXX → /storage/XXXX-XXXX   (SD card)
+    /// </summary>
+    public static string? ResolveStorageFolderPath(Avalonia.Platform.Storage.IStorageFolder folder)
+    {
+        // Fast path: real filesystem URI (file://)
+        var local = folder.TryGetLocalPath();
+        if (!string.IsNullOrEmpty(local))
+            return local;
+
+        // Decode SAF tree URI
+        var uri = folder.Path;
+        if (uri is null) return null;
+
+        // uri.AbsolutePath for a SAF tree URI is e.g.
+        //   /tree/primary%3AMusic   or   /tree/1A2B-3C4D%3APodcasts
+        var segments = uri.AbsolutePath.Split('/');
+        // Find the segment after "tree"
+        var treeIdx = Array.IndexOf(segments, "tree");
+        if (treeIdx < 0 || treeIdx + 1 >= segments.Length) return null;
+
+        var docId = Uri.UnescapeDataString(segments[treeIdx + 1]);
+        // docId = "primary:Music" or "1A2B-3C4D:Podcasts"
+        var colon = docId.IndexOf(':');
+        if (colon < 0) return null;
+
+        var root   = docId[..colon];
+        var rel    = docId[(colon + 1)..].Replace('/', Path.DirectorySeparatorChar);
+
+        var rootPath = root.Equals("primary", StringComparison.OrdinalIgnoreCase)
+            ? "/storage/emulated/0"
+            : $"/storage/{root}";
+
+        return string.IsNullOrEmpty(rel)
+            ? rootPath
+            : Path.Combine(rootPath, rel);
+    }
+
     public async Task AddFolderAsync(string path)
     {
-        if (!Directory.Exists(path)) return;
+        // Do not gate on Directory.Exists here: on Android 10+ with scoped storage
+        // the path decoded from a SAF URI may not be accessible via the direct
+        // filesystem API even though the user just granted access via the picker.
+        // The FolderScanner already skips folders that don't exist, so it is safe
+        // to proceed. Guarding here caused re-added folders to silently do nothing.
         await _library.AddWatchedFolderAsync(path);
         await ScanFoldersAsync([path]);   // scan only the newly added folder
     }
@@ -600,6 +669,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     public async Task RemoveFolderAsync(string path)
     {
         await _library.RemoveWatchedFolderAsync(path);
+        await _library.RemoveTracksUnderFolderAsync(path);
         await LoadLibraryAsync();
     }
 
@@ -677,6 +747,37 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     }
 
     // ── Queue building from library ───────────────────────────────────
+
+    /// <summary>
+    /// Play a file directly by path (e.g. opened via a file manager intent).
+    /// Looks up library metadata if available; falls back to a bare PlaylistItem.
+    /// </summary>
+    public async Task PlayFileAsync(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return;
+
+        _controller.Playlist.Clear();
+        _queue.Clear();
+
+        var track = await _library.GetTrackByPathAsync(filePath);
+        if (track is not null)
+        {
+            AddTrackToPlaylist(track);
+        }
+        else
+        {
+            _controller.Playlist.Add(new PlaylistItem
+            {
+                Source = MediaSource.FromFile(filePath),
+            });
+        }
+
+        UpdateQueueDisplay();
+        await _controller.PlayAtIndexAsync(0);
+        ActiveTab = MobileTab.Queue;
+        ScheduleStateSave();
+    }
 
     /// <summary>Play a single track (replaces queue with just this track).</summary>
     public async Task PlayTrackAsync(TrackRow row)

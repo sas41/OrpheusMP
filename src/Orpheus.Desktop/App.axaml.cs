@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -54,7 +56,12 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var mainWindow = new MainWindow();
+            // Resolve any file path passed as a launch argument (e.g. from
+            // "Open With" or a file-association double-click). The desktop
+            // passes a file:// URI on Linux/macOS and a plain path on Windows.
+            var launchPath = ResolveFileLaunchArg(desktop.Args);
+
+            var mainWindow = new MainWindow(launchPath);
             desktop.MainWindow = mainWindow;
 
             RestoreWindowGeometry(mainWindow);
@@ -254,5 +261,33 @@ public partial class App : Application
         desktop.ShutdownMode = IsTrayIconActive
             ? ShutdownMode.OnExplicitShutdown
             : ShutdownMode.OnMainWindowClose;
+    }
+
+    /// <summary>
+    /// Extracts a local file path from the launch arguments, if any.
+    /// Handles both plain paths (Windows/macOS) and file:// URIs (Linux desktops).
+    /// Returns null if no valid file argument is present.
+    /// </summary>
+    private static string? ResolveFileLaunchArg(IReadOnlyList<string>? args)
+    {
+        if (args is null || args.Count == 0)
+            return null;
+
+        // Take the first non-option argument
+        foreach (var arg in args)
+        {
+            if (arg.StartsWith('-'))
+                continue;
+
+            // file:// URI (e.g. from xdg-open on Linux)
+            if (Uri.TryCreate(arg, UriKind.Absolute, out var uri) && uri.IsFile)
+                return uri.LocalPath;
+
+            // Plain path
+            if (File.Exists(arg))
+                return arg;
+        }
+
+        return null;
     }
 }

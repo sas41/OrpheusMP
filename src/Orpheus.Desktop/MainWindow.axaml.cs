@@ -38,10 +38,14 @@ public partial class MainWindow : Window
     /// </summary>
     public GlobalMediaKeyService? MediaKeyService => _mediaKeyService;
 
-    public MainWindow()
+    // Parameterless constructor required by the Avalonia XAML designer.
+    public MainWindow() : this(null) { }
+
+    public MainWindow(string? launchFilePath)
     {
         InitializeComponent();
-        DataContext = new MainWindowViewModel();
+        var vm = new MainWindowViewModel(launchFilePath);
+        DataContext = vm;
         InitializeGlobalMediaKeys();
 #if LINUX
         InitializeMpris();
@@ -956,8 +960,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         SetField(ref _selectedTrackIndex, selectedIndex, nameof(SelectedTrackIndex));
     }
 
-    public MainWindowViewModel()
+    private readonly string? _launchFilePath;
+
+    public MainWindowViewModel(string? launchFilePath = null)
     {
+        _launchFilePath = launchFilePath;
+
         _databasePath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "OrpheusMP",
@@ -1122,7 +1130,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     {
         await EnsureDefaultLibraryAsync();
         await LoadLibraryAsync();
-        await LoadPlaylistAsync();
+
+        if (_launchFilePath is not null)
+        {
+            // A file was passed on the command line — play it immediately
+            // instead of restoring the previous queue.
+            await PlayFileAsync(_launchFilePath);
+        }
+        else
+        {
+            await LoadPlaylistAsync();
+        }
 
         // Scan watched folders in the background so the UI is responsive
         // while the database is brought up to date with any file changes.

@@ -63,7 +63,7 @@ public partial class SettingsView : UserControl
 
         foreach (var folder in folders)
         {
-            var path = folder.TryGetLocalPath();
+            var path = MobileViewModel.ResolveStorageFolderPath(folder);
             if (!string.IsNullOrEmpty(path))
                 await vm.AddFolderAsync(path);
         }

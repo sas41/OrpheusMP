@@ -858,7 +858,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public async Task RemoveFolderAsync(string folder)
     {
         await _library.RemoveWatchedFolderAsync(folder);
+        await _library.RemoveTracksUnderFolderAsync(folder);
         MusicFolders.Remove(folder);
+        await _onLibraryReset();
     }
 
     public async Task ResetLibraryAsync()

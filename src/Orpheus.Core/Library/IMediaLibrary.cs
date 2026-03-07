@@ -112,6 +112,12 @@ public interface IMediaLibrary : IDisposable
     Task RemoveWatchedFolderAsync(string folderPath, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Remove all tracks whose file path starts with <paramref name="folderPath"/>.
+    /// Returns the number of tracks removed.
+    /// </summary>
+    Task<int> RemoveTracksUnderFolderAsync(string folderPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Delete all indexed tracks, resetting the library to an empty state.
     /// Watched folders are preserved.
     /// </summary>
