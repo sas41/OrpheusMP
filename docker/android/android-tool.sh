@@ -10,6 +10,15 @@ FRAMEWORK="${FRAMEWORK:-net10.0-android}"
 ANDROID_HOME="${ANDROID_HOME:-/opt/android-sdk}"
 PACKAGE_NAME="${PACKAGE_NAME:-net.orpheusmp.android}"
 UNINSTALL_ON_SIGNATURE_MISMATCH="${UNINSTALL_ON_SIGNATURE_MISMATCH:-true}"
+CONTAINER_ARTIFACTS_ROOT="${CONTAINER_ARTIFACTS_ROOT:-/tmp/orpheus-android-build}"
+
+mkdir -p "$CONTAINER_ARTIFACTS_ROOT/nuget" "$CONTAINER_ARTIFACTS_ROOT/msbuild"
+
+DOTNET_BUILD_ARGS=(
+    -p:MSBuildProjectExtensionsPath="$CONTAINER_ARTIFACTS_ROOT/msbuild/"
+)
+
+export NUGET_PACKAGES="$CONTAINER_ARTIFACTS_ROOT/nuget"
 
 find_apk() {
     local signed_apk
@@ -29,16 +38,19 @@ find_apk() {
 
 publish_apk() {
     dotnet restore "$PROJECT" \
-      -p:TargetFramework="$FRAMEWORK"
+      -p:TargetFramework="$FRAMEWORK" \
+      "${DOTNET_BUILD_ARGS[@]}"
 
     dotnet clean "$PROJECT" \
       --configuration "$CONFIGURATION" \
-      --framework "$FRAMEWORK"
+      --framework "$FRAMEWORK" \
+      "${DOTNET_BUILD_ARGS[@]}"
 
     dotnet publish "$PROJECT" \
       --configuration "$CONFIGURATION" \
       --framework "$FRAMEWORK" \
       --no-restore \
+      "${DOTNET_BUILD_ARGS[@]}" \
       -p:AndroidSdkDirectory="$ANDROID_HOME" \
       -p:AndroidPackageFormat=apk \
       -p:AndroidKeyStore=false
