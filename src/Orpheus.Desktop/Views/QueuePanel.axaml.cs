@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using System.Collections.Generic;
 using System.Linq;
 using System;
 
@@ -12,15 +13,16 @@ namespace Orpheus.Desktop.Views;
 
 public partial class QueuePanel : UserControl
 {
+    private MainWindowViewModel? _observedViewModel;
+
     // ── Queue reorder state ──────────────────────────────────
     private int _dragStartIndex = -1;
-    private int _dragCurrentIndex = -1;
     private Point _dragStartPoint;
     private bool _isDragging;
     private const double DragThreshold = 6;
-    private QueueItem? _draggedItem;
-    private static readonly QueueItem PlaceholderItem = new("", "", "");
-
+    private int _dragPlaceholderIndex = -1;
+    private IReadOnlyList<int> _draggedIndices = Array.Empty<int>();
+    private IReadOnlyList<QueueItem> _draggedItems = Array.Empty<QueueItem>();
     // Custom double-click with a looser timer
     private const int DoubleClickMs = 650;
     private DateTime _lastClickTime;
@@ -39,10 +41,13 @@ public partial class QueuePanel : UserControl
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
-        if (DataContext is MainWindowViewModel viewModel)
-        {
-            viewModel.PropertyChanged += OnViewModelPropertyChanged;
-        }
+
+        if (_observedViewModel is not null)
+            _observedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+
+        _observedViewModel = DataContext as MainWindowViewModel;
+        if (_observedViewModel is not null)
+            _observedViewModel.PropertyChanged += OnViewModelPropertyChanged;
     }
 
     protected override void OnLoaded(RoutedEventArgs e)
@@ -53,20 +58,41 @@ public partial class QueuePanel : UserControl
             QueueList.AddHandler(PointerPressedEvent, OnQueuePointerPressed, RoutingStrategies.Tunnel);
             QueueList.AddHandler(PointerMovedEvent, OnQueuePointerMoved, RoutingStrategies.Tunnel);
             QueueList.AddHandler(PointerReleasedEvent, OnQueuePointerReleased, RoutingStrategies.Tunnel);
+            QueueList.LayoutUpdated += OnQueueListLayoutUpdated;
+            QueueList.SelectionChanged += OnQueueSelectionChanged;
         }
 
         // Subscribe to managed drag service for cross-panel drops
         ManagedDragService.Instance.DragStarted += OnManagedDragStarted;
         ManagedDragService.Instance.DragMoved += OnManagedDragMoved;
         ManagedDragService.Instance.DragEnded += OnManagedDragEnded;
+
+        RefreshPlayingHighlight();
     }
 
     protected override void OnUnloaded(RoutedEventArgs e)
     {
         base.OnUnloaded(e);
+        if (QueueList is not null)
+        {
+            QueueList.LayoutUpdated -= OnQueueListLayoutUpdated;
+            QueueList.SelectionChanged -= OnQueueSelectionChanged;
+        }
+
+        if (_observedViewModel is not null)
+        {
+            _observedViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            _observedViewModel = null;
+        }
+
         ManagedDragService.Instance.DragStarted -= OnManagedDragStarted;
         ManagedDragService.Instance.DragMoved -= OnManagedDragMoved;
         ManagedDragService.Instance.DragEnded -= OnManagedDragEnded;
+    }
+
+    private void OnQueueListLayoutUpdated(object? sender, EventArgs e)
+    {
+        RefreshPlayingHighlight();
     }
 
     // ── Managed drag service handlers (cross-panel drop) ────
@@ -256,12 +282,54 @@ public partial class QueuePanel : UserControl
             if (QueueList is null)
                 return;
 
-            if (viewModel.CurrentQueueIndex < 0)
-                return;
+            RefreshPlayingHighlight();
 
-            QueueList.SelectedIndex = viewModel.CurrentQueueIndex;
-            QueueList.ScrollIntoView(viewModel.CurrentQueueIndex);
+            if (viewModel.CurrentQueueIndex >= 0)
+                QueueList.ScrollIntoView(viewModel.CurrentQueueIndex);
         });
+    }
+
+    private void RefreshPlayingHighlight()
+    {
+        if (QueueList is null || ViewModel is null)
+            return;
+
+        for (var i = 0; i < ViewModel.Queue.Count; i++)
+        {
+            if (QueueList.ContainerFromIndex(i) is not ListBoxItem container)
+                continue;
+
+            var isPlaying = i == ViewModel.CurrentQueueIndex
+                && i >= 0
+                && i < ViewModel.Queue.Count
+                && !ViewModel.Queue[i].IsPlaceholder;
+
+            if (isPlaying)
+            {
+                if (!container.Classes.Contains("playing"))
+                    container.Classes.Add("playing");
+            }
+            else
+            {
+                container.Classes.Remove("playing");
+            }
+        }
+    }
+
+    private void OnQueueSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (QueueList?.SelectedItems is null || ViewModel is null)
+            return;
+
+        var indices = QueueList.SelectedItems
+            .OfType<QueueItem>()
+            .Select(item => ViewModel.Queue.IndexOf(item))
+            .Where(index => index >= 0)
+            .Distinct()
+            .OrderBy(index => index)
+            .ToArray();
+
+        ViewModel.SetSelectedQueueIndices(indices);
     }
 
     // ── Queue reorder via pointer capture ────────────────────
@@ -292,16 +360,26 @@ public partial class QueuePanel : UserControl
             return;
         }
 
-        // Prevent the ListBox from selecting the clicked item — the highlight must
-        // only ever reflect the currently playing track (CurrentQueueIndex).
-        e.Handled = true;
-
         _dragStartIndex = index;
         _dragStartPoint = point;
         _isDragging = false;
 
+        var modifiers = e.KeyModifiers;
+        var hasSelectionModifier = modifiers.HasFlag(KeyModifiers.Control) || modifiers.HasFlag(KeyModifiers.Shift);
+        var clickedSelectedItem = index >= 0 && QueueList.SelectedItems?.OfType<QueueItem>().Contains(ViewModel.Queue[index]) == true;
+        if (clickedSelectedItem && !hasSelectionModifier)
+            e.Handled = true;
+
         // Custom double-click detection (skip if click is on the drag handle)
-        if (!IsOnDragHandle(e.Source as Avalonia.Visual))
+        var isOnDragHandle = IsOnDragHandle(e.Source as Avalonia.Visual);
+        if (isOnDragHandle)
+        {
+            EnsureQueueSelectionContains(index);
+            e.Handled = true;
+            return;
+        }
+
+        if (!isOnDragHandle)
         {
             var now = DateTime.UtcNow;
             if (_lastClickIndex == index && (now - _lastClickTime).TotalMilliseconds <= DoubleClickMs)
@@ -330,9 +408,10 @@ public partial class QueuePanel : UserControl
 
             // Begin drag: capture the item, replace it with a placeholder
             _isDragging = true;
-            _draggedItem = ViewModel.Queue[_dragStartIndex];
-            _dragCurrentIndex = _dragStartIndex;
-            ViewModel.BeginDragQueueItem(_dragStartIndex);
+            _draggedIndices = ViewModel.SelectedQueueIndices.Count > 0
+                ? ViewModel.SelectedQueueIndices
+                : new[] { _dragStartIndex };
+            _draggedItems = _draggedIndices.Select(index => ViewModel.Queue[index]).ToArray();
 
             // Show floating preview using DragPreviewWindow
             var topLevel = TopLevel.GetTopLevel(this);
@@ -340,7 +419,9 @@ public partial class QueuePanel : UserControl
             {
                 var previewText = new TextBlock
                 {
-                    Text = _draggedItem.PrimaryText,
+                    Text = _draggedItems.Count == 1
+                        ? _draggedItems[0].PrimaryText
+                        : $"{_draggedItems.Count} items",
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     MaxWidth = 200,
                     Foreground = QueueList.Foreground ?? Brushes.White,
@@ -349,6 +430,13 @@ public partial class QueuePanel : UserControl
             }
 
             e.Pointer.Capture(QueueList);
+
+            var initialTargetIndex = GetDropInsertionIndex(point);
+            if (initialTargetIndex >= 0)
+            {
+                ViewModel.InsertDropPlaceholder(initialTargetIndex);
+                _dragPlaceholderIndex = ViewModel.DropPlaceholderIndex;
+            }
         }
 
         // Update preview position
@@ -359,28 +447,37 @@ public partial class QueuePanel : UserControl
         }
 
         // Determine target drop position
-        var targetIndex = GetReorderInsertionIndex(point);
-        if (targetIndex >= 0 && targetIndex != _dragCurrentIndex)
+        var targetIndex = GetDropInsertionIndex(point);
+        if (targetIndex >= 0)
         {
-            ViewModel.MoveDragPlaceholder(_dragCurrentIndex, targetIndex);
-            _dragCurrentIndex = targetIndex;
+            ViewModel.InsertDropPlaceholder(targetIndex);
+            _dragPlaceholderIndex = ViewModel.DropPlaceholderIndex;
         }
     }
 
     private void OnQueuePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
-        if (_isDragging && ViewModel is not null && _draggedItem is not null)
+        if (_isDragging && ViewModel is not null && _draggedItems.Count > 0)
         {
-            // Finalize: replace placeholder with the real item
-            ViewModel.EndDragQueueItem(_dragCurrentIndex, _draggedItem);
+            var insertAt = ViewModel.RemoveDropPlaceholder();
+            if (insertAt < 0)
+                insertAt = GetDropInsertionIndex(e.GetPosition(QueueList!));
+
+            ViewModel.MoveQueueItems(_draggedIndices, insertAt);
+            RestoreSelection(ViewModel.SelectedQueueIndices);
             DragPreviewService.Hide();
             e.Pointer.Capture(null);
         }
+        else
+        {
+            ViewModel?.RemoveDropPlaceholder();
+        }
 
         _dragStartIndex = -1;
-        _dragCurrentIndex = -1;
+        _dragPlaceholderIndex = -1;
         _isDragging = false;
-        _draggedItem = null;
+        _draggedIndices = Array.Empty<int>();
+        _draggedItems = Array.Empty<QueueItem>();
     }
 
     /// <summary>
@@ -426,6 +523,39 @@ public partial class QueuePanel : UserControl
             current = current.GetVisualParent() as Visual;
         }
         return null;
+    }
+
+    private void EnsureQueueSelectionContains(int index)
+    {
+        if (QueueList?.SelectedItems is null || ViewModel is null)
+            return;
+
+        if (index < 0 || index >= ViewModel.Queue.Count)
+            return;
+
+        var item = ViewModel.Queue[index];
+        if (item.IsPlaceholder)
+            return;
+
+        if (!QueueList.SelectedItems.OfType<QueueItem>().Contains(item))
+        {
+            QueueList.SelectedItems.Clear();
+            QueueList.SelectedItems.Add(item);
+            ViewModel.SetSelectedQueueIndices(new[] { index });
+        }
+    }
+
+    private void RestoreSelection(IReadOnlyList<int> indices)
+    {
+        if (QueueList?.SelectedItems is null || ViewModel is null)
+            return;
+
+        QueueList.SelectedItems.Clear();
+        foreach (var index in indices)
+        {
+            if (index >= 0 && index < ViewModel.Queue.Count)
+                QueueList.SelectedItems.Add(ViewModel.Queue[index]);
+        }
     }
 
     /// <summary>

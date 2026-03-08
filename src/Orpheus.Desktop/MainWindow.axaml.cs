@@ -328,6 +328,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private int _selectedTrackIndex = -1;
     private IReadOnlyList<int> _selectedTrackIndices = Array.Empty<int>();
     private int _currentQueueIndex = -1;
+    private IReadOnlyList<int> _selectedQueueIndices = Array.Empty<int>();
     private TrackSortField _sortField = TrackSortField.Title;
     private bool _sortAscending = true;
     private bool _hideMissingTitle;
@@ -569,7 +570,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public int CurrentQueueIndex
     {
         get => _currentQueueIndex;
-        private set => SetField(ref _currentQueueIndex, value);
+        private set
+        {
+            var changed = SetField(ref _currentQueueIndex, value);
+            if (!changed)
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentQueueIndex)));
+        }
+    }
+
+    public IReadOnlyList<int> SelectedQueueIndices
+    {
+        get => _selectedQueueIndices;
+        private set => SetField(ref _selectedQueueIndices, value);
     }
 
     /// <summary>
@@ -973,6 +985,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public ObservableCollection<TrackRow> Tracks => _tracks;
     public ObservableCollection<QueueItem> Queue => _queue;
 
+    public void SetSelectedQueueIndices(IReadOnlyList<int> indices)
+    {
+        SelectedQueueIndices = indices
+            .Where(index => index >= 0 && index < _queue.Count && !_queue[index].IsPlaceholder)
+            .Distinct()
+            .OrderBy(index => index)
+            .ToArray();
+    }
+
     public void SetSelectedTrackIndices(IReadOnlyList<int> indices)
     {
         _selectedTrackIndices = indices
@@ -1362,6 +1383,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     {
         _queue.Reset(_controller.Playlist.Select(ToQueueItem));
         QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
+        CurrentQueueIndex = _controller.Playlist.CurrentIndex;
     }
 
     private void OnScanProgress(object? sender, LibraryScanProgress e)
@@ -2341,6 +2363,51 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _queue[placeholderIndex] = realItem;
         CurrentQueueIndex = _controller.Playlist.CurrentIndex;
         IsQueueDirty = true;
+    }
+
+    public void MoveQueueItems(IReadOnlyList<int> selectedIndices, int insertAt)
+    {
+        var ordered = selectedIndices
+            .Where(index => index >= 0 && index < _queue.Count && !_queue[index].IsPlaceholder)
+            .Distinct()
+            .OrderBy(index => index)
+            .ToArray();
+        if (ordered.Length == 0)
+            return;
+
+        insertAt = Math.Clamp(insertAt, 0, _queue.Count);
+
+        var itemsToMove = ordered.Select(index => _controller.Playlist[index]).ToList();
+        if (itemsToMove.Count == 0)
+            return;
+
+        var adjustedInsertAt = insertAt - ordered.Count(index => index < insertAt);
+        adjustedInsertAt = Math.Clamp(adjustedInsertAt, 0, _queue.Count - ordered.Length);
+
+        _suppressPlaylistChanged = true;
+        try
+        {
+            for (var i = ordered.Length - 1; i >= 0; i--)
+                _controller.Playlist.RemoveAt(ordered[i]);
+
+            _controller.Playlist.InsertRange(adjustedInsertAt, itemsToMove);
+        }
+        finally
+        {
+            _suppressPlaylistChanged = false;
+        }
+
+        var queueItems = ordered.Select(index => _queue[index]).ToList();
+        for (var i = ordered.Length - 1; i >= 0; i--)
+            _queue.RemoveAt(ordered[i]);
+
+        for (var i = 0; i < queueItems.Count; i++)
+            _queue.Insert(adjustedInsertAt + i, queueItems[i]);
+
+        CurrentQueueIndex = _controller.Playlist.CurrentIndex;
+        SetSelectedQueueIndices(Enumerable.Range(adjustedInsertAt, queueItems.Count).ToArray());
+        IsQueueDirty = true;
+        ScheduleQueueStateSave();
     }
 
     // ── Cross-panel drop placeholder ─────────────────────────

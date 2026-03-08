@@ -171,6 +171,12 @@
     <Setter Property="Background" Value="{DynamicResource RowSelected}" />
   </Style>
 
+  <Style Selector="ListBoxItem.playing">
+    <Setter Property="Background" Value="{DynamicResource AccentSoft}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentColor}" />
+    <Setter Property="BorderThickness" Value="2,0,0,0" />
+  </Style>
+
   <!-- ── DataGrid ────────────────────────────────────────── -->
 
   <Style Selector="DataGrid">

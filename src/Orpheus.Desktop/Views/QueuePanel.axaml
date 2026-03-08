@@ -36,8 +36,8 @@
       <ListBox Grid.Row="1"
                x:Name="QueueList"
                ItemsSource="{Binding Queue}"
-               SelectedIndex="{Binding CurrentQueueIndex, Mode=OneWay}"
-                >
+               SelectionMode="Multiple"
+               Focusable="False">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="local:QueueItem">
             <Panel>
