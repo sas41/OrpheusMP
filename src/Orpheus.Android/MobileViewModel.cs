@@ -95,10 +95,13 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string _librarySummary = "";
 
     // ── Collections ───────────────────────────────────────────────────
-    // Queue is a plain list — rebuilt in bulk and exposed via a property-change
-    // notification so Avalonia replaces the ItemsSource in one pass instead of
-    // firing CollectionChanged once per item (catastrophic at 6000+ tracks).
-    private List<QueueItem> _queue = new();
+    // Queue uses ObservableCollection<QueueItemViewModel> so that:
+    //  • Move() fires a single CollectionChanged(Move) — ListBox containers survive
+    //    the reorder and ContainerFromIndex stays valid during drag gestures.
+    //  • RemoveAt/Clear fire fine-grained events without rebuilding the whole list.
+    //  • IsPlaying on each item can be toggled individually to highlight the
+    //    currently-playing row without replacing the entire collection.
+    private readonly ObservableCollection<QueueItemViewModel> _queue = new();
     private readonly ObservableCollection<LibraryNode> _libraryRoots = new();
     // The items shown in the library tab body (either root nodes or the
     // sub-folders + tracks of the current navigation node).
@@ -259,7 +262,17 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     public int CurrentQueueIndex
     {
         get => _currentQueueIndex;
-        private set => SetField(ref _currentQueueIndex, value);
+        private set
+        {
+            var old = _currentQueueIndex;
+            if (!SetField(ref _currentQueueIndex, value)) return;
+
+            // Toggle IsPlaying on affected items only — avoids a full collection rebuild.
+            if (old >= 0 && old < _queue.Count)
+                _queue[old].IsPlaying = false;
+            if (value >= 0 && value < _queue.Count)
+                _queue[value].IsPlaying = true;
+        }
     }
 
     // ── Tab navigation ────────────────────────────────────────────────
@@ -340,14 +353,16 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     // ── Collections ───────────────────────────────────────────────────
 
-    public List<QueueItem>                   Queue           => _queue;
+    public ObservableCollection<QueueItemViewModel> Queue   => _queue;
     public ObservableCollection<LibraryNode> LibraryRoots   => _libraryRoots;
     public ObservableCollection<LibraryNode> DisplayedNodes  => _displayedNodes;
     public ObservableCollection<TrackRow>    DisplayedTracks => _displayedTracks;
     public ObservableCollection<string>      WatchedFolders  => _watchedFolders;
 
     public string QueueSummary =>
-        _queue.Count == 0 ? "Queue is empty" : $"{_queue.Count} track{(_queue.Count == 1 ? "" : "s")}";
+        _queue.Count == 0
+            ? "Queue is empty"
+            : $"{_queue.Count} track{(_queue.Count == 1 ? "" : "s")}";
 
     public bool IsLibraryEmpty =>
         _displayedNodes.Count == 0 && _displayedTracks.Count == 0 && !_isScanning;
@@ -1118,8 +1133,9 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         if (index < 0 || index >= _queue.Count) return;
         _controller.Playlist.RemoveAt(index);
-        _queue = new List<QueueItem>(_queue);
         _queue.RemoveAt(index);
+        // Re-apply IsPlaying after removal (index may have shifted).
+        UpdateQueuePlayingFlag();
         NotifyQueueChanged();
         ScheduleStateSave();
     }
@@ -1127,7 +1143,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     public async Task ClearQueueAsync()
     {
         _controller.Playlist.Clear();
-        _queue = new List<QueueItem>();
+        _queue.Clear();
         NotifyQueueChanged();
         ScheduleStateSave();
     }
@@ -1141,12 +1157,14 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         _controller.Playlist.Move(fromIndex, toIndex);
 
-        var newQueue = new List<QueueItem>(_queue);
-        var item = newQueue[fromIndex];
-        newQueue.RemoveAt(fromIndex);
-        newQueue.Insert(toIndex, item);
-        _queue = newQueue;
-        NotifyQueueChanged();
+        // ObservableCollection.Move fires a single CollectionChanged(Move) which lets
+        // the ListBox shift the container in place instead of destroying/recreating it.
+        // This keeps ContainerFromIndex valid throughout an active drag gesture.
+        _queue.Move(fromIndex, toIndex);
+
+        // After move the currently-playing index inside the playlist may have changed;
+        // re-sync the IsPlaying flags to the new controller index.
+        UpdateQueuePlayingFlag();
         ScheduleStateSave();
     }
 
@@ -1370,42 +1388,67 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void UpdateQueueDisplay()
     {
-        // Snapshot the playlist items so background work doesn't race with
-        // mutations on the UI thread.
-        var mode  = _trackDisplayMode;
-        var items = _controller.Playlist.ToList();
+        // Snapshot the playlist so background work doesn't race with UI mutations.
+        var mode        = _trackDisplayMode;
+        var items       = _controller.Playlist.ToList();
+        var playingIdx  = _controller.Playlist.CurrentIndex;
 
-        // Build the display list on the thread pool — for large libraries this
-        // loop is measurable work (string allocations, path operations, etc.).
+        // Build view-model list on the thread pool — string allocations for large
+        // queues are measurable and must not block the UI thread.
         _ = Task.Run(() =>
         {
-            var newQueue = new List<QueueItem>(items.Count);
-            foreach (var item in items)
+            var vms = new List<QueueItemViewModel>(items.Count);
+            for (var i = 0; i < items.Count; i++)
             {
+                var item = items[i];
                 ResolveDisplayText(mode, item.Metadata,
                     item.Source.Type == Orpheus.Core.Media.MediaSourceType.LocalFile
                         ? item.Source.Uri.LocalPath : item.Source.Uri.ToString(),
                     item.DisplayName,
                     out var primary, out var secondary);
-                newQueue.Add(new QueueItem(
+                vms.Add(new QueueItemViewModel(
                     primary,
                     secondary,
-                    FormatTime(item.Metadata?.Duration ?? TimeSpan.Zero)));
+                    FormatTime(item.Metadata?.Duration ?? TimeSpan.Zero),
+                    isPlaying: i == playingIdx));
             }
-            return newQueue;
+            return vms;
         }).ContinueWith(t =>
         {
-            if (t.IsCompletedSuccessfully)
-            {
-                _queue = t.Result;
-                NotifyQueueChanged();
-            }
+            if (!t.IsCompletedSuccessfully) return;
+
+            // Replace the ObservableCollection contents in one pass on the UI thread.
+            // Using Clear + bulk Add is slightly simpler than diffing; for a queue
+            // rebuild (not a per-item move) this is called infrequently.
+            _queue.Clear();
+            foreach (var vm in t.Result)
+                _queue.Add(vm);
+
+            // playingIdx was captured before PlayAtIndexAsync() was called, so it
+            // may be stale (e.g. -1 when play started while the build was running).
+            // Re-sync IsPlaying flags now that the collection is fully populated.
+            UpdateQueuePlayingFlag();
+
+            NotifyQueueChanged();
         }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    /// <summary>
+    /// Syncs <see cref="QueueItemViewModel.IsPlaying"/> flags to the current playlist
+    /// index without touching the rest of the collection.  Called after moves/removes
+    /// that may have shifted the playing index.
+    /// </summary>
+    private void UpdateQueuePlayingFlag()
+    {
+        var idx = _controller.Playlist.CurrentIndex;
+        for (var i = 0; i < _queue.Count; i++)
+            _queue[i].IsPlaying = i == idx;
     }
 
     private void NotifyQueueChanged()
     {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Queue)));
+        // Queue is an ObservableCollection — it raises its own CollectionChanged.
+        // We only need to explicitly notify the derived scalar properties.
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QueueSummary)));
     }
 
@@ -1967,7 +2010,40 @@ public sealed class TrackRow
             : value.ToString(@"m\:ss");
 }
 
-public sealed record QueueItem(string Primary, string Secondary, string Duration);
+/// <summary>
+/// Per-row view model for the queue list.
+/// Uses <see cref="INotifyPropertyChanged"/> so <see cref="IsPlaying"/> can be toggled
+/// on individual items without rebuilding the entire collection.
+/// </summary>
+public sealed class QueueItemViewModel : INotifyPropertyChanged
+{
+    private bool _isPlaying;
+
+    public string Primary   { get; }
+    public string Secondary { get; }
+    public string Duration  { get; }
+
+    public bool IsPlaying
+    {
+        get => _isPlaying;
+        set
+        {
+            if (_isPlaying == value) return;
+            _isPlaying = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsPlaying)));
+        }
+    }
+
+    public QueueItemViewModel(string primary, string secondary, string duration, bool isPlaying = false)
+    {
+        Primary   = primary;
+        Secondary = secondary;
+        Duration  = duration;
+        _isPlaying = isPlaying;
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
 
 // ── Session state ─────────────────────────────────────────────────────
 

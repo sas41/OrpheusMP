@@ -371,7 +371,7 @@
             IsVisible="{Binding IsQueueTabActive}"
             RowDefinitions="Auto,*">
 
-        <!-- Queue header -->
+        <!-- Queue header: track count · Save · Clear -->
         <Border Grid.Row="0"
                 Background="{DynamicResource PanelFill}"
                 BorderBrush="{DynamicResource PanelStroke}"
@@ -386,17 +386,17 @@
             <Button x:Name="SaveQueueButton"
                     Grid.Column="1"
                     Background="Transparent"
-                    Padding="4,2"
+                    Padding="10,6"
                     Margin="0,0,4,0"
                     IsVisible="{Binding Queue.Count,
                         Converter={x:Static local:CountToBoolConverter.Instance}}">
               <TextBlock Text="Save" FontSize="13"
-                         Foreground="{DynamicResource TextMuted}" />
+                         Foreground="{DynamicResource AccentColor}" />
             </Button>
             <Button x:Name="ClearQueueButton"
                     Grid.Column="2"
                     Background="Transparent"
-                    Padding="4,2"
+                    Padding="10,6"
                     IsVisible="{Binding Queue.Count,
                         Converter={x:Static local:CountToBoolConverter.Instance}}">
               <TextBlock Text="Clear" FontSize="13"
@@ -405,11 +405,17 @@
           </Grid>
         </Border>
 
-        <!-- Queue list + drag-preview overlay share the same cell -->
+        <!-- Queue body: list + floating drag preview -->
         <Grid Grid.Row="1">
 
-          <!-- ListBox uses VirtualizingStackPanel by default,
-               so only visible items are rendered regardless of queue size. -->
+          <!--
+            ListBox with VirtualizingStackPanel (the default) so only visible
+            rows are materialised regardless of queue size — essential for fast
+            initial render and smooth scrolling on large queues.
+
+            The ItemContainerTheme strips the default ListBoxItem chrome so
+            our own Border/Grid drives the layout without any double-padding.
+          -->
           <ListBox x:Name="QueueList"
                    ItemsSource="{Binding Queue}"
                    Background="Transparent"
@@ -417,7 +423,8 @@
                    ScrollViewer.HorizontalScrollBarVisibility="Disabled">
             <ListBox.ItemContainerTheme>
               <ControlTheme TargetType="ListBoxItem">
-                <Setter Property="Padding" Value="0" />
+                <Setter Property="Padding"    Value="0" />
+                <Setter Property="Margin"     Value="0" />
                 <Setter Property="Background" Value="Transparent" />
                 <Setter Property="Template">
                   <ControlTemplate>
@@ -428,25 +435,61 @@
                 </Setter>
               </ControlTheme>
             </ListBox.ItemContainerTheme>
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="local:QueueItem">
-                <Border Background="Transparent"
-                        BorderBrush="{DynamicResource PanelStroke}"
-                        BorderThickness="0,0,0,1"
-                        Padding="12,0">
-                  <Grid ColumnDefinitions="*,Auto,Auto" Height="56">
 
-                    <!-- Play queue item — long-press anywhere on the row starts drag -->
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="local:QueueItemViewModel">
+                <!--
+                  Row background: RowSelected when playing, transparent otherwise.
+                  A left accent strip (2 px) reinforces the "now playing" state.
+                -->
+                <Border BorderBrush="{DynamicResource PanelStroke}"
+                        BorderThickness="0,0,0,1"
+                        Background="{Binding IsPlaying,
+                            Converter={x:Static local:BoolToRowBrushConverter.Instance}}">
+                  <Grid ColumnDefinitions="Auto,*,Auto" Height="56">
+
+                    <!-- ── Drag handle (☰) + now-playing accent strip ── -->
+                    <!--
+                      Handle is on the LEFT, opposite the ✕, to avoid accidental
+                      removals when reaching for the drag grip.
+                      The accent strip overlays the left edge of the same column
+                      so no extra column is needed.
+                    -->
+                    <Panel Grid.Column="0" Width="44">
+                      <Border x:Name="QueueDragHandle"
+                              VerticalAlignment="Stretch"
+                              Background="Transparent"
+                              Cursor="SizeNorthSouth">
+                        <TextBlock Text="⠿"
+                                   FontSize="16"
+                                   Foreground="{DynamicResource TextMuted}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                      </Border>
+                      <!-- 3 px accent pill on the far-left edge when playing -->
+                      <Border Width="3"
+                              HorizontalAlignment="Left"
+                              CornerRadius="0,2,2,0"
+                              Margin="0,8,0,8"
+                              Background="{DynamicResource AccentColor}"
+                              IsVisible="{Binding IsPlaying}"
+                              IsHitTestVisible="False" />
+                    </Panel>
+
+                    <!-- ── Track text (tap = play) ───────────────── -->
                     <Button x:Name="QueueItemPlayButton"
-                            Grid.Column="0"
+                            Grid.Column="1"
                             Background="Transparent"
-                            Padding="0"
+                            Padding="6,0,4,0"
                             HorizontalAlignment="Stretch"
                             VerticalAlignment="Stretch">
                       <StackPanel VerticalAlignment="Center" Spacing="2">
                         <TextBlock Text="{Binding Primary}"
                                    FontSize="14"
-                                   Foreground="{DynamicResource TextPrimary}"
+                                   FontWeight="{Binding IsPlaying,
+                                       Converter={x:Static local:BoolToFontWeightConverter.Instance}}"
+                                   Foreground="{Binding IsPlaying,
+                                       Converter={x:Static local:BoolToAccentBrushConverter.Instance}}"
                                    TextTrimming="CharacterEllipsis" />
                         <TextBlock Text="{Binding Secondary}"
                                    FontSize="11"
@@ -457,21 +500,14 @@
                       </StackPanel>
                     </Button>
 
-                    <!-- Duration -->
-                    <TextBlock Grid.Column="1"
-                               Text="{Binding Duration}"
-                               FontSize="12"
-                               Foreground="{DynamicResource TextMuted}"
-                               VerticalAlignment="Center"
-                               Margin="8,0" />
-
-                    <!-- Remove -->
+                    <!-- ── Remove (✕) ─────────────────────────────── -->
                     <Button x:Name="QueueItemRemoveButton"
                             Grid.Column="2"
                             Background="Transparent"
-                            Padding="8,0"
-                            VerticalAlignment="Center">
-                      <TextBlock Text="✕" FontSize="13"
+                            Padding="12,0"
+                            VerticalAlignment="Stretch"
+                            VerticalContentAlignment="Center">
+                      <TextBlock Text="✕" FontSize="12"
                                  Foreground="{DynamicResource TextMuted}" />
                     </Button>
 
@@ -481,22 +517,25 @@
             </ListBox.ItemTemplate>
           </ListBox>
 
-          <!-- Drag preview — shown while a long-press drag is active.
-               IsHitTestVisible=False so it never captures touches itself. -->
+          <!--
+            Drag preview pill — floats above the list during a drag.
+            IsHitTestVisible=False prevents it stealing any pointer events.
+          -->
           <Canvas x:Name="QueueDragPreviewCanvas"
                   IsHitTestVisible="False"
                   IsVisible="False">
             <Border x:Name="QueueDragPreviewBorder"
                     Background="{DynamicResource PanelFill}"
-                    BorderBrush="{DynamicResource AccentBrush}"
+                    BorderBrush="{DynamicResource AccentColor}"
                     BorderThickness="1"
-                    CornerRadius="4"
-                    Padding="12,8"
-                    Opacity="0.92">
+                    CornerRadius="6"
+                    Padding="14,8"
+                    Opacity="0.93">
               <TextBlock x:Name="QueueDragPreviewText"
                          FontSize="14"
+                         FontWeight="SemiBold"
                          Foreground="{DynamicResource TextPrimary}"
-                         MaxWidth="280"
+                         MaxWidth="300"
                          TextTrimming="CharacterEllipsis" />
             </Border>
           </Canvas>

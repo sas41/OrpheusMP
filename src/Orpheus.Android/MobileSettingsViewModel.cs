@@ -34,7 +34,10 @@ public sealed class MobileSettingsViewModel : INotifyPropertyChanged
 
         MusicFolders = new ObservableCollection<MobileFolderScanStatus>(
             mainVm.WatchedFolders.Select(f => new MobileFolderScanStatus(f)));
-        // Keep in sync if the main VM's folder list changes
+        // Keep in sync if the main VM's folder list changes.
+        // This also covers the common race where WatchedFolders is empty at
+        // construction time (InitializeAsync runs after OnDataContextChanged),
+        // so we re-seed stats whenever folders are added.
         mainVm.WatchedFolders.CollectionChanged += (_, _) =>
         {
             Dispatcher.UIThread.Post(() =>
@@ -48,12 +51,22 @@ public sealed class MobileSettingsViewModel : INotifyPropertyChanged
                         MusicFolders.RemoveAt(i);
                 }
                 // Add new entries
+                var anyAdded = false;
                 foreach (var f in mainVm.WatchedFolders)
                 {
                     if (!existing.ContainsKey(f))
+                    {
                         MusicFolders.Add(new MobileFolderScanStatus(f));
+                        anyAdded = true;
+                    }
                 }
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasNoFolders)));
+
+                // Re-seed stats for any newly added rows.  SeedFolderStatsAsync is
+                // idempotent (skips rows that already have non-zero values), so calling
+                // it here is safe even when only removals occurred.
+                if (anyAdded)
+                    _ = SeedFolderStatsAsync();
             });
         };
         MusicFolders.CollectionChanged += (_, _) =>

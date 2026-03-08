@@ -175,7 +175,7 @@ public partial class MainView : UserControl
                 break;
 
             case "QueueItemPlayButton":
-                if (btn.DataContext is QueueItem playItem)
+                if (btn.DataContext is QueueItemViewModel playItem)
                 {
                     var idx = vm.Queue.IndexOf(playItem);
                     if (idx >= 0) _ = vm.PlayQueueIndexAsync(idx);
@@ -183,7 +183,7 @@ public partial class MainView : UserControl
                 break;
 
             case "QueueItemRemoveButton":
-                if (btn.DataContext is QueueItem removeItem)
+                if (btn.DataContext is QueueItemViewModel removeItem)
                 {
                     var idx = vm.Queue.IndexOf(removeItem);
                     if (idx >= 0) _ = vm.RemoveFromQueueAsync(idx);
@@ -229,9 +229,10 @@ public partial class MainView : UserControl
         }
     }
 
-    // ── Queue long-press drag reorder ────────────────────────────────
+    // ── Queue drag reorder ────────────────────────────────────────────
 
     // How long the finger must be held before drag begins (ms).
+    // Used only for folder long-press (rescan); queue drag uses the handle.
     private const int LongPressMs = 400;
     // How many pixels the finger can drift before the long-press is cancelled.
     private const double LongPressCancelDistance = 8.0;
@@ -272,18 +273,17 @@ public partial class MainView : UserControl
             _rescanOverlay.IsVisible = false;
     }
 
-    // ── Queue long-press drag reorder ────────────────────────────────
+    // ── Queue drag reorder ────────────────────────────────────────────
 
     private ListBox?   _queueList;
     private Canvas?    _dragPreviewCanvas;
     private Border?    _dragPreviewBorder;
     private TextBlock? _dragPreviewText;
 
-    private CancellationTokenSource? _longPressCts;
+    // No long-press CTS for the queue — drag starts immediately on handle press.
     private bool   _isDragging;
-    private int    _dragFromIndex;
     private int    _dragCurrentIndex;
-    private Point  _dragPressPoint;
+    private double _dragItemHeight;     // height of a single queue row, cached on first drag
 
     // ── Folder long-press (rescan) ────────────────────────────────────
 
@@ -358,6 +358,21 @@ public partial class MainView : UserControl
 
     // ── Queue long-press drag reorder ────────────────────────────────
 
+    // ── Queue drag reorder ────────────────────────────────────────────
+    //
+    // Strategy: a dedicated drag-handle button (☰) on each queue row captures
+    // the pointer IMMEDIATELY on PointerPressed.  This prevents the ListBox's
+    // internal ScrollViewer from stealing the gesture, which is the root cause
+    // of all previous failed attempts on Android.
+    //
+    // The handler is attached to the ListBox using Tunnel routing so it fires
+    // before child controls; it filters events that did NOT originate on the
+    // handle so normal taps on the row content still work.
+    //
+    // ObservableCollection.Move() is used for reordering instead of
+    // Remove+Insert so that ListBox containers survive the operation and
+    // ContainerFromIndex keeps returning valid results throughout the gesture.
+
     private void WireQueueDrag()
     {
         EventHandler? handler = null;
@@ -370,9 +385,10 @@ public partial class MainView : UserControl
 
             if (_queueList is null) return;
 
-            _queueList.AddHandler(PointerPressedEvent,  OnQueuePointerPressed,  RoutingStrategies.Tunnel);
-            _queueList.AddHandler(PointerMovedEvent,    OnQueuePointerMoved,    RoutingStrategies.Tunnel);
-            _queueList.AddHandler(PointerReleasedEvent, OnQueuePointerReleased, RoutingStrategies.Tunnel);
+            // Tunnel so we see the event before child controls consume it.
+            _queueList.AddHandler(PointerPressedEvent,     OnQueuePointerPressed,     RoutingStrategies.Tunnel);
+            _queueList.AddHandler(PointerMovedEvent,       OnQueuePointerMoved,       RoutingStrategies.Tunnel);
+            _queueList.AddHandler(PointerReleasedEvent,    OnQueuePointerReleased,    RoutingStrategies.Tunnel);
             _queueList.AddHandler(PointerCaptureLostEvent, OnQueuePointerCaptureLost, RoutingStrategies.Tunnel);
 
             LayoutUpdated -= handler;
@@ -382,98 +398,80 @@ public partial class MainView : UserControl
 
     private void OnQueuePointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (_queueList is null || Vm is null) return;
+        if (_queueList is null || Vm is null || _isDragging) return;
 
-        _longPressCts?.Cancel();
-        _longPressCts = new CancellationTokenSource();
-        _dragPressPoint = e.GetPosition(_queueList);
-        _isDragging = false;
+        // Only activate drag when the press originated on the drag handle.
+        if (!IsDragHandleSource(e.Source)) return;
 
-        var token = _longPressCts.Token;
-        var pressPoint = _dragPressPoint;
+        var pos = e.GetPosition(_queueList);
+        var idx = GetQueueIndexAtPoint(pos);
+        if (idx < 0) return;
 
-        _ = System.Threading.Tasks.Task.Delay(LongPressMs, token).ContinueWith(t =>
+        _isDragging       = true;
+        _dragCurrentIndex = idx;
+
+        // Cache row height for cheap index estimation during drag.
+        if (_dragItemHeight <= 0 && _queueList.ContainerFromIndex(idx) is Control c)
+            _dragItemHeight = c.Bounds.Height;
+
+        // Show drag preview label.
+        if (_dragPreviewBorder is not null && _dragPreviewText is not null && _dragPreviewCanvas is not null)
         {
-            if (t.IsCanceled || token.IsCancellationRequested) return;
+            _dragPreviewText.Text = Vm.Queue[idx].Primary;
+            Canvas.SetLeft(_dragPreviewBorder, 12);
+            Canvas.SetTop(_dragPreviewBorder,  pos.Y - (_dragItemHeight > 0 ? _dragItemHeight / 2 : 28));
+            _dragPreviewCanvas.IsVisible = true;
+        }
 
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            {
-                if (token.IsCancellationRequested || _queueList is null || Vm is null) return;
-
-                var idx = GetQueueIndexAtPoint(pressPoint);
-                if (idx < 0) return;
-
-                _isDragging = true;
-                _dragFromIndex = idx;
-                _dragCurrentIndex = idx;
-
-                // Show drag preview
-                if (_dragPreviewCanvas is not null && _dragPreviewBorder is not null && _dragPreviewText is not null)
-                {
-                    var item = Vm.Queue[idx];
-                    _dragPreviewText.Text = item.Primary;
-                    Canvas.SetLeft(_dragPreviewBorder, pressPoint.X - 20);
-                    Canvas.SetTop(_dragPreviewBorder,  pressPoint.Y - 28);
-                    _dragPreviewCanvas.IsVisible = true;
-                }
-
-                // Capture pointer so PointerMoved/Released always arrive here
-                e.Pointer.Capture(_queueList);
-            });
-        });
+        // Capture immediately — this is the key fix.  The ScrollViewer never
+        // gets a chance to claim the gesture because we capture on the first
+        // PointerPressed instead of 400 ms later.
+        e.Pointer.Capture(_queueList);
+        e.Handled = true;
     }
 
     private void OnQueuePointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_queueList is null || Vm is null) return;
-
-        var pos = e.GetPosition(_queueList);
-
-        // Cancel long-press if finger drifted too far before timer fired
-        if (!_isDragging)
-        {
-            var delta = pos - _dragPressPoint;
-            if (Math.Abs(delta.X) > LongPressCancelDistance ||
-                Math.Abs(delta.Y) > LongPressCancelDistance)
-            {
-                _longPressCts?.Cancel();
-            }
-            return;
-        }
+        if (!_isDragging || _queueList is null || Vm is null) return;
 
         e.Handled = true;
 
-        // Move preview border to follow finger
-        if (_dragPreviewCanvas is not null && _dragPreviewBorder is not null)
+        var pos = e.GetPosition(_queueList);
+
+        // Keep the preview floating at the finger position.
+        if (_dragPreviewBorder is not null && _dragPreviewCanvas is not null)
         {
-            Canvas.SetLeft(_dragPreviewBorder, pos.X - 20);
-            Canvas.SetTop(_dragPreviewBorder,  pos.Y - 28);
+            Canvas.SetTop(_dragPreviewBorder,
+                pos.Y - (_dragItemHeight > 0 ? _dragItemHeight / 2 : 28));
         }
 
-        // Determine which index the finger is hovering over
+        // Determine which slot the finger is over and reorder live.
         var targetIdx = GetQueueIndexAtPoint(pos);
-        if (targetIdx < 0 || targetIdx == _dragCurrentIndex) return;
-
-        var delta2 = Math.Abs(pos.Y - _dragPressPoint.Y);
-        if (delta2 < ReorderThreshold) return;
-
-        Vm.MoveQueueItem(_dragCurrentIndex, targetIdx);
-        _dragCurrentIndex = targetIdx;
+        if (targetIdx >= 0 && targetIdx != _dragCurrentIndex)
+        {
+            Vm.MoveQueueItem(_dragCurrentIndex, targetIdx);
+            _dragCurrentIndex = targetIdx;
+        }
     }
 
     private void OnQueuePointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        // Only intercept releases that are part of an active drag.
+        // For normal button taps, _isDragging is false — returning here
+        // leaves the pointer capture intact so the Button can fire Click.
+        if (!_isDragging) return;
+        e.Handled = true;
         EndQueueDrag(e.Pointer);
     }
 
     private void OnQueuePointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
     {
+        if (!_isDragging) return;
         EndQueueDrag(null);
     }
 
     private void EndQueueDrag(IPointer? pointer)
     {
-        _longPressCts?.Cancel();
         _isDragging = false;
 
         if (_dragPreviewCanvas is not null)
@@ -483,25 +481,74 @@ public partial class MainView : UserControl
     }
 
     /// <summary>
-    /// Returns the queue list index of the item whose row midpoint is closest to
-    /// <paramref name="point"/> (same approach as the desktop drag panel).
-    /// Returns -1 if there are no items.
+    /// Returns the queue-list index that corresponds to <paramref name="point"/>.
+    /// Uses the cached row height for a fast O(1) estimate, then clamps to valid range.
+    /// Falls back to container-walk when the height cache is not yet populated.
     /// </summary>
     private int GetQueueIndexAtPoint(Point point)
     {
         if (_queueList is null || Vm is null) return -1;
-
         var count = Vm.Queue.Count;
-        for (var i = 0; i < count; i++)
+        if (count == 0) return -1;
+
+        // Fast path: uniform row height → direct division.
+        if (_dragItemHeight > 0)
         {
-            if (_queueList.ContainerFromIndex(i) is not ListBoxItem container) continue;
-            var itemTop = container.TranslatePoint(new Point(0, 0), _queueList);
-            if (itemTop is null) continue;
-            var midY = itemTop.Value.Y + container.Bounds.Height / 2;
-            if (point.Y < midY) return i;
+            // Account for the ListBox's scroll offset.
+            var scrollOffset = GetListScrollOffset();
+            var idx = (int)((point.Y + scrollOffset) / _dragItemHeight);
+            return Math.Clamp(idx, 0, count - 1);
         }
 
+        // Fallback: walk visible containers (only visible ones are non-null).
+        for (var i = 0; i < count; i++)
+        {
+            if (_queueList.ContainerFromIndex(i) is not Control container) continue;
+            var top = container.TranslatePoint(new Point(0, 0), _queueList);
+            if (top is null) continue;
+            var midY = top.Value.Y + container.Bounds.Height / 2;
+            if (point.Y < midY) return i;
+        }
         return count - 1;
+    }
+
+    private double GetListScrollOffset()
+    {
+        // The ScrollViewer lives in the ListBox's visual template, not its logical
+        // children, so we must walk the visual tree to find it.
+        foreach (var visual in _queueList!.GetVisualDescendants())
+        {
+            if (visual is ScrollViewer sv)
+                return sv.Offset.Y;
+        }
+        return 0;
+    }
+
+    /// <summary>Returns true when the event source is the drag-handle button.</summary>
+    private static bool IsDragHandleSource(object? source)
+    {
+        var el = source as Avalonia.Visual;
+        while (el is not null)
+        {
+            if (el is Control ctrl && ctrl.Name == "QueueDragHandle")
+                return true;
+            el = el.GetVisualParent() as Avalonia.Visual;
+        }
+        return false;
+    }
+
+    private static T? FindDescendant<T>(ILogical root) where T : class
+    {
+        foreach (var child in root.LogicalChildren)
+        {
+            if (child is T match) return match;
+            if (child is ILogical sub)
+            {
+                var found = FindDescendant<T>(sub);
+                if (found is not null) return found;
+            }
+        }
+        return null;
     }
 
     // ── Seek slider drag tracking ─────────────────────────────────────
