@@ -276,6 +276,26 @@ public partial class QueuePanel : UserControl
         if (item is null) return;
 
         var index = QueueList.IndexFromContainer(item);
+
+        // Right-click: show context menu programmatically so we have a reliable index.
+        if (e.GetCurrentPoint(null).Properties.IsRightButtonPressed)
+        {
+            if (index >= 0 && ViewModel.Queue[index] is { IsPlaceholder: false })
+            {
+                e.Handled = true; // prevent ListBox from changing selection
+                var menu = new ContextMenu();
+                var removeItem = new MenuItem { Header = Lang.Resources.RemoveFromQueue };
+                removeItem.Click += (_, _) => _ = ViewModel.RemoveFromQueueAsync(index);
+                menu.Items.Add(removeItem);
+                menu.Open(item);
+            }
+            return;
+        }
+
+        // Prevent the ListBox from selecting the clicked item — the highlight must
+        // only ever reflect the currently playing track (CurrentQueueIndex).
+        e.Handled = true;
+
         _dragStartIndex = index;
         _dragStartPoint = point;
         _isDragging = false;
@@ -425,23 +445,6 @@ public partial class QueuePanel : UserControl
     }
 
     // ── Item context menu ────────────────────────────────────
-
-    public void OnRemoveQueueItemClick(object? sender, RoutedEventArgs e)
-    {
-        if (ViewModel is null || QueueList is null) return;
-
-        if (sender is not MenuItem menuItem) return;
-        var contextMenu = menuItem.Parent as ContextMenu;
-        var placementTarget = contextMenu?.PlacementTarget as Visual;
-        if (placementTarget is null) return;
-
-        var listBoxItem = FindAncestor<ListBoxItem>(placementTarget);
-        if (listBoxItem is null) return;
-
-        var index = QueueList.IndexFromContainer(listBoxItem);
-        if (index >= 0)
-            ViewModel.RemoveFromQueue(index);
-    }
 
     public async void OnSaveQueueClick(object? sender, RoutedEventArgs e)
     {

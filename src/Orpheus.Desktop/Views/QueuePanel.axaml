@@ -44,11 +44,6 @@
               <!-- Normal item content -->
               <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8"
                     IsVisible="{Binding IsPlaceholder, Converter={x:Static BoolConverters.Not}}">
-                <Grid.ContextMenu>
-                  <ContextMenu>
-                    <MenuItem Header="{x:Static lang:Resources.RemoveFromQueue}" Click="OnRemoveQueueItemClick" />
-                  </ContextMenu>
-                </Grid.ContextMenu>
                 <TextBlock Text="&#x2261;" FontSize="16" Classes="muted"
                            VerticalAlignment="Center" Cursor="Hand"
                            Tag="DragHandle" />

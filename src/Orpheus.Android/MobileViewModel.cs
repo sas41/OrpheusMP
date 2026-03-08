@@ -1132,10 +1132,34 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     public async Task RemoveFromQueueAsync(int index)
     {
         if (index < 0 || index >= _queue.Count) return;
+
+        // Capture whether the item being removed is the one currently playing,
+        // and what index it occupied, before mutating anything.
+        var wasPlaying = IsPlaying && index == _controller.Playlist.CurrentIndex;
+
         _controller.Playlist.RemoveAt(index);
         _queue.RemoveAt(index);
-        // Re-apply IsPlaying after removal (index may have shifted).
-        UpdateQueuePlayingFlag();
+
+        if (wasPlaying)
+        {
+            // Play whatever is now at the same position (the next song slid into
+            // the vacated slot), or the new last item if we removed the last one.
+            // Playlist.RemoveAt reset _currentIndex to -1; reset _currentQueueIndex
+            // to -1 here too so that the CurrentQueueIndex setter always sees a
+            // genuine change and fires, toggling the IsPlaying highlight correctly.
+            _currentQueueIndex = -1;
+            var nextIndex = _queue.Count > 0 ? Math.Min(index, _queue.Count - 1) : -1;
+            if (nextIndex >= 0)
+                await _controller.PlayAtIndexAsync(nextIndex);
+            else
+                await _controller.StopAsync();
+        }
+        else
+        {
+            // Re-apply IsPlaying after removal (index may have shifted).
+            UpdateQueuePlayingFlag();
+        }
+
         NotifyQueueChanged();
         ScheduleStateSave();
     }

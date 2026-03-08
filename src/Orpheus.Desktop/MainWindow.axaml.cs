@@ -2432,8 +2432,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (items.Count == 0)
             return;
 
-        _controller.Playlist.Clear();
-        _controller.Playlist.AddRange(items);
+        _suppressPlaylistChanged = true;
+        try
+        {
+            _controller.Playlist.Clear();
+            _controller.Playlist.AddRange(items);
+        }
+        finally { _suppressPlaylistChanged = false; }
         await Dispatcher.UIThread.InvokeAsync(UpdateQueueFromPlaylist);
         await _controller.PlayAtIndexAsync(0).ConfigureAwait(false);
 
@@ -2865,17 +2870,37 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     /// <summary>
     /// Remove the queue item at the given index.
     /// </summary>
-    public void RemoveFromQueue(int index)
+    public async Task RemoveFromQueueAsync(int index)
     {
         if (index < 0 || index >= _queue.Count)
             return;
+
+        // Capture whether the removed item is the one currently playing before mutating anything.
+        var wasPlaying = IsActive && index == _controller.Playlist.CurrentIndex;
 
         _suppressPlaylistChanged = true;
         try { _controller.Playlist.RemoveAt(index); }
         finally { _suppressPlaylistChanged = false; }
 
         _queue.RemoveAt(index);
-        CurrentQueueIndex = _controller.Playlist.CurrentIndex;
+
+        if (wasPlaying)
+        {
+            // Playlist.RemoveAt reset _currentIndex to -1; reset _currentQueueIndex
+            // to -1 here too so that CurrentQueueIndex setter always sees a genuine
+            // change and fires, updating the ListBox highlight.
+            _currentQueueIndex = -1;
+            var nextIndex = _queue.Count > 0 ? Math.Min(index, _queue.Count - 1) : -1;
+            if (nextIndex >= 0)
+                await _controller.PlayAtIndexAsync(nextIndex).ConfigureAwait(false);
+            else
+                await _controller.StopAsync().ConfigureAwait(false);
+        }
+        else
+        {
+            CurrentQueueIndex = _controller.Playlist.CurrentIndex;
+        }
+
         QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
         IsQueueDirty = true;
         ScheduleQueueStateSave();

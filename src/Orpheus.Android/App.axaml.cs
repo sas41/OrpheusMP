@@ -88,7 +88,8 @@ public partial class App : Application
             TryMergeResource($"avares://{AssemblyName}/assets/themes/{layout}/{layout}.mobile.axaml");
         }
 
-        ActiveLayout = layout;
+        ActiveLayout  = layout;
+        ActiveVariant = variant;   // persist so settings UI shows the right selection on startup
 
         // Color variant (contains only Color / Brush entries — safe for mobile)
         if (!string.IsNullOrWhiteSpace(variant))

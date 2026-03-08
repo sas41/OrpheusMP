@@ -117,7 +117,11 @@ public sealed class Playlist : IReadOnlyList<PlaylistItem>
         _items.RemoveAt(index);
 
         if (_currentIndex == index)
-            _currentIndex = Math.Min(_currentIndex, _items.Count - 1);
+        {
+            // Reset to -1 first so that the caller assigning the new index via
+            // the CurrentIndex setter sees an actual change and fires CurrentIndexChanged.
+            _currentIndex = -1;
+        }
         else if (_currentIndex > index)
             _currentIndex--;
 
