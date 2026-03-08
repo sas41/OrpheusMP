@@ -38,8 +38,8 @@ public partial class SettingsView : UserControl
                 break;
 
             case "SettingsRemoveFolderButton":
-                if (vm is not null && btn.DataContext is string path)
-                    _ = vm.RemoveFolderAsync(path);
+                if (vm is not null && btn.DataContext is MobileFolderScanStatus folderStatus)
+                    _ = vm.RemoveFolderAsync(folderStatus.Path);
                 break;
 
             case "SettingsRescanButton":

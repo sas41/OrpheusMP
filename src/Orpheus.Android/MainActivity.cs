@@ -24,8 +24,7 @@ namespace Orpheus.Android;
         ConfigChanges.UiMode)]
 public class MainActivity : AvaloniaMainActivity<App>
 {
-    private const int StoragePermissionRequestCode     = 1001;
-    private const int NotificationPermissionRequestCode = 1002;
+    private const int StoragePermissionRequestCode = 1001;
 
     // The permission we need depends on API level:
     //   API 33+ (Android 13) → READ_MEDIA_AUDIO
@@ -44,7 +43,6 @@ public class MainActivity : AvaloniaMainActivity<App>
     {
         base.OnCreate(savedInstanceState);
         RequestStoragePermissionIfNeeded();
-        RequestNotificationPermissionIfNeeded();
         StartPlaybackService();
 
         // Handle a file opened on cold start
@@ -147,13 +145,6 @@ public class MainActivity : AvaloniaMainActivity<App>
             await Task.Delay(50);
         }
         return (Avalonia.Application.Current as App)?.ViewModel;
-    }
-
-    private void RequestNotificationPermissionIfNeeded()
-    {
-        if (Build.VERSION.SdkInt < BuildVersionCodes.Tiramisu) return;
-        if (CheckSelfPermission(Manifest.Permission.PostNotifications) == Permission.Granted) return;
-        RequestPermissions([Manifest.Permission.PostNotifications], NotificationPermissionRequestCode);
     }
 
     private void RequestStoragePermissionIfNeeded()

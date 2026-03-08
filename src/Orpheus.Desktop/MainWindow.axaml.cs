@@ -20,6 +20,7 @@ using System;
 using System.Threading.Tasks;
 using System.IO;
 using System.Net.Http;
+using System.Threading;
 using Orpheus.Desktop.Lang;
 using Orpheus.Desktop.Theming;
 
@@ -271,12 +272,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 {
     private readonly IMediaLibrary _library;
     private readonly FolderScanner _scanner;
+    private readonly MetadataWorker _metadataWorker;
     private readonly PlayerController _controller;
+    private readonly ILibraryChangeMonitor _changeMonitor;
+    private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private CancellationTokenSource? _changeDebounceCts;
+
+    // Folders that received change events while a scan was already running.
+    // Drained and scanned after the current scan completes.
+    private readonly HashSet<string> _pendingScanFolders = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _pendingScanLock = new();
+    private int _pendingMetadataCount;
+    private int _watchedFolderCount;
+    private string? _selectedFolderPath;
     private VlcEqualizer? _equalizer;
     private readonly ObservableCollection<LibraryNode> _libraryRoots = new();
     private readonly BulkObservableCollection<TrackRow> _tracks = new();
     private readonly BulkObservableCollection<QueueItem> _queue = new();
-    private IReadOnlyList<LibraryTrack> _allTracks = Array.Empty<LibraryTrack>();
+    private readonly Dictionary<string, LibraryTrack> _trackIndex = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<TrackRow> _currentTracks = Array.Empty<TrackRow>();
     private IReadOnlyList<TrackRow> _viewTracks = Array.Empty<TrackRow>();
     private readonly string _databasePath;
@@ -1001,8 +1014,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _volume = state.Volume;
 
         _library = new SqliteMediaLibrary(_databasePath);
-        _scanner = new FolderScanner(_library, new TagLibMetadataReader());
+        _scanner = new FolderScanner(_library);
         _scanner.Progress += OnScanProgress;
+        _scanner.PendingTracksAdded += OnPendingTracksAdded;
+        _metadataWorker = new MetadataWorker(_library, new TagLibMetadataReader());
+        _metadataWorker.Progress += OnScanProgress;
+        _changeMonitor = new DesktopFileSystemLibraryChangeMonitor();
+        _changeMonitor.Changed += OnLibraryChanged;
 
         var player = new VlcPlayer();
         _controller = new PlayerController(player, state.AudioDevice, _volume);
@@ -1078,8 +1096,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             return;
 
         await _library.AddWatchedFolderAsync(folder);
-        await _scanner.ScanFoldersAsync(new[] { folder });
-        await LoadLibraryAsync();
+        await ScanFoldersAsync([folder]);
+        await RefreshLibraryChangeMonitorAsync();
     }
 
     /// <summary>
@@ -1088,6 +1106,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public async Task RefreshLibraryAsync()
     {
         await LoadLibraryAsync();
+        await RefreshLibraryChangeMonitorAsync();
     }
 
     /// <summary>
@@ -1095,8 +1114,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     /// </summary>
     public async Task RescanAllFoldersAsync()
     {
-        await _scanner.ScanAsync();
-        await LoadLibraryAsync();
+        await ScanAllFoldersAsync();
     }
 
     /// <summary>
@@ -1121,6 +1139,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             app.State,
             _controller,
             _library,
+            _scanner,
+            _metadataWorker,
             onLibraryReset: RefreshLibraryAsync,
             onRescanAll: RescanAllFoldersAsync,
             addLibraryFolder: AddLibraryFolderAsync,
@@ -1143,9 +1163,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             await LoadPlaylistAsync();
         }
 
-        // Scan watched folders in the background so the UI is responsive
-        // while the database is brought up to date with any file changes.
-        _ = _scanner.ScanAsync();
+        // Resume any metadata enrichment interrupted by a previous crash/close —
+        // processes Pending rows already in the DB without requiring a filesystem scan.
+        _ = _metadataWorker.TriggerAsync();
+
+        // Scan watched folders in the background so startup stays responsive
+        // while the library is brought up to date with on-disk changes.
+        _ = ScanAllFoldersAsync();
     }
 
     private async Task EnsureDefaultLibraryAsync()
@@ -1154,53 +1178,78 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (watched.Count == 0 && Directory.Exists(_musicFolder))
         {
             await _library.AddWatchedFolderAsync(_musicFolder);
-            await _scanner.ScanAsync();
+            watched = [_musicFolder];
         }
+
+        await RefreshLibraryChangeMonitorAsync(watched);
     }
 
     private async Task LoadLibraryAsync(string? query = null)
     {
-        IReadOnlyList<LibraryTrack> tracks;
         var isSearch = !string.IsNullOrWhiteSpace(query);
 
         IsSearchActive = isSearch;
 
-        if (isSearch)
-        {
-            tracks = await _library.SearchAsync(query!);
-        }
-        else
-        {
-            tracks = await _library.GetAllTracksAsync();
-        }
+        var allTracks = await _library.GetAllTracksAsync();
+        _trackIndex.Clear();
+        foreach (var track in allTracks)
+            _trackIndex[track.FilePath] = track;
 
-        var allTracks = isSearch
-            ? await _library.GetAllTracksAsync()
-            : tracks;
+        var tracks = isSearch
+            ? await _library.SearchAsync(query!)
+            : allTracks;
 
-        _allTracks = allTracks;
-        _currentTracks = tracks.Select(ToTrackRow).ToList();
-        _viewTracks = _currentTracks;
-        _currentPlaylistPath = null;
-        IsPlaylistView = false;
-        IsTrackOrderDirty = false;
-        IsTrackSortEnabled = true;
+        var folders = (await _library.GetWatchedFoldersAsync())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        ApplyDesktopSnapshot(folders, tracks, resetTrackContext: true);
+    }
 
-        var folders = await _library.GetWatchedFoldersAsync();
-        var treeNodes = await Task.Run(() => BuildFolderTree(folders, tracks, pruneEmpty: isSearch || tracks.Count == 0, showFiles: _showLibraryFiles));
+    private void ApplyDesktopSnapshot(IReadOnlyList<string> folders, IReadOnlyList<LibraryTrack> visibleTracks, bool resetTrackContext)
+    {
+        _watchedFolderCount = folders.Count;
+        var treeTracks = _trackIndex.Values.ToList();
+        var treeNodes = BuildFolderTree(folders, treeTracks, pruneEmpty: IsSearchActive || treeTracks.Count == 0, showFiles: _showLibraryFiles);
 
         var state = ((App)Application.Current!).State;
         var expandedPaths = new HashSet<string>(state.ExpandedPaths, StringComparer.OrdinalIgnoreCase);
 
-        await Dispatcher.UIThread.InvokeAsync(() =>
+        Dispatcher.UIThread.Post(() =>
         {
             MergeNodes(_libraryRoots, treeNodes);
             RestoreExpandedPaths(_libraryRoots, expandedPaths);
             SubscribeToExpansionChanges(_libraryRoots);
-            LibrarySummary = string.Format(Resources.FoldersSummary, folders.Count, allTracks.Count);
+            LibrarySummary = string.Format(Resources.FoldersSummary, _watchedFolderCount, _trackIndex.Count);
         });
 
-        await RefreshTrackViewAsync(resetSelection: true);
+        if (resetTrackContext)
+        {
+            _currentTracks = visibleTracks.Select(ToTrackRow).ToList();
+            _viewTracks = _currentTracks;
+            _selectedFolderPath = null;
+            _currentPlaylistPath = null;
+            IsPlaylistView = false;
+            IsTrackOrderDirty = false;
+            IsTrackSortEnabled = true;
+            _ = RefreshTrackViewAsync(resetSelection: true);
+            return;
+        }
+
+        if (IsPlaylistView && !string.IsNullOrWhiteSpace(_currentPlaylistPath))
+        {
+            _ = SelectPlaylistAsync(_currentPlaylistPath);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_selectedFolderPath))
+        {
+            _ = SelectFolderAsync(_selectedFolderPath);
+            return;
+        }
+
+        _currentTracks = visibleTracks.Select(ToTrackRow).ToList();
+        _viewTracks = _currentTracks;
+        _ = RefreshTrackViewAsync(resetSelection: false);
     }
 
     private async Task LoadPlaylistAsync()
@@ -1306,11 +1355,168 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     private void OnScanProgress(object? sender, LibraryScanProgress e)
     {
-        if (e.IsComplete)
+        Dispatcher.UIThread.Post(() =>
         {
-            // Refresh the library tree but don't touch the play queue — the user
-            // may have a restored or manually curated queue we shouldn't overwrite.
-            _ = LoadLibraryAsync();
+            if (e.Batch.HasChanges)
+                ApplyScanBatch(e.Batch);
+
+            _pendingMetadataCount = _trackIndex.Values.Count(t => t.MetadataStatus == LibraryMetadataStatus.Pending);
+
+            LibrarySummary = string.Format(Resources.FoldersSummary, _watchedFolderCount, _trackIndex.Count);
+        });
+    }
+
+    private void ApplyScanBatch(LibraryScanBatch batch)
+    {
+        if (batch.UpsertedTracks.Count > 0)
+        {
+            foreach (var track in batch.UpsertedTracks)
+                _trackIndex[track.FilePath] = track;
+        }
+
+        if (batch.RemovedPaths.Count > 0)
+        {
+            foreach (var path in batch.RemovedPaths)
+                _trackIndex.Remove(path);
+        }
+
+        _ = Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var folders = (await _library.GetWatchedFoldersAsync())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            IReadOnlyList<LibraryTrack> visibleTracks = GetVisibleLibraryTracks();
+
+            // Refresh the library tree but keep the current queue and track
+            // context intact; scanning should not overwrite the user's queue.
+            ApplyDesktopSnapshot(folders, visibleTracks, resetTrackContext: false);
+        });
+    }
+
+    private IReadOnlyList<LibraryTrack> GetVisibleLibraryTracks()
+    {
+        if (!string.IsNullOrWhiteSpace(_searchQuery))
+            return _trackIndex.Values.Where(t => MatchesSearch(t, _searchQuery)).ToList();
+
+        if (!string.IsNullOrWhiteSpace(_selectedFolderPath))
+            return _trackIndex.Values.Where(t => IsUnderFolder(t.FilePath, _selectedFolderPath)).ToList();
+
+        return _trackIndex.Values.ToList();
+    }
+
+    private static bool MatchesSearch(LibraryTrack track, string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return true;
+
+        return (track.Title?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (track.Artist?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (track.Album?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+            || track.FilePath.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task RefreshLibraryChangeMonitorAsync(IReadOnlyList<string>? watchedFolders = null)
+    {
+        watchedFolders ??= await _library.GetWatchedFoldersAsync();
+        _changeMonitor.UpdateWatchedFolders(watchedFolders);
+    }
+
+    private async Task ScanAllFoldersAsync()
+    {
+        await RunScanAsync(static (scanner, cancellationToken) => scanner.ScanAsync(cancellationToken));
+    }
+
+    private async Task ScanFoldersAsync(IReadOnlyList<string> folders)
+    {
+        if (folders.Count == 0)
+            return;
+
+        await RunScanAsync((scanner, cancellationToken) => scanner.ScanFoldersAsync(folders, cancellationToken));
+    }
+
+    private async Task RunScanAsync(Func<FolderScanner, CancellationToken, Task> scanAction)
+    {
+        await _scanGate.WaitAsync();
+        try
+        {
+            await scanAction(_scanner, CancellationToken.None);
+        }
+        finally
+        {
+            _scanGate.Release();
+        }
+
+        // Drain any folder scan requests that arrived while this scan was running.
+        List<string> pending;
+        lock (_pendingScanLock)
+        {
+            pending = [.. _pendingScanFolders];
+            _pendingScanFolders.Clear();
+        }
+
+        if (pending.Count > 0)
+            await ScanFoldersAsync(pending);
+    }
+
+    private void OnPendingTracksAdded(object? sender, EventArgs e)
+    {
+        // The filesystem scanner wrote new Pending stubs — wake the metadata worker.
+        _ = _metadataWorker.TriggerAsync();
+    }
+
+    private async void OnLibraryChanged(object? sender, LibraryChangeDetectedEventArgs e)
+    {
+        // Debounce: cancel any pending delayed trigger and restart the timer.
+        var previous = Interlocked.Exchange(ref _changeDebounceCts, new CancellationTokenSource());
+        previous?.Cancel();
+        previous?.Dispose();
+
+        var cts = _changeDebounceCts;
+        if (cts is null)
+            return;
+
+        try
+        {
+            await Task.Delay(1000, cts.Token);
+
+            if (e.RequiresFullRescan || e.FolderPaths.Count == 0)
+            {
+                if (_scanGate.CurrentCount == 0)
+                {
+                    // Queue all watched folders for a follow-up scan.
+                    var watched = await _library.GetWatchedFoldersAsync(cts.Token);
+                    lock (_pendingScanLock)
+                    {
+                        foreach (var f in watched)
+                            _pendingScanFolders.Add(f);
+                    }
+                }
+                else
+                {
+                    await ScanAllFoldersAsync();
+                }
+            }
+            else
+            {
+                var toScanNow = new List<string>();
+                lock (_pendingScanLock)
+                {
+                    foreach (var folder in e.FolderPaths)
+                    {
+                        if (_scanGate.CurrentCount == 0)
+                            _pendingScanFolders.Add(folder);
+                        else
+                            toScanNow.Add(folder);
+                    }
+                }
+
+                if (toScanNow.Count > 0)
+                    await ScanFoldersAsync(toScanNow);
+            }
+        }
+        catch (OperationCanceledException)
+        {
         }
     }
 
@@ -1958,8 +2164,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             return;
 
         var filteredTracks = await Task.Run(() =>
-            _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
+            _trackIndex.Values.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
 
+        _selectedFolderPath = folderPath;
         _currentTracks = filteredTracks;
         _currentPlaylistPath = null;
         IsPlaylistView = false;
@@ -1991,7 +2198,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
                 return new List<TrackRow>();
             }
 
-            var byPath = _allTracks.ToDictionary(t => t.FilePath, StringComparer.OrdinalIgnoreCase);
+            var byPath = new Dictionary<string, LibraryTrack>(_trackIndex, StringComparer.OrdinalIgnoreCase);
 
             var result = new List<TrackRow>(items.Count);
             foreach (var item in items)
@@ -2023,6 +2230,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         });
 
         _currentTracks = tracks;
+        _selectedFolderPath = null;
         _currentPlaylistPath = playlistPath;
         IsPlaylistView = true;
         IsTrackOrderDirty = false;
@@ -2209,12 +2417,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             return;
 
         var folderTracks = await Task.Run(() =>
-            _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
+            _trackIndex.Values.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
 
         if (folderTracks.Count == 0)
             return;
 
         // Update the track list to show this folder's tracks
+        _selectedFolderPath = folderPath;
         _currentTracks = folderTracks;
         await RefreshTrackViewAsync(resetSelection: true);
 
@@ -2248,7 +2457,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         };
 
         // Try to find matching metadata from the library
-        var track = _allTracks.FirstOrDefault(t =>
+        var track = _trackIndex.Values.FirstOrDefault(t =>
             string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
         if (track is not null)
         {
@@ -2559,7 +2768,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
             return;
 
         var item = new PlaylistItem { Source = MediaSource.FromFile(filePath) };
-        var track = _allTracks.FirstOrDefault(t =>
+        var track = _trackIndex.Values.FirstOrDefault(t =>
             string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
         if (track is not null)
         {
@@ -2646,7 +2855,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (string.IsNullOrWhiteSpace(folderPath)) return;
 
         var folderTracks = await Task.Run(() =>
-            _allTracks.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
+            _trackIndex.Values.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
 
         if (folderTracks.Count == 0) return;
 
@@ -2790,10 +2999,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         // Persist queue and playback state before tearing down
         SaveQueueState();
 
+        _changeDebounceCts?.Cancel();
+        _changeDebounceCts?.Dispose();
         App.LanguageChanged -= OnLanguageChanged;
         if (((App)Application.Current!).ThemeManager is { } tm)
             tm.ThemeChanged -= OnThemeChanged;
+        _changeMonitor.Changed -= OnLibraryChanged;
         _scanner.Progress -= OnScanProgress;
+        _scanner.PendingTracksAdded -= OnPendingTracksAdded;
+        _metadataWorker.Progress -= OnScanProgress;
         _controller.Playlist.Changed -= OnPlaylistChanged;
         _controller.Playlist.CurrentIndexChanged -= OnPlaylistIndexChanged;
         _controller.ShufflePlayChanged -= OnShufflePlayChanged;
@@ -2801,6 +3015,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         _controller.StateChanged -= OnControllerStateChanged;
         _controller.PositionChanged -= OnControllerPositionChanged;
         _controller.VolumeChanged -= OnControllerVolumeChanged;
+        await _changeMonitor.DisposeAsync().ConfigureAwait(false);
+        _scanGate.Dispose();
         _equalizer?.Dispose();
         await _controller.DisposeAsync().ConfigureAwait(false);
         _library.Dispose();

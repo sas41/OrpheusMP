@@ -15,6 +15,47 @@
          never shown when DataContext is null (before first binding resolves). -->
     <local:SettingsView x:Name="SettingsOverlay"
                         IsVisible="False" />
+
+    <!-- Folder rescan confirmation overlay — shown on long-press of a library folder -->
+    <Grid x:Name="RescanConfirmOverlay"
+          IsVisible="False"
+          Background="#88000000">
+      <Border HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Background="{DynamicResource PanelFill}"
+              BorderBrush="{DynamicResource PanelStroke}"
+              BorderThickness="1"
+              CornerRadius="8"
+              Padding="24,20"
+              MinWidth="260"
+              MaxWidth="340">
+        <StackPanel Spacing="16">
+          <TextBlock x:Name="RescanConfirmLabel"
+                     FontSize="14"
+                     Foreground="{DynamicResource TextPrimary}"
+                     TextWrapping="Wrap"
+                     HorizontalAlignment="Center"
+                     TextAlignment="Center" />
+          <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+            <Button x:Name="RescanConfirmYesButton"
+                    Padding="20,8"
+                    HorizontalContentAlignment="Center">
+              <TextBlock Text="Rescan"
+                         FontSize="14"
+                         Foreground="{DynamicResource AccentColor}" />
+            </Button>
+            <Button x:Name="RescanConfirmNoButton"
+                    Background="Transparent"
+                    Padding="20,8"
+                    HorizontalContentAlignment="Center">
+              <TextBlock Text="Cancel"
+                         FontSize="14"
+                         Foreground="{DynamicResource TextMuted}" />
+            </Button>
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Grid>
   </Grid>
 
 </UserControl>

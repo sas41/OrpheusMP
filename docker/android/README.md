@@ -15,7 +15,7 @@ docker compose -f docker-compose.android.yml build
 docker compose -f docker-compose.android.yml run --rm android publish
 ```
 
-Examples:
+Debug examples:
 
 ```bash
 docker compose -f docker-compose.android.yml run --rm android publish
@@ -25,6 +25,15 @@ docker compose -f docker-compose.android.yml run --rm android deploy
 docker compose -f docker-compose.android.yml run --rm android emulator
 docker compose -f docker-compose.android.yml run --rm android shell
 ```
+
+Release examples:
+
+```bash
+docker compose -f docker-compose.android.yml run --rm -e CONFIGURATION=Release android publish
+docker compose -f docker-compose.android.yml run --rm -e CONFIGURATION=Release android deploy
+```
+
+`CONFIGURATION` defaults to `Debug`, so only pass `-e CONFIGURATION=Release` when you want a release APK.
 
 ## Use the host emulator from the container
 

@@ -164,9 +164,85 @@
       <StackPanel Spacing="12" Margin="8">
         <TextBlock Text="{Binding LocMusicFolders}" Classes="heading" />
 
-        <ListBox ItemsSource="{Binding MusicFolders}"
-                 x:Name="FolderList"
-                 MinHeight="100" MaxHeight="200" />
+        <!-- Folder list with per-folder scan progress bars -->
+        <ScrollViewer MinHeight="80" MaxHeight="260"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+          <ListBox ItemsSource="{Binding MusicFolders}"
+                   x:Name="FolderList"
+                   SelectionMode="Single"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   Padding="0">
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <Border Classes="panel tight" Margin="0,2" Padding="8,6">
+                  <StackPanel Spacing="5">
+
+                    <!-- Folder path -->
+                    <TextBlock Text="{Binding Path}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip.Tip="{Binding Path}"
+                               FontSize="11" />
+
+                    <!-- Filesystem scan row -->
+                    <Grid ColumnDefinitions="80,*,Auto">
+                      <TextBlock Grid.Column="0"
+                                 Text="Files"
+                                 Classes="muted small"
+                                 VerticalAlignment="Center" />
+                      <ProgressBar Grid.Column="1"
+                                   Minimum="0" Maximum="100"
+                                   Value="{Binding FsScanProgress}"
+                                   IsIndeterminate="{Binding FsScanIsIndeterminate}"
+                                   Height="6"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0" />
+                      <TextBlock Grid.Column="2"
+                                 Classes="muted small"
+                                 VerticalAlignment="Center"
+                                 HorizontalAlignment="Right">
+                        <TextBlock.Text>
+                          <MultiBinding StringFormat="{}{0}/{1}">
+                            <Binding Path="FsScanDone" />
+                            <Binding Path="FsScanTotal" />
+                          </MultiBinding>
+                        </TextBlock.Text>
+                      </TextBlock>
+                    </Grid>
+
+                    <!-- Metadata scan row -->
+                    <Grid ColumnDefinitions="80,*,Auto">
+                      <TextBlock Grid.Column="0"
+                                 Text="Metadata"
+                                 Classes="muted small"
+                                 VerticalAlignment="Center" />
+                      <ProgressBar Grid.Column="1"
+                                   Minimum="0" Maximum="100"
+                                   Value="{Binding MetaProgress}"
+                                   IsIndeterminate="{Binding MetaIsIndeterminate}"
+                                   Height="6"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0" />
+                      <TextBlock Grid.Column="2"
+                                 Classes="muted small"
+                                 VerticalAlignment="Center"
+                                 HorizontalAlignment="Right">
+                        <TextBlock.Text>
+                          <MultiBinding StringFormat="{}{0}/{1}">
+                            <Binding Path="MetaDone" />
+                            <Binding Path="MetaTotal" />
+                          </MultiBinding>
+                        </TextBlock.Text>
+                      </TextBlock>
+                    </Grid>
+
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </ScrollViewer>
 
         <StackPanel Orientation="Horizontal" Spacing="8">
           <Button Content="{Binding LocAddFolder}" Click="OnAddFolder" />

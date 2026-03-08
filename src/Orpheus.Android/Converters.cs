@@ -129,6 +129,33 @@ public sealed class BoolToChevronConverter : IValueConverter
 }
 
 /// <summary>
+/// Converts bool → IBrush for queue row backgrounds.
+/// true  → RowSelected (playing item highlight)
+/// false → Transparent
+/// </summary>
+public sealed class BoolToRowBrushConverter : IValueConverter
+{
+    public static readonly BoolToRowBrushConverter Instance = new();
+
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not true) return new SolidColorBrush(Colors.Transparent);
+
+        var app     = Application.Current;
+        var variant = app?.ActualThemeVariant;
+        if (app is not null &&
+            app.Resources.TryGetResource("RowSelected", variant, out var raw) &&
+            raw is Color c)
+            return new SolidColorBrush(c);
+
+        return new SolidColorBrush(Color.Parse("#3A3122"));
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
+/// <summary>
 /// Splits the "m:ss / m:ss" NowPlayingTime string and returns either the position
 /// or duration half, so both can be shown as separate labels flanking the seek bar.
 /// </summary>

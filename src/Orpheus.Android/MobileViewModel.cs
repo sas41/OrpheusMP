@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -41,7 +42,24 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
     private readonly IMediaLibrary _library;
     private readonly FolderScanner _scanner;
+    private readonly MetadataWorker _metadataWorker;
     private readonly PlayerController _controller;
+    private readonly ILibraryChangeMonitor _changeMonitor;
+    private readonly SemaphoreSlim _scanGate = new(1, 1);
+    private CancellationTokenSource? _changeDebounceCts;
+
+    // ── Snapshot-rebuild coalescing ───────────────────────────────────
+    // At most one BuildFolderTree runs at a time.  If a rebuild request
+    // arrives while one is already in progress, we set the dirty flag so
+    // the running rebuild does one more pass when it finishes.
+    private readonly SemaphoreSlim _snapshotSemaphore = new(1, 1);
+    private volatile bool _snapshotDirty;
+    private volatile bool _snapshotResetNavPending;
+
+    // Folders that received change events while a scan was already running.
+    // Drained and scanned after the current scan completes.
+    private readonly HashSet<string> _pendingScanFolders = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _pendingScanLock = new();
 
     // ── Playback state ────────────────────────────────────────────────
     private string _nowPlayingTitle  = "Nothing Playing";
@@ -77,10 +95,13 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string _librarySummary = "";
 
     // ── Collections ───────────────────────────────────────────────────
-    // Queue is a plain list — rebuilt in bulk and exposed via a property-change
-    // notification so Avalonia replaces the ItemsSource in one pass instead of
-    // firing CollectionChanged once per item (catastrophic at 6000+ tracks).
-    private List<QueueItem> _queue = new();
+    // Queue uses ObservableCollection<QueueItemViewModel> so that:
+    //  • Move() fires a single CollectionChanged(Move) — ListBox containers survive
+    //    the reorder and ContainerFromIndex stays valid during drag gestures.
+    //  • RemoveAt/Clear fire fine-grained events without rebuilding the whole list.
+    //  • IsPlaying on each item can be toggled individually to highlight the
+    //    currently-playing row without replacing the entire collection.
+    private readonly ObservableCollection<QueueItemViewModel> _queue = new();
     private readonly ObservableCollection<LibraryNode> _libraryRoots = new();
     // The items shown in the library tab body (either root nodes or the
     // sub-folders + tracks of the current navigation node).
@@ -89,9 +110,17 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly ObservableCollection<TrackRow>    _displayedTracks = new();
 
     // ── All library tracks cache (for folder browsing) ───────────────
+    private readonly Dictionary<string, LibraryTrack> _trackIndex = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<LibraryTrack> _allTracks = Array.Empty<LibraryTrack>();
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    // ── Scan progress events (forwarded for SettingsViewModel) ────────
+
+    /// <summary>Forwarded from the internal FolderScanner so the Settings UI can show per-folder progress bars.</summary>
+    public event EventHandler<LibraryScanProgress>? ScannerProgress;
+    /// <summary>Forwarded from the internal MetadataWorker so the Settings UI can show per-folder metadata bars.</summary>
+    public event EventHandler<LibraryScanProgress>? MetadataProgress;
 
     // ── Playback properties ───────────────────────────────────────────
 
@@ -233,7 +262,17 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     public int CurrentQueueIndex
     {
         get => _currentQueueIndex;
-        private set => SetField(ref _currentQueueIndex, value);
+        private set
+        {
+            var old = _currentQueueIndex;
+            if (!SetField(ref _currentQueueIndex, value)) return;
+
+            // Toggle IsPlaying on affected items only — avoids a full collection rebuild.
+            if (old >= 0 && old < _queue.Count)
+                _queue[old].IsPlaying = false;
+            if (value >= 0 && value < _queue.Count)
+                _queue[value].IsPlaying = true;
+        }
     }
 
     // ── Tab navigation ────────────────────────────────────────────────
@@ -314,14 +353,16 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     // ── Collections ───────────────────────────────────────────────────
 
-    public List<QueueItem>                   Queue           => _queue;
+    public ObservableCollection<QueueItemViewModel> Queue   => _queue;
     public ObservableCollection<LibraryNode> LibraryRoots   => _libraryRoots;
     public ObservableCollection<LibraryNode> DisplayedNodes  => _displayedNodes;
     public ObservableCollection<TrackRow>    DisplayedTracks => _displayedTracks;
     public ObservableCollection<string>      WatchedFolders  => _watchedFolders;
 
     public string QueueSummary =>
-        _queue.Count == 0 ? "Queue is empty" : $"{_queue.Count} track{(_queue.Count == 1 ? "" : "s")}";
+        _queue.Count == 0
+            ? "Queue is empty"
+            : $"{_queue.Count} track{(_queue.Count == 1 ? "" : "s")}";
 
     public bool IsLibraryEmpty =>
         _displayedNodes.Count == 0 && _displayedTracks.Count == 0 && !_isScanning;
@@ -385,7 +426,15 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         var databasePath = Path.Combine(dataDir, "library.db");
 
         _library = new SqliteMediaLibrary(databasePath);
-        _scanner = new FolderScanner(_library, new TagLibMetadataReader());
+        _scanner = new FolderScanner(_library);
+        _scanner.Progress += OnScanProgress;
+        _scanner.Progress += OnScannerProgressForward;
+        _scanner.PendingTracksAdded += OnPendingTracksAdded;
+        _metadataWorker = new MetadataWorker(_library, new TagLibMetadataReader());
+        _metadataWorker.Progress += OnScanProgress;
+        _metadataWorker.Progress += OnMetadataProgressForward;
+        _changeMonitor = new AndroidMediaStoreLibraryChangeMonitor(global::Android.App.Application.Context);
+        _changeMonitor.Changed += OnLibraryChanged;
 
         // Android: libvlc.so is already loaded by the runtime. We pre-set the
         // internal _libvlcLoaded flag via reflection so EnsureLoaded() is a no-op.
@@ -425,6 +474,12 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         // after the system permission dialog is resolved.
         await LoadLibraryAsync();
 
+        // Trigger the metadata worker to process any Pending rows that were left
+        // behind by a previous scan that was interrupted (e.g. app killed mid-scan).
+        // This is independent of the filesystem scan and requires no permissions
+        // beyond reading files we already know about.
+        _ = _metadataWorker.TriggerAsync();
+
         // Restore previous queue (tracks already in the DB can be loaded without
         // extra storage permission since we only need the file path, not to enumerate
         // the filesystem).
@@ -445,9 +500,19 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         if (watched.Count == 0 && Directory.Exists(musicFolder))
         {
-            await _library.AddWatchedFolderAsync(musicFolder);
-            await ScanFoldersAsync([musicFolder]);
+            var normalizedMusicFolder = LibraryPathNormalizer.NormalizeFolderPath(musicFolder);
+            await _library.AddWatchedFolderAsync(normalizedMusicFolder);
+
+            if (!_watchedFolders.Contains(normalizedMusicFolder, StringComparer.OrdinalIgnoreCase))
+                _watchedFolders.Add(normalizedMusicFolder);
+
+            _changeMonitor.UpdateWatchedFolders(_watchedFolders);
+            await ScanFoldersAsync([normalizedMusicFolder]);
+            await RefreshLibraryChangeMonitorAsync();
+            return;
         }
+
+        await RefreshLibraryChangeMonitorAsync(watched);
         // If folders are already watched the library was loaded in InitializeAsync;
         // nothing more to do.
     }
@@ -468,67 +533,344 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     // Scan all watched folders (e.g. on rescan)
     public async Task ScanAsync()
     {
-        IsScanning = true;
-        StatusMessage = "Scanning…";
-        try
-        {
-            await _scanner.ScanAsync();
-            await LoadLibraryAsync();
-            StatusMessage = "";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Scan error: {ex.Message}";
-        }
-        finally
-        {
-            IsScanning = false;
-        }
+        await RunScanAsync(static (scanner, cancellationToken) => scanner.ScanAsync(cancellationToken));
     }
 
-    // Scan only the given folders (used on add, to avoid re-scanning everything)
+    // Scan only the given folders (used on add/change detection, to avoid
+    // re-scanning the entire library every time).
     private async Task ScanFoldersAsync(IEnumerable<string> folders)
     {
-        IsScanning = true;
-        StatusMessage = "Scanning…";
-        try
-        {
-            await _scanner.ScanFoldersAsync(folders);
-            await LoadLibraryAsync();
-            StatusMessage = "";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Scan error: {ex.Message}";
-        }
-        finally
-        {
-            IsScanning = false;
-        }
+        var folderList = folders
+            .Where(static path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (folderList.Count == 0)
+            return;
+
+        await RunScanAsync((scanner, cancellationToken) => scanner.ScanFoldersAsync(folderList, cancellationToken));
     }
 
     private async Task LoadLibraryAsync()
     {
-        _allTracks = await _library.GetAllTracksAsync();
-        var folders = await _library.GetWatchedFoldersAsync();
+        var tracks = await _library.GetAllTracksAsync();
+        _trackIndex.Clear();
+        foreach (var track in tracks)
+            _trackIndex[track.FilePath] = track;
 
-        var roots = await Task.Run(() => BuildFolderTree(folders, _allTracks));
+        _allTracks = _trackIndex.Values.ToList();
+        var folders = (await _library.GetWatchedFoldersAsync())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        _libraryRoots.Clear();
-        foreach (var n in roots) _libraryRoots.Add(n);
+        await ApplyLibrarySnapshotAsync(folders, resetNavigation: true).ConfigureAwait(false);
+    }
 
-        _watchedFolders.Clear();
-        foreach (var f in folders) _watchedFolders.Add(f);
 
-        // Reset navigation
+    private NavigationSnapshot? CaptureNavigationSnapshot()
+    {
+        if (_currentNode is null)
+            return null;
+
+        var stackPaths = _navStack
+            .Reverse()
+            .Select(static node => node.Path)
+            .Where(static path => !string.Equals(path, RootNodePath, StringComparison.Ordinal))
+            .ToList();
+
+        return new NavigationSnapshot(stackPaths, _currentNode.Path);
+    }
+
+    private void RestoreNavigationSnapshot(NavigationSnapshot? snapshot, IReadOnlyList<LibraryNode> roots)
+    {
+        if (snapshot is null || string.IsNullOrWhiteSpace(snapshot.CurrentPath))
+        {
+            _navStack.Clear();
+            _currentNode = null;
+            NotifyNavChanged();
+            ShowRootNodes();
+            return;
+        }
+
+        var currentNode = FindNodeByPath(roots, snapshot.CurrentPath);
+        if (currentNode is null)
+        {
+            _navStack.Clear();
+            _currentNode = null;
+            NotifyNavChanged();
+            ShowRootNodes();
+            return;
+        }
+
         _navStack.Clear();
-        _currentNode = null;
-        NotifyNavChanged();
-        ShowRootNodes();
+        _navStack.Push(CreateRootNode());
 
-        var trackCount  = _allTracks.Count;
-        var folderCount = folders.Count;
-        LibrarySummary  = $"{folderCount} folder{(folderCount == 1 ? "" : "s")}, {trackCount} track{(trackCount == 1 ? "" : "s")}";
+        foreach (var path in snapshot.StackPaths)
+        {
+            var node = FindNodeByPath(roots, path);
+            if (node is not null)
+                _navStack.Push(node);
+        }
+
+        _currentNode = currentNode;
+        NotifyNavChanged();
+        ShowNodeContents(currentNode);
+    }
+
+    private void ApplyScanBatch(LibraryScanBatch batch)
+    {
+        // This method is always called on the UI thread (from Dispatcher.UIThread.Post).
+        // Only mutate the index and _allTracks here — they are cheap, O(batch) operations.
+        var batchSw = Stopwatch.StartNew();
+
+        if (batch.UpsertedTracks.Count > 0)
+        {
+            foreach (var track in batch.UpsertedTracks)
+                _trackIndex[track.FilePath] = track;
+        }
+
+        if (batch.RemovedPaths.Count > 0)
+        {
+            foreach (var path in batch.RemovedPaths)
+                _trackIndex.Remove(path);
+        }
+
+        _allTracks = _trackIndex.Values.ToList();
+        Console.WriteLine($"[PERF] MobileViewModel: ApplyScanBatch index update ({batch.UpsertedTracks.Count} upserted, {batch.RemovedPaths.Count} removed) took {batchSw.ElapsedMilliseconds} ms on UI thread, total tracks now {_allTracks.Count}");
+
+        if (batch.IsDiscoveryBatch || batch.RemovedPaths.Count > 0)
+        {
+            // BuildFolderTree is O(folders × tracks) — coalesce concurrent calls so
+            // at most one rebuild runs at a time; a pending dirty flag causes one
+            // additional rebuild after the current one finishes.
+            // ScheduleLibrarySnapshotAsync handles the empty-watched-folders case
+            // by falling back to the DB inside RunSnapshotRebuildLoopAsync.
+            _ = ScheduleLibrarySnapshotAsync(resetNavigation: false);
+            return;
+        }
+
+        RefreshDisplayedTracks();
+        LibrarySummary = $"{_watchedFolders.Count} folder{(_watchedFolders.Count == 1 ? "" : "s")}, {_allTracks.Count} track{(_allTracks.Count == 1 ? "" : "s")}";
+    }
+
+    /// <summary>
+    /// Schedules a library snapshot rebuild.  If a rebuild is already running,
+    /// sets a dirty flag so the running rebuild does one more pass when it
+    /// finishes — guaranteeing at most one <see cref="BuildFolderTree"/> call
+    /// runs at a time while still ending on the most up-to-date track list.
+    /// </summary>
+    private Task ScheduleLibrarySnapshotAsync(bool resetNavigation)
+    {
+        // Accumulate reset-nav intent across coalesced calls.
+        if (resetNavigation)
+            _snapshotResetNavPending = true;
+
+        // If the semaphore is free, grab it and run the rebuild now.
+        // If it's taken, just mark dirty and let the running task pick it up.
+        if (_snapshotSemaphore.CurrentCount == 0)
+        {
+            _snapshotDirty = true;
+            Console.WriteLine("[PERF] MobileViewModel: ScheduleLibrarySnapshotAsync — rebuild already running, marked dirty");
+            return Task.CompletedTask;
+        }
+
+        return RunSnapshotRebuildLoopAsync();
+    }
+
+    /// <summary>
+    /// Acquires <see cref="_snapshotSemaphore"/>, runs <see cref="ApplyLibrarySnapshotCoreAsync"/>,
+    /// then loops if the dirty flag was set while the rebuild was in progress.
+    /// </summary>
+    private async Task RunSnapshotRebuildLoopAsync()
+    {
+        // Best-effort non-blocking acquire; if we race with another caller that
+        // just grabbed it, mark dirty and exit (the other task will loop).
+        if (!await _snapshotSemaphore.WaitAsync(0).ConfigureAwait(false))
+        {
+            _snapshotDirty = true;
+            Console.WriteLine("[PERF] MobileViewModel: RunSnapshotRebuildLoopAsync — lost race for semaphore, marked dirty");
+            return;
+        }
+
+        try
+        {
+            do
+            {
+                _snapshotDirty = false;
+                var resetNav = _snapshotResetNavPending;
+                _snapshotResetNavPending = false;
+
+                // Capture folder list on whatever thread we're on (safe because
+                // _watchedFolders mutations only happen on the UI thread via
+                // ApplyLibrarySnapshotCoreAsync's InvokeAsync block).
+                IReadOnlyList<string> folders;
+                if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+                {
+                    folders = _watchedFolders.ToList();
+                }
+                else
+                {
+                    folders = await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                        () => _watchedFolders.ToList()).GetTask().ConfigureAwait(false);
+                }
+
+                if (folders.Count == 0)
+                {
+                    // No watched folders yet — fall back to DB query.
+                    folders = (await _library.GetWatchedFoldersAsync().ConfigureAwait(false))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                }
+
+                await ApplyLibrarySnapshotCoreAsync(folders, resetNav).ConfigureAwait(false);
+
+            } while (_snapshotDirty); // re-run if another batch arrived while we were building
+        }
+        finally
+        {
+            _snapshotSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Runs <see cref="BuildFolderTree"/> on the thread pool and marshals only
+    /// the resulting node list back to the UI thread.  This prevents the O(N²)
+    /// tree-build from blocking Android's UI looper on every scan batch.
+    /// Called exclusively from <see cref="RunSnapshotRebuildLoopAsync"/> which
+    /// guarantees single-at-a-time execution via the semaphore.
+    /// </summary>
+    private async Task ApplyLibrarySnapshotCoreAsync(IReadOnlyList<string> folders, bool resetNavigation)
+    {
+        var totalSw = Stopwatch.StartNew();
+        var normalizedFolders = LibraryPathNormalizer.NormalizeDistinctFolders(folders);
+
+        // Capture a snapshot of the navigation state and track list on the UI thread
+        // before going async, so the thread-pool work reads consistent data.
+        NavigationSnapshot? navigationSnapshot = null;
+        IReadOnlyList<LibraryTrack> tracksSnapshot = _allTracks;
+
+        if (!Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+        {
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                navigationSnapshot = resetNavigation ? null : CaptureNavigationSnapshot();
+                tracksSnapshot     = _allTracks;
+            }).GetTask().ConfigureAwait(false);
+        }
+        else
+        {
+            navigationSnapshot = resetNavigation ? null : CaptureNavigationSnapshot();
+            tracksSnapshot     = _allTracks;
+        }
+
+        Console.WriteLine($"[PERF] MobileViewModel: BuildFolderTree starting ({tracksSnapshot.Count} tracks, {normalizedFolders.Count} folders)");
+
+        // Build the tree entirely off the UI thread.
+        var treeSw = Stopwatch.StartNew();
+        var roots = await Task.Run(() => BuildFolderTree(normalizedFolders, tracksSnapshot))
+            .ConfigureAwait(false);
+        Console.WriteLine($"[PERF] MobileViewModel: BuildFolderTree took {treeSw.ElapsedMilliseconds} ms, produced {roots.Count} root nodes");
+
+        // Marshal back to the UI thread for all collection mutations.
+        var uiSw = Stopwatch.StartNew();
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            _libraryRoots.Clear();
+            foreach (var node in roots)
+                _libraryRoots.Add(node);
+
+            _watchedFolders.Clear();
+            foreach (var folder in normalizedFolders)
+                _watchedFolders.Add(folder);
+
+            _changeMonitor.UpdateWatchedFolders(normalizedFolders);
+
+            if (resetNavigation)
+            {
+                _navStack.Clear();
+                _currentNode = null;
+                NotifyNavChanged();
+                ShowRootNodes();
+            }
+            else
+            {
+                RestoreNavigationSnapshot(navigationSnapshot, roots);
+            }
+
+            var trackCount  = _allTracks.Count;
+            var folderCount = normalizedFolders.Count;
+            LibrarySummary  = $"{folderCount} folder{(folderCount == 1 ? "" : "s")}, {trackCount} track{(trackCount == 1 ? "" : "s")}";
+            Console.WriteLine($"[PERF] MobileViewModel: UI collection update took {uiSw.ElapsedMilliseconds} ms");
+        });
+
+        Console.WriteLine($"[PERF] MobileViewModel: ApplyLibrarySnapshotCoreAsync total {totalSw.ElapsedMilliseconds} ms");
+    }
+
+    /// <summary>
+    /// Legacy entry point kept for callers that need to pass an explicit folder list
+    /// (e.g. <see cref="LoadLibraryAsync"/>, <see cref="RefreshFolderTreeAsync"/>).
+    /// Routes through the coalescing scheduler.
+    /// </summary>
+    private Task ApplyLibrarySnapshotAsync(IReadOnlyList<string> folders, bool resetNavigation)
+    {
+        // Pre-populate _watchedFolders with the caller-supplied list so that the
+        // scheduler loop (which reads _watchedFolders) sees the right set.
+        // This must happen on the UI thread; callers of this method already ensure that
+        // via ConfigureAwait(false) after an await, or are on the UI thread directly.
+        // We do it inline here for the non-coalesced path only.
+        if (resetNavigation)
+            _snapshotResetNavPending = true;
+
+        // Run the core directly (still single-at-a-time via the semaphore loop).
+        return RunSnapshotRebuildLoopWithFoldersAsync(folders, resetNavigation);
+    }
+
+    private async Task RunSnapshotRebuildLoopWithFoldersAsync(IReadOnlyList<string> folders, bool resetNavigation)
+    {
+        if (!await _snapshotSemaphore.WaitAsync(0).ConfigureAwait(false))
+        {
+            _snapshotDirty = true;
+            if (resetNavigation) _snapshotResetNavPending = true;
+            Console.WriteLine("[PERF] MobileViewModel: RunSnapshotRebuildLoopWithFoldersAsync — lost race for semaphore, marked dirty");
+            return;
+        }
+
+        try
+        {
+            // First pass uses the supplied folder list; subsequent dirty passes read
+            // _watchedFolders (which will have been updated by the first pass's UI block).
+            bool firstPass = true;
+            do
+            {
+                _snapshotDirty = false;
+                var resetNav = _snapshotResetNavPending;
+                _snapshotResetNavPending = false;
+
+                IReadOnlyList<string> passFolders;
+                if (firstPass)
+                {
+                    passFolders = folders;
+                    firstPass   = false;
+                }
+                else
+                {
+                    passFolders = await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(
+                        () => (IReadOnlyList<string>)_watchedFolders.ToList()).GetTask().ConfigureAwait(false);
+
+                    if (passFolders.Count == 0)
+                        passFolders = (await _library.GetWatchedFoldersAsync().ConfigureAwait(false))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                }
+
+                await ApplyLibrarySnapshotCoreAsync(passFolders, resetNav).ConfigureAwait(false);
+
+            } while (_snapshotDirty);
+        }
+        finally
+        {
+            _snapshotSemaphore.Release();
+        }
     }
 
     private void ShowRootNodes()
@@ -549,7 +891,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (_currentNode is not null)
             _navStack.Push(_currentNode);
         else
-            _navStack.Push(new LibraryNode("__root__", "", "__root__"));
+            _navStack.Push(CreateRootNode());
 
         _currentNode = node;
         NotifyNavChanged();
@@ -564,7 +906,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (_navStack.Count == 0) return;
         var parent = _navStack.Pop();
 
-        if (parent.Path == "__root__")
+        if (parent.Path == RootNodePath)
         {
             _currentNode = null;
             NotifyNavChanged();
@@ -587,10 +929,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (Directory.Exists(node.Path))
         {
             var tracks = _allTracks
-                .Where(t => string.Equals(
-                    Path.GetDirectoryName(t.FilePath),
-                    node.Path,
-                    StringComparison.OrdinalIgnoreCase))
+                .Where(t => string.Equals(t.FolderPath, node.Path, StringComparison.OrdinalIgnoreCase))
                 .OrderBy(t => t.TrackNumber ?? 0)
                 .ThenBy(t => t.Title ?? Path.GetFileNameWithoutExtension(t.FilePath),
                     StringComparer.OrdinalIgnoreCase)
@@ -703,8 +1042,14 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         // filesystem API even though the user just granted access via the picker.
         // The FolderScanner already skips folders that don't exist, so it is safe
         // to proceed. Guarding here caused re-added folders to silently do nothing.
-        await _library.AddWatchedFolderAsync(path);
-        await ScanFoldersAsync([path]);   // scan only the newly added folder
+        var normalizedPath = LibraryPathNormalizer.NormalizeFolderPath(path);
+        await _library.AddWatchedFolderAsync(normalizedPath);
+
+        if (!_watchedFolders.Contains(normalizedPath, StringComparer.OrdinalIgnoreCase))
+            _watchedFolders.Add(normalizedPath);
+
+        await ScanFoldersAsync([normalizedPath]);   // scan only the newly added folder
+        await RefreshLibraryChangeMonitorAsync();
     }
 
     public async Task RemoveFolderAsync(string path)
@@ -712,15 +1057,27 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         await _library.RemoveWatchedFolderAsync(path);
         await _library.RemoveTracksUnderFolderAsync(path);
         await LoadLibraryAsync();
+        await RefreshLibraryChangeMonitorAsync();
     }
 
     public async Task ResetLibraryAsync()
     {
         await _library.ClearAsync();
         await LoadLibraryAsync();
+        _changeMonitor.UpdateWatchedFolders([]);
     }
 
     public async Task RescanAsync() => await ScanAsync();
+
+    /// <summary>Rescans a single watched folder (or any sub-folder path).</summary>
+    public async Task RescanFolderAsync(string path) => await ScanFoldersAsync([path]);
+
+    /// <summary>
+    /// Returns per-folder track totals and pending-metadata counts from the DB.
+    /// Used by the Settings screen to seed progress bars after a past scan.
+    /// </summary>
+    public Task<IReadOnlyDictionary<string, (int Total, int Pending)>> GetFolderStatsAsync()
+        => _library.GetFolderStatsAsync();
 
     // ── Playback commands ─────────────────────────────────────────────
 
@@ -776,8 +1133,9 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         if (index < 0 || index >= _queue.Count) return;
         _controller.Playlist.RemoveAt(index);
-        _queue = new List<QueueItem>(_queue);
         _queue.RemoveAt(index);
+        // Re-apply IsPlaying after removal (index may have shifted).
+        UpdateQueuePlayingFlag();
         NotifyQueueChanged();
         ScheduleStateSave();
     }
@@ -785,7 +1143,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     public async Task ClearQueueAsync()
     {
         _controller.Playlist.Clear();
-        _queue = new List<QueueItem>();
+        _queue.Clear();
         NotifyQueueChanged();
         ScheduleStateSave();
     }
@@ -799,12 +1157,14 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         _controller.Playlist.Move(fromIndex, toIndex);
 
-        var newQueue = new List<QueueItem>(_queue);
-        var item = newQueue[fromIndex];
-        newQueue.RemoveAt(fromIndex);
-        newQueue.Insert(toIndex, item);
-        _queue = newQueue;
-        NotifyQueueChanged();
+        // ObservableCollection.Move fires a single CollectionChanged(Move) which lets
+        // the ListBox shift the container in place instead of destroying/recreating it.
+        // This keeps ContainerFromIndex valid throughout an active drag gesture.
+        _queue.Move(fromIndex, toIndex);
+
+        // After move the currently-playing index inside the playlist may have changed;
+        // re-sync the IsPlaying flags to the new controller index.
+        UpdateQueuePlayingFlag();
         ScheduleStateSave();
     }
 
@@ -931,15 +1291,16 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     private async Task RefreshFolderTreeAsync()
     {
         var folders = _watchedFolders.ToList();
-        var tracks  = _allTracks;
-        var roots   = await Task.Run(() => BuildFolderTree(folders, tracks));
+        await ApplyLibrarySnapshotAsync(folders, resetNavigation: false).ConfigureAwait(false);
+    }
 
-        _libraryRoots.Clear();
-        foreach (var n in roots) _libraryRoots.Add(n);
+    private async Task RefreshLibrarySnapshotAsync(bool resetNavigation)
+    {
+        var folders = (await _library.GetWatchedFoldersAsync().ConfigureAwait(false))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        // If we're at the root level, refresh the displayed nodes too.
-        if (_currentNode is null)
-            ShowRootNodes();
+        await ApplyLibrarySnapshotAsync(folders, resetNavigation).ConfigureAwait(false);
     }
 
     /// <summary>Play all tracks in the current folder (replaces queue).</summary>
@@ -951,7 +1312,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         // and building PlaylistItems is measurable work that blocks the UI thread.
         var tracks = await Task.Run(() =>
             _allTracks
-                .Where(t => t.FilePath.StartsWith(node.Path, StringComparison.OrdinalIgnoreCase))
+                .Where(t => IsTrackUnderFolder(t, node.Path))
                 .OrderBy(t => t.TrackNumber ?? 0)
                 .ThenBy(t => t.Title ?? "", StringComparer.OrdinalIgnoreCase)
                 .ToList());
@@ -986,7 +1347,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
         var tracks = await Task.Run(() =>
             _allTracks
-                .Where(t => t.FilePath.StartsWith(node.Path, StringComparison.OrdinalIgnoreCase))
+                .Where(t => IsTrackUnderFolder(t, node.Path))
                 .OrderBy(t => t.TrackNumber ?? 0)
                 .ThenBy(t => t.Title ?? "", StringComparer.OrdinalIgnoreCase)
                 .ToList());
@@ -1027,42 +1388,67 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void UpdateQueueDisplay()
     {
-        // Snapshot the playlist items so background work doesn't race with
-        // mutations on the UI thread.
-        var mode  = _trackDisplayMode;
-        var items = _controller.Playlist.ToList();
+        // Snapshot the playlist so background work doesn't race with UI mutations.
+        var mode        = _trackDisplayMode;
+        var items       = _controller.Playlist.ToList();
+        var playingIdx  = _controller.Playlist.CurrentIndex;
 
-        // Build the display list on the thread pool — for large libraries this
-        // loop is measurable work (string allocations, path operations, etc.).
+        // Build view-model list on the thread pool — string allocations for large
+        // queues are measurable and must not block the UI thread.
         _ = Task.Run(() =>
         {
-            var newQueue = new List<QueueItem>(items.Count);
-            foreach (var item in items)
+            var vms = new List<QueueItemViewModel>(items.Count);
+            for (var i = 0; i < items.Count; i++)
             {
+                var item = items[i];
                 ResolveDisplayText(mode, item.Metadata,
                     item.Source.Type == Orpheus.Core.Media.MediaSourceType.LocalFile
                         ? item.Source.Uri.LocalPath : item.Source.Uri.ToString(),
                     item.DisplayName,
                     out var primary, out var secondary);
-                newQueue.Add(new QueueItem(
+                vms.Add(new QueueItemViewModel(
                     primary,
                     secondary,
-                    FormatTime(item.Metadata?.Duration ?? TimeSpan.Zero)));
+                    FormatTime(item.Metadata?.Duration ?? TimeSpan.Zero),
+                    isPlaying: i == playingIdx));
             }
-            return newQueue;
+            return vms;
         }).ContinueWith(t =>
         {
-            if (t.IsCompletedSuccessfully)
-            {
-                _queue = t.Result;
-                NotifyQueueChanged();
-            }
+            if (!t.IsCompletedSuccessfully) return;
+
+            // Replace the ObservableCollection contents in one pass on the UI thread.
+            // Using Clear + bulk Add is slightly simpler than diffing; for a queue
+            // rebuild (not a per-item move) this is called infrequently.
+            _queue.Clear();
+            foreach (var vm in t.Result)
+                _queue.Add(vm);
+
+            // playingIdx was captured before PlayAtIndexAsync() was called, so it
+            // may be stale (e.g. -1 when play started while the build was running).
+            // Re-sync IsPlaying flags now that the collection is fully populated.
+            UpdateQueuePlayingFlag();
+
+            NotifyQueueChanged();
         }, TaskScheduler.FromCurrentSynchronizationContext());
+    }
+
+    /// <summary>
+    /// Syncs <see cref="QueueItemViewModel.IsPlaying"/> flags to the current playlist
+    /// index without touching the rest of the collection.  Called after moves/removes
+    /// that may have shifted the playing index.
+    /// </summary>
+    private void UpdateQueuePlayingFlag()
+    {
+        var idx = _controller.Playlist.CurrentIndex;
+        for (var i = 0; i < _queue.Count; i++)
+            _queue[i].IsPlaying = i == idx;
     }
 
     private void NotifyQueueChanged()
     {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Queue)));
+        // Queue is an ObservableCollection — it raises its own CollectionChanged.
+        // We only need to explicitly notify the derived scalar properties.
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QueueSummary)));
     }
 
@@ -1241,15 +1627,34 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     }
 
     // ── Library tree builder ──────────────────────────────────────────
+    //
+    // O(tracks) approach:
+    //   1. Pre-group tracks by their exact FolderPath into a dictionary — O(N) one-time cost.
+    //   2. BuildFolderNode recurses the directory tree bottom-up, using O(1) dict lookups
+    //      for direct-track counts.  Each call returns the total track count under that
+    //      node so the parent can accumulate the subtree total without any extra passes.
+    //   3. The subtree total is a natural by-product of the bottom-up recursion —
+    //      no second pass over the track list is needed.
 
     private static List<LibraryNode> BuildFolderTree(
         IReadOnlyList<string> folders,
         IReadOnlyList<LibraryTrack> tracks)
     {
+        // Build the lookup once for the whole tree — O(N).
+        var byFolder = new Dictionary<string, List<LibraryTrack>>(
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var track in tracks)
+        {
+            var fp = track.FolderPath ?? Path.GetDirectoryName(track.FilePath) ?? "";
+            if (!byFolder.TryGetValue(fp, out var list))
+                byFolder[fp] = list = new List<LibraryTrack>();
+            list.Add(track);
+        }
+
         var nodes = new List<LibraryNode>();
         foreach (var folder in folders)
         {
-            var node = BuildFolderNode(folder, tracks);
+            var (node, _) = BuildFolderNode(folder, byFolder, isRoot: true);
             if (node is not null)
             {
                 node.IsExpanded = true;
@@ -1259,11 +1664,20 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         return nodes;
     }
 
-    private static LibraryNode? BuildFolderNode(
+    /// <summary>
+    /// Recursively builds a <see cref="LibraryNode"/> for <paramref name="path"/>.
+    /// Returns the node (or <c>null</c> if the folder should be pruned) and the
+    /// total number of tracks anywhere under this folder (used by the parent to
+    /// accumulate subtree counts without extra passes).
+    /// </summary>
+    private static (LibraryNode? node, int totalTracks) BuildFolderNode(
         string path,
-        IReadOnlyList<LibraryTrack> tracks)
+        Dictionary<string, List<LibraryTrack>> byFolder,
+        bool isRoot = false)
     {
         var children = new List<LibraryNode>();
+        int childTrackTotal = 0;
+
         if (Directory.Exists(path))
         {
             try
@@ -1271,9 +1685,12 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
                 foreach (var child in Directory.EnumerateDirectories(path)
                              .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
                 {
-                    var childNode = BuildFolderNode(child, tracks);
+                    var (childNode, childTracks) = BuildFolderNode(child, byFolder);
                     if (childNode is not null)
+                    {
                         children.Add(childNode);
+                        childTrackTotal += childTracks;
+                    }
                 }
 
                 // Playlist files — always shown, sorted by name
@@ -1291,32 +1708,80 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
             catch { /* permission denied etc. */ }
         }
 
-        // Count tracks directly in this folder
-        var directTrackCount = tracks.Count(t =>
-            string.Equals(
-                Path.GetDirectoryName(t.FilePath),
-                path,
-                StringComparison.OrdinalIgnoreCase));
+        // O(1) direct-track count via pre-grouped dictionary.
+        var directTrackCount = byFolder.TryGetValue(path, out var direct) ? direct.Count : 0;
+        var totalTracks      = directTrackCount + childTrackTotal;
 
         var name = Path.GetFileName(path);
         if (string.IsNullOrWhiteSpace(name)) name = path;
 
-        var meta = directTrackCount > 0
-            ? $"{directTrackCount} track{(directTrackCount == 1 ? "" : "s")}"
-            : "";
+        // Count playlist files anywhere in this subtree
+        var playlistCount = children.Sum(c => c.NodeType == LibraryNodeType.Playlist ? 1 : CountPlaylists(c));
 
-        // Skip empty leaf folders that have no tracks anywhere underneath
-        // (but keep folders that contain playlist files)
-        var totalTracks = CountTracksUnder(path, tracks);
+        // Build meta: total tracks in subtree + playlist count, for all folder nodes.
+        // Root nodes also prepend the full path so two libraries with the same name are distinguishable.
+        var metaParts = new System.Text.StringBuilder();
+        if (isRoot)
+            metaParts.Append(path);
+        if (totalTracks > 0)
+        {
+            if (metaParts.Length > 0) metaParts.Append("  ·  ");
+            metaParts.Append($"{totalTracks} track{(totalTracks == 1 ? "" : "s")}");
+        }
+        if (playlistCount > 0)
+        {
+            if (metaParts.Length > 0) metaParts.Append("  ·  ");
+            metaParts.Append($"{playlistCount} playlist{(playlistCount == 1 ? "" : "s")}");
+        }
+        var meta = metaParts.ToString();
+
+        // Prune empty leaf folders (no tracks anywhere underneath, no playlist files).
+        // Always keep the root watched folder even if it happens to be empty.
         var hasPlaylists = children.Any(c => c.NodeType == LibraryNodeType.Playlist);
-        if (totalTracks == 0 && children.Count == 0 && !hasPlaylists)
-            return null;
+        if (!isRoot && totalTracks == 0 && children.Count == 0 && !hasPlaylists)
+            return (null, 0);
 
-        return new LibraryNode(name, meta, path, children);
+        return (new LibraryNode(name, meta, path, children), totalTracks);
     }
 
-    private static int CountTracksUnder(string path, IReadOnlyList<LibraryTrack> tracks)
-        => tracks.Count(t => t.FilePath.StartsWith(path, StringComparison.OrdinalIgnoreCase));
+    private static int CountPlaylists(LibraryNode node)
+    {
+        var count = 0;
+        foreach (var child in node.Children)
+            count += child.NodeType == LibraryNodeType.Playlist ? 1 : CountPlaylists(child);
+        return count;
+    }
+
+    private void RefreshDisplayedTracks()
+    {
+        if (_currentNode is null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLibraryEmpty)));
+            return;
+        }
+
+        ShowNodeContents(_currentNode);
+    }
+
+    private static bool IsTrackUnderFolder(LibraryTrack track, string folderPath)
+        => LibraryPathNormalizer.IsPathWithinFolder(track.FilePath, folderPath);
+
+    private static LibraryNode? FindNodeByPath(IEnumerable<LibraryNode> nodes, string path)
+    {
+        foreach (var node in nodes)
+        {
+            if (string.Equals(node.Path, path, StringComparison.OrdinalIgnoreCase))
+                return node;
+
+            var child = FindNodeByPath(node.Children, path);
+            if (child is not null)
+                return child;
+        }
+
+        return null;
+    }
+
+    private static LibraryNode CreateRootNode() => new(RootNodePath, "", RootNodePath);
 
     // ── INotifyPropertyChanged helper ────────────────────────────────
 
@@ -1333,9 +1798,146 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         SaveState();
+        _changeDebounceCts?.Cancel();
+        _changeDebounceCts?.Dispose();
+        _changeMonitor.Changed -= OnLibraryChanged;
+        _scanner.Progress -= OnScanProgress;
+        _scanner.Progress -= OnScannerProgressForward;
+        _scanner.PendingTracksAdded -= OnPendingTracksAdded;
+        _metadataWorker.Progress -= OnScanProgress;
+        _metadataWorker.Progress -= OnMetadataProgressForward;
+        await _changeMonitor.DisposeAsync();
+        _scanGate.Dispose();
+        _snapshotSemaphore.Dispose();
         await _controller.DisposeAsync();
         _library.Dispose();
     }
+
+    private async Task RunScanAsync(Func<FolderScanner, CancellationToken, Task> scanAction)
+    {
+        await _scanGate.WaitAsync();
+        try
+        {
+            IsScanning = true;
+            StatusMessage = "Scanning…";
+            await scanAction(_scanner, CancellationToken.None);
+            StatusMessage = "";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Scan error: {ex.Message}";
+        }
+        finally
+        {
+            IsScanning = false;
+            _scanGate.Release();
+        }
+
+        // Drain any folder scan requests that arrived while this scan was running.
+        List<string> pending;
+        lock (_pendingScanLock)
+        {
+            pending = [.. _pendingScanFolders];
+            _pendingScanFolders.Clear();
+        }
+
+        if (pending.Count > 0)
+            await ScanFoldersAsync(pending);
+    }
+
+    private void OnPendingTracksAdded(object? sender, EventArgs e)
+    {
+        // The filesystem scanner wrote new Pending stubs — wake the metadata worker.
+        _ = _metadataWorker.TriggerAsync();
+    }
+
+    private async void OnLibraryChanged(object? sender, LibraryChangeDetectedEventArgs e)
+    {
+        // Debounce: cancel any pending delayed trigger and restart the timer.
+        var previous = Interlocked.Exchange(ref _changeDebounceCts, new CancellationTokenSource());
+        previous?.Cancel();
+        previous?.Dispose();
+
+        var cts = _changeDebounceCts;
+        if (cts is null)
+            return;
+
+        try
+        {
+            await Task.Delay(1000, cts.Token);
+
+            if (e.RequiresFullRescan || e.FolderPaths.Count == 0)
+            {
+                if (IsScanning)
+                {
+                    // Queue all watched folders for a follow-up scan.
+                    var watched = await _library.GetWatchedFoldersAsync(cts.Token);
+                    lock (_pendingScanLock)
+                    {
+                        foreach (var f in watched)
+                            _pendingScanFolders.Add(f);
+                    }
+                }
+                else
+                {
+                    await ScanAsync();
+                }
+            }
+            else
+            {
+                var toScanNow = new List<string>();
+                lock (_pendingScanLock)
+                {
+                    foreach (var folder in e.FolderPaths)
+                    {
+                        if (IsScanning)
+                            // Coalesce into the pending set; drained after current scan.
+                            _pendingScanFolders.Add(folder);
+                        else
+                            toScanNow.Add(folder);
+                    }
+                }
+
+                if (toScanNow.Count > 0)
+                    await ScanFoldersAsync(toScanNow);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task RefreshLibraryChangeMonitorAsync(IReadOnlyList<string>? watchedFolders = null)
+    {
+        watchedFolders ??= await _library.GetWatchedFoldersAsync();
+        _changeMonitor.UpdateWatchedFolders(watchedFolders);
+    }
+
+    private void OnScanProgress(object? sender, LibraryScanProgress e)
+    {
+        var dispatchSw = Stopwatch.StartNew();
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            Console.WriteLine($"[PERF] MobileViewModel: OnScanProgress UI dispatch lag {dispatchSw.ElapsedMilliseconds} ms (IsComplete={e.IsComplete}, batch={e.Batch.UpsertedTracks.Count} upserted)");
+
+            StatusMessage = e.IsComplete
+                ? ""
+                : $"Scanning... {Math.Min(e.ProcessedFiles, e.TotalFiles)}/{Math.Max(e.TotalFiles, e.ProcessedFiles)}";
+
+            if (e.Batch.HasChanges)
+                ApplyScanBatch(e.Batch);
+        });
+    }
+
+    private void OnScannerProgressForward(object? sender, LibraryScanProgress e)
+        => ScannerProgress?.Invoke(this, e);
+
+    private void OnMetadataProgressForward(object? sender, LibraryScanProgress e)
+        => MetadataProgress?.Invoke(this, e);
+
+    private const string RootNodePath = "__root__";
+
+    private sealed record NavigationSnapshot(IReadOnlyList<string> StackPaths, string CurrentPath);
 }
 
 // ── Supporting types ──────────────────────────────────────────────────
@@ -1408,7 +2010,40 @@ public sealed class TrackRow
             : value.ToString(@"m\:ss");
 }
 
-public sealed record QueueItem(string Primary, string Secondary, string Duration);
+/// <summary>
+/// Per-row view model for the queue list.
+/// Uses <see cref="INotifyPropertyChanged"/> so <see cref="IsPlaying"/> can be toggled
+/// on individual items without rebuilding the entire collection.
+/// </summary>
+public sealed class QueueItemViewModel : INotifyPropertyChanged
+{
+    private bool _isPlaying;
+
+    public string Primary   { get; }
+    public string Secondary { get; }
+    public string Duration  { get; }
+
+    public bool IsPlaying
+    {
+        get => _isPlaying;
+        set
+        {
+            if (_isPlaying == value) return;
+            _isPlaying = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsPlaying)));
+        }
+    }
+
+    public QueueItemViewModel(string primary, string secondary, string duration, bool isPlaying = false)
+    {
+        Primary   = primary;
+        Secondary = secondary;
+        Duration  = duration;
+        _isPlaying = isPlaying;
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
 
 // ── Session state ─────────────────────────────────────────────────────
 

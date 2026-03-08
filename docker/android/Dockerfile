@@ -49,10 +49,7 @@ RUN sdkmanager --sdk_root=${ANDROID_HOME} \
 
 RUN dotnet workload install android
 
-COPY docker/android/android-tool.sh /usr/local/bin/android-tool
-RUN chmod +x /usr/local/bin/android-tool
-
 WORKDIR /workspace
 
-ENTRYPOINT ["android-tool"]
+ENTRYPOINT ["/bin/bash", "/workspace/docker/android/android-tool.sh"]
 CMD ["help"]
