@@ -120,7 +120,7 @@ public sealed class AppState
         return Path.Combine(GetConfigDirectory(), "state.json");
     }
 
-    private static string GetConfigDirectory()
+    internal static string GetConfigDirectory()
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {

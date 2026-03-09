@@ -238,7 +238,7 @@ jobs:
         run: |
           mkdir -p publish/linux-zip/app/assets
           cp -r publish/linux/. publish/linux-zip/app/
-          cp scripts/install/install-linux.sh publish/linux-zip/
+          cp scripts/install/linux/install-linux.sh publish/linux-zip/
           cp assets/icon-256.png publish/linux-zip/app/assets/
           cp assets/icon.svg publish/linux-zip/app/assets/
 

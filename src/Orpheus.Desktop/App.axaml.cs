@@ -2,11 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Pipes;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
+using Avalonia.Threading;
 using Orpheus.Desktop.Lang;
 using Orpheus.Desktop.Theming;
 
@@ -24,6 +29,7 @@ public partial class App : Application
     private NativeMenuItem? _showMenuItem;
     private NativeMenuItem? _quitMenuItem;
     private bool _isQuitting;
+    private CancellationTokenSource? _ipcCts;
 
     /// <summary>
     /// True when the tray icon is enabled and the window should hide on close
@@ -74,6 +80,10 @@ public partial class App : Application
                 CreateTrayIcon();
 
             UpdateShutdownMode();
+
+            // Start the IPC listener so secondary instances can forward file
+            // paths to this (primary) instance instead of opening a new window.
+            StartIpcServer(mainWindow);
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -241,9 +251,74 @@ public partial class App : Application
         }
     }
 
+    /// <summary>
+    /// Starts a background named-pipe server that accepts connections from
+    /// secondary instances and routes file paths (or empty "activate" tokens)
+    /// to the main window's ViewModel.
+    /// </summary>
+    private void StartIpcServer(MainWindow mainWindow)
+    {
+        _ipcCts = new CancellationTokenSource();
+        var ct = _ipcCts.Token;
+
+        Task.Run(async () =>
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                NamedPipeServerStream? server = null;
+                try
+                {
+                    server = new NamedPipeServerStream(
+                        pipeName:        Program.PipeName,
+                        direction:       PipeDirection.In,
+                        maxNumberOfServerInstances: NamedPipeServerStream.MaxAllowedServerInstances,
+                        transmissionMode: PipeTransmissionMode.Byte,
+                        options:         PipeOptions.Asynchronous);
+
+                    await server.WaitForConnectionAsync(ct).ConfigureAwait(false);
+
+                    using var ms = new MemoryStream();
+                    var buffer = new byte[4096];
+                    int read;
+                    while ((read = await server.ReadAsync(buffer, 0, buffer.Length, ct).ConfigureAwait(false)) > 0)
+                        ms.Write(buffer, 0, read);
+
+                    var filePath = Encoding.UTF8.GetString(ms.ToArray());
+
+                    // Dispatch to the UI thread
+                    await Dispatcher.UIThread.InvokeAsync(async () =>
+                    {
+                        ShowMainWindow();
+
+                        if (!string.IsNullOrWhiteSpace(filePath) &&
+                            mainWindow.DataContext is MainWindowViewModel vm)
+                        {
+                            await vm.AddFileToQueueAndPlayAsync(filePath).ConfigureAwait(false);
+                        }
+                    });
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch
+                {
+                    // Ignore transient pipe errors — just restart the loop
+                }
+                finally
+                {
+                    server?.Dispose();
+                }
+            }
+        }, ct);
+    }
+
     private void QuitApplication()
     {
         _isQuitting = true;
+        _ipcCts?.Cancel();
+        _ipcCts?.Dispose();
+        _ipcCts = null;
         _trayIcon?.Dispose();
         _trayIcon = null;
 

@@ -284,6 +284,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private readonly IMediaLibrary _library;
     private readonly FolderScanner _scanner;
     private readonly MetadataWorker _metadataWorker;
+    private readonly TagLibMetadataReader _metadataReader = new();
     private readonly PlayerController _controller;
     private readonly ILibraryChangeMonitor _changeMonitor;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
@@ -2527,6 +2528,38 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     /// <summary>
     /// Play a single audio file by loading it into the queue.
     /// </summary>
+    /// <summary>
+    /// Returns metadata for a local file, preferring the library index (fast,
+    /// no I/O) and falling back to a direct tag read via TagLib when the file
+    /// is not in the library (e.g. opened from outside the application).
+    /// </summary>
+    private TrackMetadata? ResolveMetadataForFile(string filePath)
+    {
+        var track = _trackIndex.Values.FirstOrDefault(t =>
+            string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+
+        if (track is not null)
+        {
+            return new TrackMetadata
+            {
+                Title    = track.Title,
+                Artist   = track.Artist,
+                Album    = track.Album,
+                Duration = track.Duration,
+            };
+        }
+
+        // File is not in the library — read its tags directly.
+        try
+        {
+            return _metadataReader.ReadFromFile(filePath, readPictures: false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public async Task PlayFileAsync(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
@@ -2537,22 +2570,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         var item = new PlaylistItem
         {
-            Source = MediaSource.FromFile(filePath)
+            Source   = MediaSource.FromFile(filePath),
+            Metadata = ResolveMetadataForFile(filePath),
         };
-
-        // Try to find matching metadata from the library
-        var track = _trackIndex.Values.FirstOrDefault(t =>
-            string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
-        if (track is not null)
-        {
-            item.Metadata = new TrackMetadata
-            {
-                Title = track.Title,
-                Artist = track.Artist,
-                Album = track.Album,
-                Duration = track.Duration
-            };
-        }
 
         _controller.Playlist.Clear();
         _controller.Playlist.Add(item);
@@ -2851,19 +2871,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             return;
 
-        var item = new PlaylistItem { Source = MediaSource.FromFile(filePath) };
-        var track = _trackIndex.Values.FirstOrDefault(t =>
-            string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
-        if (track is not null)
+        var item = new PlaylistItem
         {
-            item.Metadata = new TrackMetadata
-            {
-                Title = track.Title,
-                Artist = track.Artist,
-                Album = track.Album,
-                Duration = track.Duration
-            };
-        }
+            Source   = MediaSource.FromFile(filePath),
+            Metadata = ResolveMetadataForFile(filePath),
+        };
 
         _suppressPlaylistChanged = true;
         try
@@ -2889,6 +2901,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
         IsQueueDirty = true;
         ScheduleQueueStateSave();
+    }
+
+    /// <summary>
+    /// Appends a single audio file to the bottom of the play queue and
+    /// immediately skips to it.  This is the entry point used by the
+    /// single-instance IPC server when an external file-open event arrives
+    /// while the application is already running.
+    /// </summary>
+    public async Task AddFileToQueueAndPlayAsync(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return;
+
+        // Append to the end of the current queue (no confirmation needed —
+        // we are adding, not replacing).
+        int insertIndex = _controller.Playlist.Count; // append position
+        AddFileToQueue(filePath);                      // uses insertAt = -1 → appends
+
+        // The newly added item is always the last one.
+        int newIndex = _controller.Playlist.Count - 1;
+        await _controller.PlayAtIndexAsync(newIndex).ConfigureAwait(false);
     }
 
     /// <summary>
