@@ -270,9 +270,21 @@ public partial class MainWindow : Window
 
 public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposable
 {
+    private static readonly TrackListProjectionSelectors<TrackRow> TrackRowProjectionSelectors = new(
+        track => track.Title,
+        track => track.Artist,
+        track => track.Album,
+        track => track.FileName,
+        track => track.TrackNumber,
+        track => track.Year,
+        track => track.Genre,
+        track => track.Bitrate,
+        track => track.Length);
+
     private readonly IMediaLibrary _library;
     private readonly FolderScanner _scanner;
     private readonly MetadataWorker _metadataWorker;
+    private readonly TagLibMetadataReader _metadataReader = new();
     private readonly PlayerController _controller;
     private readonly ILibraryChangeMonitor _changeMonitor;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
@@ -317,6 +329,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private int _selectedTrackIndex = -1;
     private IReadOnlyList<int> _selectedTrackIndices = Array.Empty<int>();
     private int _currentQueueIndex = -1;
+    private IReadOnlyList<int> _selectedQueueIndices = Array.Empty<int>();
     private TrackSortField _sortField = TrackSortField.Title;
     private bool _sortAscending = true;
     private bool _hideMissingTitle;
@@ -558,7 +571,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public int CurrentQueueIndex
     {
         get => _currentQueueIndex;
-        private set => SetField(ref _currentQueueIndex, value);
+        private set
+        {
+            var changed = SetField(ref _currentQueueIndex, value);
+            if (!changed)
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentQueueIndex)));
+        }
+    }
+
+    public IReadOnlyList<int> SelectedQueueIndices
+    {
+        get => _selectedQueueIndices;
+        private set => SetField(ref _selectedQueueIndices, value);
     }
 
     /// <summary>
@@ -962,6 +986,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     public ObservableCollection<TrackRow> Tracks => _tracks;
     public ObservableCollection<QueueItem> Queue => _queue;
 
+    public void SetSelectedQueueIndices(IReadOnlyList<int> indices)
+    {
+        SelectedQueueIndices = indices
+            .Where(index => index >= 0 && index < _queue.Count && !_queue[index].IsPlaceholder)
+            .Distinct()
+            .OrderBy(index => index)
+            .ToArray();
+    }
+
     public void SetSelectedTrackIndices(IReadOnlyList<int> indices)
     {
         _selectedTrackIndices = indices
@@ -1351,6 +1384,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     {
         _queue.Reset(_controller.Playlist.Select(ToQueueItem));
         QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
+        CurrentQueueIndex = _controller.Playlist.CurrentIndex;
     }
 
     private void OnScanProgress(object? sender, LibraryScanProgress e)
@@ -2163,16 +2197,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (string.IsNullOrWhiteSpace(folderPath))
             return;
 
-        var filteredTracks = await Task.Run(() =>
-            _trackIndex.Values.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
+        var folderSelection = await BuildFolderSelectionAsync(folderPath);
 
         _selectedFolderPath = folderPath;
-        _currentTracks = filteredTracks;
+        _currentTracks = folderSelection.SourceTracks;
         _currentPlaylistPath = null;
         IsPlaylistView = false;
         IsTrackOrderDirty = false;
         IsTrackSortEnabled = true;
-        await RefreshTrackViewAsync(resetSelection: true);
+        await ApplyTrackViewAsync(folderSelection.View, resetSelection: true);
     }
 
     /// <summary>
@@ -2333,6 +2366,51 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         IsQueueDirty = true;
     }
 
+    public void MoveQueueItems(IReadOnlyList<int> selectedIndices, int insertAt)
+    {
+        var ordered = selectedIndices
+            .Where(index => index >= 0 && index < _queue.Count && !_queue[index].IsPlaceholder)
+            .Distinct()
+            .OrderBy(index => index)
+            .ToArray();
+        if (ordered.Length == 0)
+            return;
+
+        insertAt = Math.Clamp(insertAt, 0, _queue.Count);
+
+        var itemsToMove = ordered.Select(index => _controller.Playlist[index]).ToList();
+        if (itemsToMove.Count == 0)
+            return;
+
+        var adjustedInsertAt = insertAt - ordered.Count(index => index < insertAt);
+        adjustedInsertAt = Math.Clamp(adjustedInsertAt, 0, _queue.Count - ordered.Length);
+
+        _suppressPlaylistChanged = true;
+        try
+        {
+            for (var i = ordered.Length - 1; i >= 0; i--)
+                _controller.Playlist.RemoveAt(ordered[i]);
+
+            _controller.Playlist.InsertRange(adjustedInsertAt, itemsToMove);
+        }
+        finally
+        {
+            _suppressPlaylistChanged = false;
+        }
+
+        var queueItems = ordered.Select(index => _queue[index]).ToList();
+        for (var i = ordered.Length - 1; i >= 0; i--)
+            _queue.RemoveAt(ordered[i]);
+
+        for (var i = 0; i < queueItems.Count; i++)
+            _queue.Insert(adjustedInsertAt + i, queueItems[i]);
+
+        CurrentQueueIndex = _controller.Playlist.CurrentIndex;
+        SetSelectedQueueIndices(Enumerable.Range(adjustedInsertAt, queueItems.Count).ToArray());
+        IsQueueDirty = true;
+        ScheduleQueueStateSave();
+    }
+
     // ── Cross-panel drop placeholder ─────────────────────────
 
     private int _dropPlaceholderIndex = -1;
@@ -2416,19 +2494,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (!await ConfirmQueueReplaceAsync())
             return;
 
-        var folderTracks = await Task.Run(() =>
-            _trackIndex.Values.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
-
-        if (folderTracks.Count == 0)
+        var folderSelection = await BuildFolderSelectionAsync(folderPath);
+        if (folderSelection.View.Tracks.Count == 0)
             return;
 
         // Update the track list to show this folder's tracks
         _selectedFolderPath = folderPath;
-        _currentTracks = folderTracks;
-        await RefreshTrackViewAsync(resetSelection: true);
+        _currentTracks = folderSelection.SourceTracks;
+        _currentPlaylistPath = null;
+        IsPlaylistView = false;
+        IsTrackOrderDirty = false;
+        IsTrackSortEnabled = true;
+        await ApplyTrackViewAsync(folderSelection.View, resetSelection: true);
 
         // Build playlist and load into play queue
-        var (items, _) = await Task.Run(() => BuildPlaylistItems(folderTracks, null));
+        var (items, _) = await Task.Run(() => BuildPlaylistItems(folderSelection.View.Tracks, null));
         if (items.Count == 0)
             return;
 
@@ -2448,6 +2528,38 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     /// <summary>
     /// Play a single audio file by loading it into the queue.
     /// </summary>
+    /// <summary>
+    /// Returns metadata for a local file, preferring the library index (fast,
+    /// no I/O) and falling back to a direct tag read via TagLib when the file
+    /// is not in the library (e.g. opened from outside the application).
+    /// </summary>
+    private TrackMetadata? ResolveMetadataForFile(string filePath)
+    {
+        var track = _trackIndex.Values.FirstOrDefault(t =>
+            string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+
+        if (track is not null)
+        {
+            return new TrackMetadata
+            {
+                Title    = track.Title,
+                Artist   = track.Artist,
+                Album    = track.Album,
+                Duration = track.Duration,
+            };
+        }
+
+        // File is not in the library — read its tags directly.
+        try
+        {
+            return _metadataReader.ReadFromFile(filePath, readPictures: false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public async Task PlayFileAsync(string filePath)
     {
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
@@ -2458,22 +2570,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         var item = new PlaylistItem
         {
-            Source = MediaSource.FromFile(filePath)
+            Source   = MediaSource.FromFile(filePath),
+            Metadata = ResolveMetadataForFile(filePath),
         };
-
-        // Try to find matching metadata from the library
-        var track = _trackIndex.Values.FirstOrDefault(t =>
-            string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
-        if (track is not null)
-        {
-            item.Metadata = new TrackMetadata
-            {
-                Title = track.Title,
-                Artist = track.Artist,
-                Album = track.Album,
-                Duration = track.Duration
-            };
-        }
 
         _controller.Playlist.Clear();
         _controller.Playlist.Add(item);
@@ -2772,19 +2871,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             return;
 
-        var item = new PlaylistItem { Source = MediaSource.FromFile(filePath) };
-        var track = _trackIndex.Values.FirstOrDefault(t =>
-            string.Equals(t.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
-        if (track is not null)
+        var item = new PlaylistItem
         {
-            item.Metadata = new TrackMetadata
-            {
-                Title = track.Title,
-                Artist = track.Artist,
-                Album = track.Album,
-                Duration = track.Duration
-            };
-        }
+            Source   = MediaSource.FromFile(filePath),
+            Metadata = ResolveMetadataForFile(filePath),
+        };
 
         _suppressPlaylistChanged = true;
         try
@@ -2810,6 +2901,27 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
         QueueSummary = string.Format(Resources.QueuedSummary, _queue.Count);
         IsQueueDirty = true;
         ScheduleQueueStateSave();
+    }
+
+    /// <summary>
+    /// Appends a single audio file to the bottom of the play queue and
+    /// immediately skips to it.  This is the entry point used by the
+    /// single-instance IPC server when an external file-open event arrives
+    /// while the application is already running.
+    /// </summary>
+    public async Task AddFileToQueueAndPlayAsync(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return;
+
+        // Append to the end of the current queue (no confirmation needed —
+        // we are adding, not replacing).
+        int insertIndex = _controller.Playlist.Count; // append position
+        AddFileToQueue(filePath);                      // uses insertAt = -1 → appends
+
+        // The newly added item is always the last one.
+        int newIndex = _controller.Playlist.Count - 1;
+        await _controller.PlayAtIndexAsync(newIndex).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -2859,12 +2971,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     {
         if (string.IsNullOrWhiteSpace(folderPath)) return;
 
-        var folderTracks = await Task.Run(() =>
-            _trackIndex.Values.Where(t => IsUnderFolder(t.FilePath, folderPath)).Select(ToTrackRow).ToList());
+        var folderSelection = await BuildFolderSelectionAsync(folderPath);
+        if (folderSelection.View.Tracks.Count == 0) return;
 
-        if (folderTracks.Count == 0) return;
-
-        await AddTracksToQueueAsync(folderTracks, insertAt);
+        await AddTracksToQueueAsync(folderSelection.View.Tracks, insertAt);
     }
 
     /// <summary>
@@ -3091,6 +3201,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
     private async Task RefreshTrackViewAsync(bool resetSelection = false)
     {
         var view = await Task.Run(() => BuildTrackView(_currentTracks));
+        await ApplyTrackViewAsync(view, resetSelection).ConfigureAwait(false);
+    }
+
+    private async Task ApplyTrackViewAsync(TrackView view, bool resetSelection)
+    {
         _viewTracks = view.Tracks;
 
         await Dispatcher.UIThread.InvokeAsync(() =>
@@ -3110,83 +3225,58 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
     private TrackView BuildTrackView(IReadOnlyList<TrackRow> source)
     {
-        IEnumerable<TrackRow> query = source;
-
-        // Filters and sort are suppressed during search — results are already
-        // ordered by relevance and filters would hide valid matches.
-        if (!IsSearchActive)
-        {
-            if (HideMissingTitle)
-                query = query.Where(t => !string.IsNullOrWhiteSpace(t.Title));
-            if (HideMissingArtist)
-                query = query.Where(t => !string.IsNullOrWhiteSpace(t.Artist));
-            if (HideMissingAlbum)
-                query = query.Where(t => !string.IsNullOrWhiteSpace(t.Album));
-            if (HideMissingGenre)
-                query = query.Where(t => !string.IsNullOrWhiteSpace(t.Genre));
-            if (HideMissingTrackNumber)
-                query = query.Where(t => int.TryParse(t.TrackNumber, out var trackNumber) && trackNumber > 0);
-
-            if (IsTrackSortEnabled)
-                query = ApplySort(query);
-        }
-
-        var list = query.ToList();
+        var list = TrackListProjection.Apply(source, BuildTrackProjectionOptions(), TrackRowProjectionSelectors);
         return new TrackView(list, list);
     }
 
-    private IEnumerable<TrackRow> ApplySort(IEnumerable<TrackRow> tracks)
+    private async Task<FolderTrackSelection> BuildFolderSelectionAsync(string folderPath)
     {
-        return SortField switch
+        if (string.IsNullOrWhiteSpace(folderPath))
+            return new FolderTrackSelection(Array.Empty<TrackRow>(), new TrackView(Array.Empty<TrackRow>(), Array.Empty<TrackRow>()));
+
+        return await Task.Run(() =>
         {
-            TrackSortField.Title => OrderByString(tracks, t => t.Title, SortAscending),
-            TrackSortField.Artist => OrderByString(tracks, t => t.Artist, SortAscending),
-            TrackSortField.Album => OrderByString(tracks, t => t.Album, SortAscending),
-            TrackSortField.FileName => OrderByString(tracks, t => t.FileName, SortAscending),
-            TrackSortField.TrackNumber => OrderByNumber(tracks, t => ParseSortableUInt(t.TrackNumber), SortAscending),
-            TrackSortField.Year => OrderByNumber(tracks, t => ParseSortableUInt(t.Year), SortAscending),
-            TrackSortField.Duration => OrderByNumber(tracks, t => ParseSortableDuration(t.Length), SortAscending),
-            TrackSortField.DateAdded => tracks,
-            TrackSortField.Bitrate => OrderByNumber(tracks, t => ParseSortableInt(t.Bitrate), SortAscending),
-            _ => OrderByString(tracks, t => t.Title, SortAscending)
+            var sourceTracks = _trackIndex.Values
+                .Where(track => IsUnderFolder(track.FilePath, folderPath))
+                .Select(ToTrackRow)
+                .ToList();
+
+            var view = BuildTrackView(sourceTracks);
+            return new FolderTrackSelection(sourceTracks, view);
+        }).ConfigureAwait(false);
+    }
+
+    private TrackListProjectionOptions BuildTrackProjectionOptions()
+    {
+        return new TrackListProjectionOptions(
+            SortField: MapTrackSortField(SortField),
+            SortAscending: SortAscending,
+            EnableSort: IsTrackSortEnabled,
+            SuppressSortAndFilter: IsSearchActive,
+            HideMissingTitle: HideMissingTitle,
+            HideMissingArtist: HideMissingArtist,
+            HideMissingAlbum: HideMissingAlbum,
+            HideMissingGenre: HideMissingGenre,
+            HideMissingTrackNumber: HideMissingTrackNumber);
+    }
+
+    private sealed record FolderTrackSelection(IReadOnlyList<TrackRow> SourceTracks, TrackView View);
+
+    private static TrackListSortField MapTrackSortField(TrackSortField sortField)
+    {
+        return sortField switch
+        {
+            TrackSortField.Title => TrackListSortField.Title,
+            TrackSortField.Artist => TrackListSortField.Artist,
+            TrackSortField.Album => TrackListSortField.Album,
+            TrackSortField.FileName => TrackListSortField.FileName,
+            TrackSortField.TrackNumber => TrackListSortField.TrackNumber,
+            TrackSortField.Year => TrackListSortField.Year,
+            TrackSortField.Duration => TrackListSortField.Duration,
+            TrackSortField.DateAdded => TrackListSortField.DateAdded,
+            TrackSortField.Bitrate => TrackListSortField.Bitrate,
+            _ => TrackListSortField.Title,
         };
-    }
-
-    private static IEnumerable<TrackRow> OrderByString(
-        IEnumerable<TrackRow> tracks,
-        Func<TrackRow, string?> selector,
-        bool ascending)
-    {
-        return ascending
-            ? tracks.OrderBy(t => selector(t) ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-            : tracks.OrderByDescending(t => selector(t) ?? string.Empty, StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static IEnumerable<TrackRow> OrderByNumber<T>(
-        IEnumerable<TrackRow> tracks,
-        Func<TrackRow, T> selector,
-        bool ascending) where T : IComparable<T>
-    {
-        return ascending
-            ? tracks.OrderBy(selector)
-            : tracks.OrderByDescending(selector);
-    }
-
-    private static uint ParseSortableUInt(string? value) => uint.TryParse(value, out var number) ? number : uint.MaxValue;
-
-    private static int ParseSortableInt(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return int.MaxValue;
-
-        var digits = new string(value.Where(char.IsDigit).ToArray());
-        return int.TryParse(digits, out var number) ? number : int.MaxValue;
-    }
-
-    private static long ParseSortableDuration(string? value)
-    {
-        var duration = TryParseTrackLength(value);
-        return duration?.Ticks ?? long.MaxValue;
     }
 
     private void OnShufflePlayChanged(object? sender, bool enabled)
