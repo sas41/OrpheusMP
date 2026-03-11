@@ -1057,6 +1057,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IAsyncDisposab
 
         var player = new VlcPlayer();
         _controller = new PlayerController(player, state.AudioDevice, _volume);
+        _controller.FadeOutDurationMs = config.FadeOutDurationMs;
+        _controller.FadeInDurationMs  = config.FadeInDurationMs;
         _controller.Playlist.Changed += OnPlaylistChanged;
         _controller.Playlist.CurrentIndexChanged += OnPlaylistIndexChanged;
         _controller.ShufflePlayChanged += OnShufflePlayChanged;
@@ -3679,6 +3681,23 @@ public static class DragPreviewService
 /// Converts <see cref="LibraryNodeType"/> to an opacity value.
 /// Folders are full opacity; files and playlists are slightly dimmed.
 /// </summary>
+/// <summary>
+/// Returns the input duration as-is, but substitutes 1.0 when the value is
+/// zero so a Slider's Maximum is never 0.  This prevents the 0/0 = NaN fill
+/// ratio that Avalonia renders as a fully-filled (100%) track bar when no
+/// song is loaded or between tracks.
+/// </summary>
+public sealed class DurationToMaximumConverter : IValueConverter
+{
+    public static readonly DurationToMaximumConverter Instance = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is double d && d > 0 ? d : 1.0;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 public sealed class NodeTypeToOpacityConverter : IValueConverter
 {
     public static readonly NodeTypeToOpacityConverter Instance = new();

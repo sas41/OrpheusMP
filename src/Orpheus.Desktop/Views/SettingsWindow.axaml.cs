@@ -339,6 +339,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     private readonly GlobalMediaKeyService? _mediaKeyService;
 
     private bool _enableTrayIcon;
+    private int _fadeOutDurationMs;
+    private int _fadeInDurationMs;
     private string _selectedTheme;
     private string? _selectedVariant;
     private string? _selectedAudioDevice;
@@ -383,7 +385,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         Licenses = new ObservableCollection<LicenseEntry>(LoadLicenses());
 
         SelectedAudioDevice = _state.AudioDevice ?? "";
-        _enableTrayIcon = _config.EnableTrayIcon;
+        _enableTrayIcon     = _config.EnableTrayIcon;
+        _fadeOutDurationMs  = _config.FadeOutDurationMs;
+        _fadeInDurationMs   = _config.FadeInDurationMs;
 
         // Language selector
         LanguageOptions = new ObservableCollection<LanguageOption>(GetLanguageOptions());
@@ -527,6 +531,10 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     public string LocOutput => Resources.Output;
     public string LocAudioOutput => Resources.AudioOutput;
     public string LocOutputDevice => Resources.OutputDevice;
+    public string LocPlayback => Resources.Playback;
+    public string LocFadeOut => Resources.FadeOut;
+    public string LocFadeIn => Resources.FadeIn;
+    public string LocFadeOffLabel => Resources.FadeOffLabel;
     public string LocLicenses => Resources.Licenses;
     public string LocOpenSourceLicenses => Resources.OpenSourceLicenses;
 
@@ -541,6 +549,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         nameof(LocRemoveSelected), nameof(LocDatabase),
         nameof(LocResetLibraryDescription), nameof(LocResetLibrary), nameof(LocRescanLibrary),
         nameof(LocOutput), nameof(LocAudioOutput), nameof(LocOutputDevice),
+        nameof(LocPlayback), nameof(LocFadeOut), nameof(LocFadeIn), nameof(LocFadeOffLabel),
         nameof(LocLicenses), nameof(LocOpenSourceLicenses),
     ];
 
@@ -560,6 +569,52 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
                 app.SetTrayIconEnabled(value);
         }
     }
+
+    // ── Playback / Fade ──────────────────────────────────────
+
+    /// <summary>
+    /// Fade-out duration in milliseconds (0 = Off).  Bound to the Output-tab slider.
+    /// </summary>
+    public int FadeOutDurationMs
+    {
+        get => _fadeOutDurationMs;
+        set
+        {
+            value = Math.Clamp(value, 0, 1000);
+            if (!SetField(ref _fadeOutDurationMs, value)) return;
+            _config.FadeOutDurationMs = value;
+            _config.Save();
+            _controller.FadeOutDurationMs = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FadeOutLabel)));
+        }
+    }
+
+    /// <summary>
+    /// Fade-in duration in milliseconds (0 = Off).  Bound to the Output-tab slider.
+    /// </summary>
+    public int FadeInDurationMs
+    {
+        get => _fadeInDurationMs;
+        set
+        {
+            value = Math.Clamp(value, 0, 1000);
+            if (!SetField(ref _fadeInDurationMs, value)) return;
+            _config.FadeInDurationMs = value;
+            _config.Save();
+            _controller.FadeInDurationMs = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FadeInLabel)));
+        }
+    }
+
+    /// <summary>Display label for the current fade-out value ("Off" or "300 ms").</summary>
+    public string FadeOutLabel => _fadeOutDurationMs == 0
+        ? Resources.FadeOffLabel
+        : $"{_fadeOutDurationMs} ms";
+
+    /// <summary>Display label for the current fade-in value ("Off" or "300 ms").</summary>
+    public string FadeInLabel => _fadeInDurationMs == 0
+        ? Resources.FadeOffLabel
+        : $"{_fadeInDurationMs} ms";
 
     // ── Key Bindings ─────────────────────────────────────────
 

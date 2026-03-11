@@ -185,4 +185,16 @@
   <data name="PresetTrebleBoost" xml:space="preserve"><value>Refuerzo de agudos</value></data>
   <data name="PresetLoudness" xml:space="preserve"><value>Sonoridad</value></data>
   <data name="PresetHeadphones" xml:space="preserve"><value>Auriculares</value></data>
+  <data name="Playback" xml:space="preserve">
+    <value>Reproducción</value>
+  </data>
+  <data name="FadeOut" xml:space="preserve">
+    <value>Duración del fundido de salida</value>
+  </data>
+  <data name="FadeIn" xml:space="preserve">
+    <value>Duración del fundido de entrada</value>
+  </data>
+  <data name="FadeOffLabel" xml:space="preserve">
+    <value>Desactivado</value>
+  </data>
 </root>

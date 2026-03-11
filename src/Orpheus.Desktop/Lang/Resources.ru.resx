@@ -185,4 +185,16 @@
   <data name="PresetTrebleBoost" xml:space="preserve"><value>Усиление высоких</value></data>
   <data name="PresetLoudness" xml:space="preserve"><value>Громкость</value></data>
   <data name="PresetHeadphones" xml:space="preserve"><value>Наушники</value></data>
+  <data name="Playback" xml:space="preserve">
+    <value>Воспроизведение</value>
+  </data>
+  <data name="FadeOut" xml:space="preserve">
+    <value>Длительность затухания</value>
+  </data>
+  <data name="FadeIn" xml:space="preserve">
+    <value>Длительность нарастания</value>
+  </data>
+  <data name="FadeOffLabel" xml:space="preserve">
+    <value>Выкл</value>
+  </data>
 </root>

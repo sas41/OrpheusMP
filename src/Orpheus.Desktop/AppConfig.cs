@@ -46,6 +46,22 @@ public sealed class AppConfig
     [JsonPropertyName("enableTrayIcon")]
     public bool EnableTrayIcon { get; set; } = true;
 
+    // ── Playback ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Fade-out duration in milliseconds when stopping or skipping a track.
+    /// 0 disables the fade entirely.  Range: 0–1000.
+    /// </summary>
+    [JsonPropertyName("fadeOutDurationMs")]
+    public int FadeOutDurationMs { get; set; } = 300;
+
+    /// <summary>
+    /// Fade-in duration in milliseconds when starting a new track.
+    /// 0 disables the fade entirely.  Range: 0–1000.
+    /// </summary>
+    [JsonPropertyName("fadeInDurationMs")]
+    public int FadeInDurationMs { get; set; } = 300;
+
     // ── Library tree ────────────────────────────────────────
 
     /// <summary>Whether to show individual audio files in the library tree.</summary>

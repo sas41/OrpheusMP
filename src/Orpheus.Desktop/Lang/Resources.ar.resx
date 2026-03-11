@@ -185,4 +185,16 @@
   <data name="PresetTrebleBoost" xml:space="preserve"><value>تعزيز الحاد</value></data>
   <data name="PresetLoudness" xml:space="preserve"><value>الجهارة</value></data>
   <data name="PresetHeadphones" xml:space="preserve"><value>سماعات</value></data>
+  <data name="Playback" xml:space="preserve">
+    <value>تشغيل</value>
+  </data>
+  <data name="FadeOut" xml:space="preserve">
+    <value>مدة التلاشي للخارج</value>
+  </data>
+  <data name="FadeIn" xml:space="preserve">
+    <value>مدة التلاشي للداخل</value>
+  </data>
+  <data name="FadeOffLabel" xml:space="preserve">
+    <value>إيقاف</value>
+  </data>
 </root>

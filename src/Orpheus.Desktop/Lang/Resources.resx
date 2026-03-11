@@ -464,4 +464,16 @@ Do you want to save it as a playlist before replacing it?</value>
   <data name="PresetHeadphones" xml:space="preserve">
     <value>Headphones</value>
   </data>
+  <data name="Playback" xml:space="preserve">
+    <value>Playback</value>
+  </data>
+  <data name="FadeOut" xml:space="preserve">
+    <value>Fade-out duration</value>
+  </data>
+  <data name="FadeIn" xml:space="preserve">
+    <value>Fade-in duration</value>
+  </data>
+  <data name="FadeOffLabel" xml:space="preserve">
+    <value>Off</value>
+  </data>
 </root>

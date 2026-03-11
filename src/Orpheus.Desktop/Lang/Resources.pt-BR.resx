@@ -185,4 +185,16 @@ Deseja salvá-la como playlist antes de substituí-la?</value></data>
   <data name="PresetTrebleBoost" xml:space="preserve"><value>Reforço de agudos</value></data>
   <data name="PresetLoudness" xml:space="preserve"><value>Loudness</value></data>
   <data name="PresetHeadphones" xml:space="preserve"><value>Fones de ouvido</value></data>
+  <data name="Playback" xml:space="preserve">
+    <value>Reprodução</value>
+  </data>
+  <data name="FadeOut" xml:space="preserve">
+    <value>Duração do fade-out</value>
+  </data>
+  <data name="FadeIn" xml:space="preserve">
+    <value>Duração do fade-in</value>
+  </data>
+  <data name="FadeOffLabel" xml:space="preserve">
+    <value>Desligado</value>
+  </data>
 </root>

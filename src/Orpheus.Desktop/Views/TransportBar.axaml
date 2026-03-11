@@ -7,6 +7,9 @@
              mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="52"
              x:Class="Orpheus.Desktop.Views.TransportBar"
              x:DataType="local:MainWindowViewModel">
+  <UserControl.Resources>
+    <local:DurationToMaximumConverter x:Key="DurationToMaximum" />
+  </UserControl.Resources>
   <Border Classes="panel tight reveal-3" Padding="6,4">
     <Grid RowDefinitions="Auto,Auto" RowSpacing="2">
       <!-- Row 0: Now-playing text + time -->
@@ -58,7 +61,7 @@
 
         <!-- Seek slider (takes remaining space) -->
         <Slider Grid.Column="2" x:Name="PositionSlider"
-                Minimum="0" Maximum="{Binding PlaybackDuration}"
+                Minimum="0" Maximum="{Binding PlaybackDuration, Converter={StaticResource DurationToMaximum}}"
                 Value="{Binding PlaybackPosition, Mode=TwoWay}"
                 VerticalAlignment="Center"
                 PointerWheelChanged="OnPositionWheel" />

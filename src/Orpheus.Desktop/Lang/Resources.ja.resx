@@ -185,4 +185,16 @@
   <data name="PresetTrebleBoost" xml:space="preserve"><value>高音ブースト</value></data>
   <data name="PresetLoudness" xml:space="preserve"><value>ラウドネス</value></data>
   <data name="PresetHeadphones" xml:space="preserve"><value>ヘッドホン</value></data>
+  <data name="Playback" xml:space="preserve">
+    <value>再生</value>
+  </data>
+  <data name="FadeOut" xml:space="preserve">
+    <value>フェードアウト時間</value>
+  </data>
+  <data name="FadeIn" xml:space="preserve">
+    <value>フェードイン時間</value>
+  </data>
+  <data name="FadeOffLabel" xml:space="preserve">
+    <value>オフ</value>
+  </data>
 </root>

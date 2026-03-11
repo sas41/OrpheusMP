@@ -265,23 +265,56 @@
 
     <!-- ── Output ─────────────────────────────────────────── -->
     <TabItem Header="{Binding LocOutput}">
-      <StackPanel Spacing="12" Margin="8">
-        <TextBlock Text="{Binding LocAudioOutput}" Classes="heading" />
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12" Margin="8">
+          <TextBlock Text="{Binding LocAudioOutput}" Classes="heading" />
 
-        <StackPanel Spacing="4">
-          <TextBlock Text="{Binding LocOutputDevice}" Classes="muted small" />
-          <StackPanel Orientation="Horizontal" Spacing="8">
-            <ComboBox ItemsSource="{Binding AudioDevices}"
-                      SelectedValue="{Binding SelectedAudioDevice}"
-                      SelectedValueBinding="{Binding Id}"
-                      MinWidth="300" />
-            <Button Classes="icon" Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
-                    Click="OnRefreshAudioDevicesClick" ToolTip.Tip="Refresh audio devices">
-              <Image Source="{Binding RefreshIcon}" Width="14" Height="14" />
-            </Button>
+          <StackPanel Spacing="4">
+            <TextBlock Text="{Binding LocOutputDevice}" Classes="muted small" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <ComboBox ItemsSource="{Binding AudioDevices}"
+                        SelectedValue="{Binding SelectedAudioDevice}"
+                        SelectedValueBinding="{Binding Id}"
+                        MinWidth="300" />
+              <Button Classes="icon" Width="30" Height="30" MinWidth="30" MinHeight="30" Padding="6"
+                      Click="OnRefreshAudioDevicesClick" ToolTip.Tip="Refresh audio devices">
+                <Image Source="{Binding RefreshIcon}" Width="14" Height="14" />
+              </Button>
+            </StackPanel>
           </StackPanel>
+
+          <Separator Margin="0,8" />
+
+          <TextBlock Text="{Binding LocPlayback}" Classes="subheading" />
+
+          <!-- Fade-out -->
+          <StackPanel Spacing="4">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="{Binding LocFadeOut}" Classes="muted small" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Text="{Binding FadeOutLabel}"
+                         Classes="muted small" VerticalAlignment="Center"
+                         HorizontalAlignment="Right" MinWidth="52" TextAlignment="Right" />
+            </Grid>
+            <Slider Minimum="0" Maximum="1000"
+                    Value="{Binding FadeOutDurationMs, Mode=TwoWay}"
+                    TickFrequency="50" IsSnapToTickEnabled="True" />
+          </StackPanel>
+
+          <!-- Fade-in -->
+          <StackPanel Spacing="4">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="{Binding LocFadeIn}" Classes="muted small" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Text="{Binding FadeInLabel}"
+                         Classes="muted small" VerticalAlignment="Center"
+                         HorizontalAlignment="Right" MinWidth="52" TextAlignment="Right" />
+            </Grid>
+            <Slider Minimum="0" Maximum="1000"
+                    Value="{Binding FadeInDurationMs, Mode=TwoWay}"
+                    TickFrequency="50" IsSnapToTickEnabled="True" />
+          </StackPanel>
+
         </StackPanel>
-      </StackPanel>
+      </ScrollViewer>
     </TabItem>
 
     <!-- ── Licenses ───────────────────────────────────────── -->

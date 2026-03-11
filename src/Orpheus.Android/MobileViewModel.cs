@@ -1538,19 +1538,42 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnControllerStateChanged(object? sender, PlaybackStateSnapshot snap)
     {
-        IsPlaying        = snap.IsPlaying;
-        IsActive         = !snap.IsStopped;
-        PlaybackDuration = snap.Duration.TotalSeconds;
-        if (!_isUserSeekingPosition)
-            SetField(ref _playbackPosition, snap.Position.TotalSeconds, nameof(PlaybackPosition));
-        UpdateNowPlayingTime(snap.Position, snap.Duration);
+        IsPlaying = snap.IsPlaying;
+        IsActive  = !snap.IsStopped;
+        if (snap.IsStopped)
+        {
+            // Reset position before zeroing duration so Value never exceeds
+            // Maximum during the two-step update (avoids 0/0 = NaN fill).
+            if (!_isUserSeekingPosition)
+                SetField(ref _playbackPosition, 0d, nameof(PlaybackPosition));
+            PlaybackDuration = 0;
+            UpdateNowPlayingTime(TimeSpan.Zero, TimeSpan.Zero);
+        }
+        else
+        {
+            // Reset to 0 rather than using snap.Position: VLC may not have
+            // updated the clock for the new track yet, so snap.Position can
+            // carry the previous track's end time. The PositionChanged timer
+            // will provide accurate values within 100 ms.
+            if (!_isUserSeekingPosition)
+                SetField(ref _playbackPosition, 0d, nameof(PlaybackPosition));
+            PlaybackDuration = snap.Duration.TotalSeconds;
+            UpdateNowPlayingTime(TimeSpan.Zero, snap.Duration);
+        }
     }
 
     private void OnControllerPositionChanged(object? sender, PositionSnapshot snap)
     {
-        PlaybackDuration = snap.Duration.TotalSeconds;
+        // Ignore stale ticks that arrive after playback has stopped.
+        if (!_isActive) return;
+
         if (!_isUserSeekingPosition)
+        {
+            // Update duration before position so Maximum >= Value and a bound
+            // Slider never clamps to 100% for a frame.
+            PlaybackDuration = snap.Duration.TotalSeconds;
             SetField(ref _playbackPosition, snap.Position.TotalSeconds, nameof(PlaybackPosition));
+        }
         UpdateNowPlayingTime(snap.Position, snap.Duration);
     }
 

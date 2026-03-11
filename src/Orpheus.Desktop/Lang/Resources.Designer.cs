@@ -1011,6 +1011,42 @@ namespace Orpheus.Desktop.Lang {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Playback.
+        /// </summary>
+        public static string Playback {
+            get {
+                return ResourceManager.GetString("Playback", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Fade-out duration.
+        /// </summary>
+        public static string FadeOut {
+            get {
+                return ResourceManager.GetString("FadeOut", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Fade-in duration.
+        /// </summary>
+        public static string FadeIn {
+            get {
+                return ResourceManager.GetString("FadeIn", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Off.
+        /// </summary>
+        public static string FadeOffLabel {
+            get {
+                return ResourceManager.GetString("FadeOffLabel", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Licenses.
         /// </summary>
         public static string Licenses {

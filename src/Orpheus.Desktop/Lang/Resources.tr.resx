@@ -185,4 +185,16 @@ Değiştirmeden önce çalma listesi olarak kaydetmek ister misiniz?</value></da
   <data name="PresetTrebleBoost" xml:space="preserve"><value>Tiz Güçlendirme</value></data>
   <data name="PresetLoudness" xml:space="preserve"><value>Yüksek Ses</value></data>
   <data name="PresetHeadphones" xml:space="preserve"><value>Kulaklık</value></data>
+  <data name="Playback" xml:space="preserve">
+    <value>Oynatma</value>
+  </data>
+  <data name="FadeOut" xml:space="preserve">
+    <value>Solma süresi</value>
+  </data>
+  <data name="FadeIn" xml:space="preserve">
+    <value>Belirme süresi</value>
+  </data>
+  <data name="FadeOffLabel" xml:space="preserve">
+    <value>Kapalı</value>
+  </data>
 </root>

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Orpheus.Core.Playlist;
 
 namespace Orpheus.Core.Playback;
@@ -28,6 +27,7 @@ public sealed class PlayerController : IAsyncDisposable
 {
     private readonly IPlayer _player;
     private readonly SemaphoreSlim _navigationLock = new(1, 1);
+    private CancellationTokenSource _navigationCts = new();
     private readonly Random _rng = new();
     private readonly List<int> _shuffleOrder = [];
     private bool _shufflePlay;
@@ -43,8 +43,18 @@ public sealed class PlayerController : IAsyncDisposable
     private IReadOnlyList<(string? Id, string Description)> _cachedAudioDevices = [];
 
     // ── Fade configuration ────────────────────────────────────────────
-    private const int FadeDurationMs = 300;
-    private const int FadeSteps = 15;
+    private const int FadeSteps = 25;
+    private volatile bool _fading;
+
+    /// <summary>
+    /// Fade-out duration in milliseconds.  Set to 0 to disable.
+    /// </summary>
+    public int FadeOutDurationMs { get; set; } = 300;
+
+    /// <summary>
+    /// Fade-in duration in milliseconds.  Set to 0 to disable.
+    /// </summary>
+    public int FadeInDurationMs { get; set; } = 300;
 
     public PlayerController(IPlayer player, string? desiredAudioDevice, double desiredVolume)
     {
@@ -272,22 +282,36 @@ public sealed class PlayerController : IAsyncDisposable
 
     /// <summary>
     /// Play the track at the specified playlist index.
+    /// Cancels any in-flight navigation so it starts immediately.
     /// </summary>
     public async Task PlayAtIndexAsync(int index, CancellationToken cancellationToken = default)
     {
         if (index < 0 || index >= Playlist.Count)
             throw new ArgumentOutOfRangeException(nameof(index));
 
-        Playlist.CurrentIndex = index;
+        // Signal the in-flight navigation (if any) to abort, THEN wait for
+        // the lock. The holder unwinds its catch(OCE) and releases immediately.
+        var cts = ReplaceNavigationCts();
 
-        // If shuffle play is on, rebuild so the newly selected track
-        // is at the front of the shuffle sequence.
-        if (_shufflePlay)
-            RebuildShuffleOrder();
+        await _navigationLock.WaitAsync(cancellationToken);
+        try
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, cancellationToken);
 
-        await FadeOutAsync();
-        await _player.PlayAsync(Playlist[index].Source, cancellationToken);
-        await FadeInAsync();
+            Playlist.CurrentIndex = index;
+
+            if (_shufflePlay)
+                RebuildShuffleOrder();
+
+            await FadeOutAsync(linked.Token);
+            await _player.PlayAsync(Playlist[index].Source, linked.Token);
+            await FadeInAsync();
+        }
+        catch (OperationCanceledException) { return; }
+        finally
+        {
+            _navigationLock.Release();
+        }
 
         FireStateSnapshot();
     }
@@ -318,31 +342,37 @@ public sealed class PlayerController : IAsyncDisposable
 
     /// <summary>
     /// Advance to and play the next track, respecting shuffle play and repeat mode.
-    /// Uses a lock to prevent concurrent navigation (e.g. user click + auto-advance race).
+    /// Cancels any in-flight navigation before acquiring the lock so rapid presses
+    /// skip immediately without waiting for each fade cycle to complete.
     /// </summary>
     public async Task NextAsync(CancellationToken cancellationToken = default)
     {
+        var cts = ReplaceNavigationCts();
+
         await _navigationLock.WaitAsync(cancellationToken);
         try
         {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, cancellationToken);
+
             var nextIndex = GetNextIndex();
             if (nextIndex is not null)
             {
                 Playlist.CurrentIndex = nextIndex.Value;
-                await FadeOutAsync();
-                await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken);
+                await FadeOutAsync(linked.Token);
+                await _player.PlayAsync(Playlist.CurrentItem!.Source, linked.Token);
                 await FadeInAsync();
             }
             else
             {
                 // Queue exhausted (repeat off): stop and go back to first track
-                await FadeOutAsync();
+                await FadeOutAsync(linked.Token);
                 await _player.StopAsync();
                 RestoreVolume();
                 if (Playlist.Count > 0)
                     Playlist.CurrentIndex = 0;
             }
         }
+        catch (OperationCanceledException) { return; }
         finally
         {
             _navigationLock.Release();
@@ -354,13 +384,17 @@ public sealed class PlayerController : IAsyncDisposable
     /// <summary>
     /// Go back to and play the previous track.
     /// If more than 3 seconds into the current track, restart it instead.
+    /// Cancels any in-flight navigation so it starts immediately.
     /// </summary>
     public async Task PreviousAsync(CancellationToken cancellationToken = default)
     {
+        var cts = ReplaceNavigationCts();
+
         await _navigationLock.WaitAsync(cancellationToken);
         try
         {
-            // If we're more than 3 seconds in, restart the current track.
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cts.Token, cancellationToken);
+
             if (_player.PlaybackPosition > TimeSpan.FromSeconds(3))
             {
                 await _player.SeekAsync(TimeSpan.Zero);
@@ -371,8 +405,8 @@ public sealed class PlayerController : IAsyncDisposable
                 if (prevIndex is not null)
                 {
                     Playlist.CurrentIndex = prevIndex.Value;
-                    await FadeOutAsync();
-                    await _player.PlayAsync(Playlist.CurrentItem!.Source, cancellationToken);
+                    await FadeOutAsync(linked.Token);
+                    await _player.PlayAsync(Playlist.CurrentItem!.Source, linked.Token);
                     await FadeInAsync();
                 }
                 else
@@ -381,6 +415,7 @@ public sealed class PlayerController : IAsyncDisposable
                 }
             }
         }
+        catch (OperationCanceledException) { return; }
         finally
         {
             _navigationLock.Release();
@@ -506,20 +541,35 @@ public sealed class PlayerController : IAsyncDisposable
     //  Private — Fade helpers
     // ══════════════════════════════════════════════════════════════════
 
-    private async Task FadeOutAsync()
+    private async Task FadeOutAsync(CancellationToken cancellationToken = default)
     {
         // If muted, nothing to fade — audio is already silent.
         if (_desiredMute) return;
 
         var startVolume = _player.Volume;
-        if (startVolume <= 0) return;
-        var stepDelay = FadeDurationMs / FadeSteps;
-        for (var i = FadeSteps - 1; i >= 0; i--)
+        if (startVolume <= 0 || FadeOutDurationMs <= 0) return;
+        var stepDelay = FadeOutDurationMs / FadeSteps;
+        _fading = true;
+        try
         {
-            _player.Volume = (int)(startVolume * i / (double)FadeSteps);
-            await Task.Delay(stepDelay);
+            for (var i = FadeSteps - 1; i >= 0; i--)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    _player.Volume = 0;
+                    return;
+                }
+                // Perceptual (power-2) curve: t=1 at start, t=0 at end.
+                var t = i / (double)FadeSteps;
+                _player.Volume = (int)(startVolume * t * t);
+                await Task.Delay(stepDelay, cancellationToken).ConfigureAwait(false);
+            }
+            _player.Volume = 0;
         }
-        _player.Volume = 0;
+        finally
+        {
+            _fading = false;
+        }
     }
 
     private async Task FadeInAsync()
@@ -534,15 +584,29 @@ public sealed class PlayerController : IAsyncDisposable
             return;
         }
 
-        if (targetVolume <= 0) return;
-        _player.Volume = 0;
-        var stepDelay = FadeDurationMs / FadeSteps;
-        for (var i = 1; i <= FadeSteps; i++)
+        if (targetVolume <= 0 || FadeInDurationMs <= 0)
         {
-            _player.Volume = (int)(targetVolume * i / (double)FadeSteps);
-            await Task.Delay(stepDelay);
+            _player.Volume = targetVolume;
+            return;
         }
-        _player.Volume = targetVolume;
+        _fading = true;
+        _player.Volume = 0;
+        var stepDelay = FadeInDurationMs / FadeSteps;
+        try
+        {
+            for (var i = 1; i <= FadeSteps; i++)
+            {
+                // Perceptual (power-2) curve: rises quickly then slows near target.
+                var t = i / (double)FadeSteps;
+                _player.Volume = (int)(targetVolume * t * t);
+                await Task.Delay(stepDelay);
+            }
+            _player.Volume = targetVolume;
+        }
+        finally
+        {
+            _fading = false;
+        }
     }
 
     /// <summary>
@@ -557,6 +621,9 @@ public sealed class PlayerController : IAsyncDisposable
     private void SyncDesiredState(object? state)
     {
         if (_disposed) return;
+
+        // Never interfere with an in-progress fade — the fade owns the volume.
+        if (_fading) return;
 
         var currentVolume = _player.Volume;
         var desiredVolumeInt = _desiredMute ? 0 : (int)Math.Round(_desiredVolume);
@@ -624,9 +691,6 @@ public sealed class PlayerController : IAsyncDisposable
         FireStateSnapshot();
     }
 
-    /// <summary>
-    /// Relay IPlayer load-state changes as controller-level state snapshots.
-    /// </summary>
     private void OnPlayerLoadStateChanged(object? sender, LoadStateChangedEventArgs e)
     {
         FireStateSnapshot();
@@ -720,6 +784,25 @@ public sealed class PlayerController : IAsyncDisposable
         return prev;
     }
 
+    /// <summary>
+    /// Atomically replaces <see cref="_navigationCts"/> with a new instance,
+    /// cancels the old one, and returns the new one.  Call this BEFORE
+    /// waiting for <see cref="_navigationLock"/> so the current lock-holder
+    /// sees the cancellation and exits promptly.
+    /// </summary>
+    private CancellationTokenSource ReplaceNavigationCts()
+    {
+        var next = new CancellationTokenSource();
+        var prev = Interlocked.Exchange(ref _navigationCts, next);
+        // Only cancel — do NOT dispose. Another concurrent caller may have
+        // already captured a reference to prev (or prev.Token) and could
+        // still be reading it. CancellationTokenSource holds no unmanaged
+        // resources when WaitHandle has never been accessed, so letting the
+        // GC collect it is safe and avoids the ObjectDisposedException race.
+        prev.Cancel();
+        return next;
+    }
+
     private void RebuildShuffleOrder()
     {
         _shuffleOrder.Clear();
@@ -762,6 +845,7 @@ public sealed class PlayerController : IAsyncDisposable
         _disposed = true;
 
         _syncTimer?.Dispose();
+        _navigationCts.Cancel();
         _player.MediaEnded -= OnMediaEnded;
         _player.StateChanged -= OnPlayerStateChanged;
         _player.LoadStateChanged -= OnPlayerLoadStateChanged;
