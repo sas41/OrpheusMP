@@ -92,9 +92,9 @@ jobs:
         shell: pwsh
         run: |
           $zipName = "${{ steps.meta.outputs.artifact-name }}"
-          New-Item -ItemType Directory -Path "zip-stage/app" -Force | Out-Null
-          Copy-Item -Recurse -Path "publish/windows/*" -Destination "zip-stage/app/"
-          Compress-Archive -Path "zip-stage/*" -DestinationPath "$zipName.zip"
+          New-Item -ItemType Directory -Path "zip-stage/$zipName" -Force | Out-Null
+          Copy-Item -Recurse -Path "publish/windows/*" -Destination "zip-stage/$zipName/"
+          Compress-Archive -Path "zip-stage/$zipName" -DestinationPath "$zipName.zip"
 
       - name: Upload MSI artifact
         uses: actions/upload-artifact@v4
@@ -181,9 +181,10 @@ jobs:
 
       - name: Zip release
         run: |
-          mkdir -p zip-stage/app
-          cp -R publish/macos-universal/. zip-stage/app/
-          zip -r "${{ steps.meta.outputs.artifact-name }}.zip" zip-stage/
+          FOLDER="${{ steps.meta.outputs.artifact-name }}"
+          mkdir -p "zip-stage/$FOLDER"
+          cp -R publish/macos-universal/. "zip-stage/$FOLDER/"
+          zip -r "$FOLDER.zip" "zip-stage/$FOLDER"
 
       - name: Upload pkg artifact
         uses: actions/upload-artifact@v4
@@ -234,23 +235,25 @@ jobs:
             -p:DesktopOnly=true \
             --output publish/linux
 
-      - name: Stage zip layout
-        run: |
-          mkdir -p publish/linux-zip/app/assets
-          cp -r publish/linux/. publish/linux-zip/app/
-          cp scripts/install/linux/install-linux.sh publish/linux-zip/
-          cp assets/icon-256.png publish/linux-zip/app/assets/
-          cp assets/icon.svg publish/linux-zip/app/assets/
-
       - name: Set artifact metadata
         id: meta
         run: |
           name="OrpheusMP-${{ inputs.version }}-linux-x64"
           echo "artifact-name=$name" >> "$GITHUB_OUTPUT"
 
+      - name: Stage zip layout
+        run: |
+          FOLDER="${{ steps.meta.outputs.artifact-name }}"
+          mkdir -p "zip-stage/$FOLDER/assets"
+          cp -r publish/linux/. "zip-stage/$FOLDER/"
+          cp scripts/install/linux/install-linux.sh "zip-stage/$FOLDER/"
+          cp assets/icon-256.png "zip-stage/$FOLDER/assets/"
+          cp assets/icon.svg "zip-stage/$FOLDER/assets/"
+
       - name: Zip release
         run: |
-          zip -r "${{ steps.meta.outputs.artifact-name }}.zip" publish/linux-zip/
+          FOLDER="${{ steps.meta.outputs.artifact-name }}"
+          zip -r "$FOLDER.zip" "zip-stage/$FOLDER"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
