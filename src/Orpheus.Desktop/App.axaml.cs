@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Pipes;
@@ -9,6 +10,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Controls.Templates;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -54,6 +56,16 @@ public partial class App : Application
         // Initialize theming from config
         ThemeManager = new ThemeManager(this);
         ThemeManager.Apply(Config.Theme, Config.Variant);
+
+        // Guard against invalid/mispackaged layouts that don't provide the
+        // required MainLayout template. Without this, the window shell appears
+        // empty/transparent because MainWindow binds ContentTemplate to MainLayout.
+        if (!HasMainLayoutTemplate())
+        {
+            ThemeManager.Apply(ThemeManager.DefaultLayout, null);
+            Config.Theme = ThemeManager.DefaultLayout;
+            Config.Variant = null;
+        }
 
         // Persist so first-run users get files on disk
         Config.Save();
@@ -177,6 +189,14 @@ public partial class App : Application
         if (e.CloseReason == WindowCloseReason.OSShutdown)
         {
             PrepareForExit(systemInitiated: true);
+            KillCurrentProcessTree();
+            return;
+        }
+
+        if (OperatingSystem.IsLinux() && e.CloseReason == WindowCloseReason.WindowClosing && !window.IsActive)
+        {
+            PrepareForExit(systemInitiated: true);
+            KillCurrentProcessTree();
             return;
         }
 
@@ -322,8 +342,6 @@ public partial class App : Application
     {
         PrepareForExit(systemInitiated: false);
 
-        _ipcCts?.Cancel();
-
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.Shutdown();
@@ -332,12 +350,19 @@ public partial class App : Application
 
     private void OnDesktopShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
     {
-        PrepareForExit(systemInitiated: true);
+        if (ShouldForceKillOnShutdownRequested())
+        {
+            PrepareForExit(systemInitiated: true);
+            KillCurrentProcessTree();
+            return;
+        }
+
+        PrepareForExit(systemInitiated: false);
     }
 
     private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
-        PrepareForExit(systemInitiated: true);
+        PrepareForExit(systemInitiated: _isSystemShutdownRequested);
 
         if (sender is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -364,6 +389,62 @@ public partial class App : Application
         _trayIcon = null;
         _showMenuItem = null;
         _quitMenuItem = null;
+    }
+
+    private static void KillCurrentProcessTree()
+    {
+        var pid = Environment.ProcessId;
+
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "taskkill",
+                    ArgumentList = { "/PID", pid.ToString(), "/T", "/F" },
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                });
+            }
+            else if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "sh",
+                    ArgumentList = { "-c", $"pkill -TERM -P {pid} 2>/dev/null" },
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                });
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            Process.GetCurrentProcess().Kill();
+        }
+        catch
+        {
+            Environment.Exit(0);
+        }
+    }
+
+    private bool ShouldForceKillOnShutdownRequested()
+    {
+        if (_isQuitting && !_isSystemShutdownRequested)
+            return false;
+
+        // Avalonia 11 does not expose IsOSShutdown. On Windows and Linux,
+        // ShutdownRequested corresponds to platform/session shutdown. On macOS,
+        // it can also be raised from app-level Quit UI, so avoid hard-kill there
+        // unless we already observed an OS shutdown close reason.
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux())
+            return true;
+
+        return _isSystemShutdownRequested;
     }
 
     private void UpdateShutdownMode()
@@ -402,5 +483,11 @@ public partial class App : Application
         }
 
         return null;
+    }
+
+    private bool HasMainLayoutTemplate()
+    {
+        return Resources.TryGetResource("MainLayout", ActualThemeVariant, out var value)
+            && value is IDataTemplate;
     }
 }

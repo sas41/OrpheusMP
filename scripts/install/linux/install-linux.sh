@@ -41,6 +41,13 @@ EXEC_NAME="Orpheus.Desktop"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="${SCRIPT_DIR}/app"
 
+if [[ ! -x "${APP_DIR}/${EXEC_NAME}" ]]; then
+  echo "ERROR: Could not locate '${EXEC_NAME}' in packaged app directory."
+  echo "Expected: ${APP_DIR}/${EXEC_NAME}"
+  echo "Run install-linux.sh from the extracted release root folder."
+  exit 1
+fi
+
 # ── Uninstall mode ────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--uninstall" ]]; then
   echo "Uninstalling ${APP_DISPLAY} ..."

@@ -244,11 +244,11 @@ jobs:
       - name: Stage zip layout
         run: |
           FOLDER="${{ steps.meta.outputs.artifact-name }}"
-          mkdir -p "zip-stage/$FOLDER/assets"
-          cp -r publish/linux/. "zip-stage/$FOLDER/"
+          mkdir -p "zip-stage/$FOLDER/app"
+          cp -r publish/linux/. "zip-stage/$FOLDER/app/"
           cp scripts/install/linux/install-linux.sh "zip-stage/$FOLDER/"
-          cp assets/icon-256.png "zip-stage/$FOLDER/assets/"
-          cp assets/icon.svg "zip-stage/$FOLDER/assets/"
+          cp assets/icon-256.png "zip-stage/$FOLDER/app/assets/"
+          cp assets/icon.svg "zip-stage/$FOLDER/app/assets/"
 
       - name: Zip release
         run: |

@@ -68,9 +68,13 @@ dotnet publish "$PROJECT" \
 # ── Stage zip layout ─────────────────────────────────────────────────────────
 echo
 echo "==> Staging zip layout"
+mkdir -p "$STAGE_DIR/assets"
 mkdir -p "$STAGE_DIR/app/assets"
+cp -r "$PUBLISH_DIR/." "$STAGE_DIR/"
 cp -r "$PUBLISH_DIR/." "$STAGE_DIR/app/"
 cp "$REPO_ROOT/scripts/install/linux/install-linux.sh" "$STAGE_DIR/"
+cp "$REPO_ROOT/assets/icon-256.png"              "$STAGE_DIR/assets/"
+cp "$REPO_ROOT/assets/icon.svg"                  "$STAGE_DIR/assets/"
 cp "$REPO_ROOT/assets/icon-256.png"              "$STAGE_DIR/app/assets/"
 cp "$REPO_ROOT/assets/icon.svg"                  "$STAGE_DIR/app/assets/"
 

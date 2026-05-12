@@ -29,7 +29,7 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <!-- MPRIS D-Bus server for Linux media key integration (session bus) -->
-    <PackageReference Include="Tmds.DBus.Protocol" Version="0.90.3" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.92.0" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
   </ItemGroup>
 
   <ItemGroup>
