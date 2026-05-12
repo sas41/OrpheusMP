@@ -75,6 +75,10 @@ cp -r "$PUBLISH_DIR/." "$STAGE_DIR/app/"
 cp "$REPO_ROOT/scripts/install/linux/install-linux.sh" "$STAGE_DIR/"
 cp "$REPO_ROOT/assets/icon-256.png"              "$STAGE_DIR/assets/"
 cp "$REPO_ROOT/assets/icon.svg"                  "$STAGE_DIR/assets/"
+if [[ -e "$STAGE_DIR/app/assets" && ! -d "$STAGE_DIR/app/assets" ]]; then
+    rm -f "$STAGE_DIR/app/assets"
+fi
+mkdir -p "$STAGE_DIR/app/assets"
 cp "$REPO_ROOT/assets/icon-256.png"              "$STAGE_DIR/app/assets/"
 cp "$REPO_ROOT/assets/icon.svg"                  "$STAGE_DIR/app/assets/"
 

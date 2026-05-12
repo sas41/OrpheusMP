@@ -247,6 +247,10 @@ jobs:
           mkdir -p "zip-stage/$FOLDER/app"
           cp -r publish/linux/. "zip-stage/$FOLDER/app/"
           cp scripts/install/linux/install-linux.sh "zip-stage/$FOLDER/"
+          if [ -e "zip-stage/$FOLDER/app/assets" ] && [ ! -d "zip-stage/$FOLDER/app/assets" ]; then
+            rm -f "zip-stage/$FOLDER/app/assets"
+          fi
+          mkdir -p "zip-stage/$FOLDER/app/assets"
           cp assets/icon-256.png "zip-stage/$FOLDER/app/assets/"
           cp assets/icon.svg "zip-stage/$FOLDER/app/assets/"
 
