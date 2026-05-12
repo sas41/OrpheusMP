@@ -120,6 +120,10 @@ public partial class MainView : UserControl
                 _ = PickAndAddFolderAsync(this, vm);
                 break;
 
+            case "ClearSearchButton":
+                vm.SearchQuery = string.Empty;
+                break;
+
             // ── Library navigation ────────────────────────────────
             case "LibraryBackButton":
                 vm.NavigateBack();

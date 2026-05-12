@@ -47,6 +47,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly ILibraryChangeMonitor _changeMonitor;
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private CancellationTokenSource? _changeDebounceCts;
+    private CancellationTokenSource? _searchCts;
 
     // ── Snapshot-rebuild coalescing ───────────────────────────────────
     // At most one BuildFolderTree runs at a time.  If a rebuild request
@@ -85,6 +86,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     // Pushing drills in; popping goes back.
     private readonly Stack<LibraryNode> _navStack = new();
     private LibraryNode? _currentNode;
+    private NavigationSnapshot? _searchNavigationSnapshot;
 
     // ── Watched folders (shown at root level for management) ────────────
     private readonly ObservableCollection<string> _watchedFolders = new();
@@ -93,6 +95,8 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string _statusMessage = "";
     private bool   _isScanning;
     private string _librarySummary = "";
+    private string _searchQuery = string.Empty;
+    private bool _isSearchActive;
 
     // ── Collections ───────────────────────────────────────────────────
     // Queue uses ObservableCollection<QueueItemViewModel> so that:
@@ -326,10 +330,38 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     // ── Library navigation ────────────────────────────────────────────
 
-    public bool CanNavigateBack => _navStack.Count > 0;
+    public bool CanNavigateBack => !IsSearchActive && _navStack.Count > 0;
+
+    public string SearchQuery
+    {
+        get => _searchQuery;
+        set
+        {
+            if (!SetField(ref _searchQuery, value))
+                return;
+
+            _ = ApplySearchQueryAsync(value);
+        }
+    }
+
+    public bool IsSearchActive
+    {
+        get => _isSearchActive;
+        private set
+        {
+            if (!SetField(ref _isSearchActive, value))
+                return;
+
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanNavigateBack)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CurrentFolderName)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLibraryEmpty)));
+        }
+    }
 
     public string CurrentFolderName =>
-        _currentNode is not null ? _currentNode.Name : "Library";
+        IsSearchActive
+            ? "Search"
+            : (_currentNode is not null ? _currentNode.Name : "Library");
 
     // ── Status ────────────────────────────────────────────────────────
 
@@ -508,6 +540,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
             _changeMonitor.UpdateWatchedFolders(_watchedFolders);
             await ScanFoldersAsync([normalizedMusicFolder]);
+            await LoadLibraryAsync();
             await RefreshLibraryChangeMonitorAsync();
             return;
         }
@@ -785,13 +818,18 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
             _changeMonitor.UpdateWatchedFolders(normalizedFolders);
 
-            if (resetNavigation)
-            {
-                _navStack.Clear();
-                _currentNode = null;
-                NotifyNavChanged();
-                ShowRootNodes();
-            }
+        if (IsSearchActive)
+        {
+            _ = ApplySearchQueryAsync(_searchQuery);
+        }
+        else if (resetNavigation)
+        {
+            _navStack.Clear();
+            _currentNode = null;
+            _searchNavigationSnapshot = null;
+            NotifyNavChanged();
+            ShowRootNodes();
+        }
             else
             {
                 RestoreNavigationSnapshot(navigationSnapshot, roots);
@@ -888,6 +926,9 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     /// </summary>
     public void NavigateInto(LibraryNode node)
     {
+        if (IsSearchActive)
+            return;
+
         if (_currentNode is not null)
             _navStack.Push(_currentNode);
         else
@@ -903,6 +944,9 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     /// </summary>
     public void NavigateBack()
     {
+        if (IsSearchActive)
+            return;
+
         if (_navStack.Count == 0) return;
         var parent = _navStack.Pop();
 
@@ -926,18 +970,16 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
         foreach (var child in node.Children) _displayedNodes.Add(child);
 
         _displayedTracks.Clear();
-        if (Directory.Exists(node.Path))
-        {
-            var tracks = _allTracks
-                .Where(t => string.Equals(t.FolderPath, node.Path, StringComparison.OrdinalIgnoreCase))
-                .OrderBy(t => t.TrackNumber ?? 0)
-                .ThenBy(t => t.Title ?? Path.GetFileNameWithoutExtension(t.FilePath),
-                    StringComparer.OrdinalIgnoreCase)
-                .Select(t => new TrackRow(t))
-                .ToList();
+        var tracks = _allTracks
+            .Where(t => string.Equals(t.FolderPath, node.Path, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => t.TrackNumber ?? 0)
+            .ThenBy(t => t.Title ?? Path.GetFileNameWithoutExtension(t.FilePath),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(t => new TrackRow(t))
+            .ToList();
 
-            foreach (var row in tracks) _displayedTracks.Add(row);
-        }
+        foreach (var row in tracks)
+            _displayedTracks.Add(row);
 
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLibraryEmpty)));
     }
@@ -1049,6 +1091,7 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
             _watchedFolders.Add(normalizedPath);
 
         await ScanFoldersAsync([normalizedPath]);   // scan only the newly added folder
+        await LoadLibraryAsync();
         await RefreshLibraryChangeMonitorAsync();
     }
 
@@ -1675,132 +1718,128 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     // ── Library tree builder ──────────────────────────────────────────
     //
-    // O(tracks) approach:
-    //   1. Pre-group tracks by their exact FolderPath into a dictionary — O(N) one-time cost.
-    //   2. BuildFolderNode recurses the directory tree bottom-up, using O(1) dict lookups
-    //      for direct-track counts.  Each call returns the total track count under that
-    //      node so the parent can accumulate the subtree total without any extra passes.
-    //   3. The subtree total is a natural by-product of the bottom-up recursion —
-    //      no second pass over the track list is needed.
+    // Mobile builds the folder tree from watched roots + indexed tracks in the DB,
+    // not from live filesystem traversal. This keeps the library stable across app
+    // restarts and scoped-storage edge cases where Directory.Enumerate* cannot see
+    // SAF-authorized content directly.
 
     private static List<LibraryNode> BuildFolderTree(
         IReadOnlyList<string> folders,
         IReadOnlyList<LibraryTrack> tracks)
     {
-        // Build the lookup once for the whole tree — O(N).
-        var byFolder = new Dictionary<string, List<LibraryTrack>>(
-            StringComparer.OrdinalIgnoreCase);
+        var normalizedRoots = LibraryPathNormalizer.NormalizeDistinctFolders(folders);
+        var roots = normalizedRoots
+            .Select(path => new FolderTreeNode(path))
+            .ToDictionary(node => node.Path, StringComparer.OrdinalIgnoreCase);
+
         foreach (var track in tracks)
         {
-            var fp = track.FolderPath ?? Path.GetDirectoryName(track.FilePath) ?? "";
-            if (!byFolder.TryGetValue(fp, out var list))
-                byFolder[fp] = list = new List<LibraryTrack>();
-            list.Add(track);
+            var rootPath = normalizedRoots
+                .Where(root => LibraryPathNormalizer.IsPathWithinFolder(track.FilePath, root))
+                .OrderByDescending(static root => root.Length)
+                .FirstOrDefault();
+
+            if (string.IsNullOrWhiteSpace(rootPath))
+                continue;
+
+            var folderPath = track.FolderPath;
+            if (string.IsNullOrWhiteSpace(folderPath))
+                folderPath = Path.GetDirectoryName(track.FilePath);
+            if (string.IsNullOrWhiteSpace(folderPath))
+                folderPath = rootPath;
+
+            folderPath = LibraryPathNormalizer.NormalizeFolderPath(folderPath);
+            if (!LibraryPathNormalizer.IsPathWithinFolder(folderPath, rootPath))
+                folderPath = rootPath;
+
+            var current = roots[rootPath];
+            if (!string.Equals(folderPath, rootPath, StringComparison.OrdinalIgnoreCase))
+            {
+                var relative = Path.GetRelativePath(rootPath, folderPath);
+                var segments = relative.Split(
+                    [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                    StringSplitOptions.RemoveEmptyEntries);
+
+                var currentPath = rootPath;
+                foreach (var segment in segments)
+                {
+                    currentPath = LibraryPathNormalizer.NormalizeFolderPath(Path.Combine(currentPath, segment));
+
+                    if (!current.Children.TryGetValue(currentPath, out var next))
+                    {
+                        next = new FolderTreeNode(currentPath);
+                        current.Children[currentPath] = next;
+                    }
+
+                    current = next;
+                }
+            }
+
+            current.DirectTrackCount++;
         }
 
-        var nodes = new List<LibraryNode>();
-        foreach (var folder in folders)
+        var result = new List<LibraryNode>(normalizedRoots.Count);
+        foreach (var rootPath in normalizedRoots)
         {
-            var (node, _) = BuildFolderNode(folder, byFolder, isRoot: true);
-            if (node is not null)
-            {
-                node.IsExpanded = true;
-                nodes.Add(node);
-            }
+            var node = BuildFolderNodeFromTree(roots[rootPath], isRoot: true);
+            node.node.IsExpanded = true;
+            result.Add(node.node);
         }
-        return nodes;
+
+        return result;
     }
 
-    /// <summary>
-    /// Recursively builds a <see cref="LibraryNode"/> for <paramref name="path"/>.
-    /// Returns the node (or <c>null</c> if the folder should be pruned) and the
-    /// total number of tracks anywhere under this folder (used by the parent to
-    /// accumulate subtree counts without extra passes).
-    /// </summary>
-    private static (LibraryNode? node, int totalTracks) BuildFolderNode(
-        string path,
-        Dictionary<string, List<LibraryTrack>> byFolder,
-        bool isRoot = false)
+    private static (LibraryNode node, int totalTracks) BuildFolderNodeFromTree(FolderTreeNode treeNode, bool isRoot)
     {
-        var children = new List<LibraryNode>();
-        int childTrackTotal = 0;
+        var childNodes = new List<LibraryNode>();
+        var childTracks = 0;
 
-        if (Directory.Exists(path))
+        foreach (var child in treeNode.Children.Values
+                     .OrderBy(static c => c.Name, StringComparer.OrdinalIgnoreCase))
         {
-            try
-            {
-                foreach (var child in Directory.EnumerateDirectories(path)
-                             .OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
-                {
-                    var (childNode, childTracks) = BuildFolderNode(child, byFolder);
-                    if (childNode is not null)
-                    {
-                        children.Add(childNode);
-                        childTrackTotal += childTracks;
-                    }
-                }
-
-                // Playlist files — always shown, sorted by name
-                foreach (var file in Directory.EnumerateFiles(path)
-                             .Where(f => Orpheus.Core.Library.FolderScanner.PlaylistExtensions
-                                 .Contains(Path.GetExtension(f)))
-                             .OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
-                {
-                    var ext = Path.GetExtension(file).TrimStart('.').ToUpperInvariant();
-                    children.Add(new LibraryNode(
-                        Path.GetFileNameWithoutExtension(file), ext, file,
-                        nodeType: LibraryNodeType.Playlist));
-                }
-            }
-            catch { /* permission denied etc. */ }
+            var (childNode, childTotal) = BuildFolderNodeFromTree(child, isRoot: false);
+            childNodes.Add(childNode);
+            childTracks += childTotal;
         }
 
-        // O(1) direct-track count via pre-grouped dictionary.
-        var directTrackCount = byFolder.TryGetValue(path, out var direct) ? direct.Count : 0;
-        var totalTracks      = directTrackCount + childTrackTotal;
-
-        var name = Path.GetFileName(path);
-        if (string.IsNullOrWhiteSpace(name)) name = path;
-
-        // Count playlist files anywhere in this subtree
-        var playlistCount = children.Sum(c => c.NodeType == LibraryNodeType.Playlist ? 1 : CountPlaylists(c));
-
-        // Build meta: total tracks in subtree + playlist count, for all folder nodes.
-        // Root nodes also prepend the full path so two libraries with the same name are distinguishable.
+        var totalTracks = treeNode.DirectTrackCount + childTracks;
         var metaParts = new System.Text.StringBuilder();
         if (isRoot)
-            metaParts.Append(path);
+            metaParts.Append(treeNode.Path);
         if (totalTracks > 0)
         {
             if (metaParts.Length > 0) metaParts.Append("  ·  ");
             metaParts.Append($"{totalTracks} track{(totalTracks == 1 ? "" : "s")}");
         }
-        if (playlistCount > 0)
-        {
-            if (metaParts.Length > 0) metaParts.Append("  ·  ");
-            metaParts.Append($"{playlistCount} playlist{(playlistCount == 1 ? "" : "s")}");
-        }
-        var meta = metaParts.ToString();
 
-        // Prune empty leaf folders (no tracks anywhere underneath, no playlist files).
-        // Always keep the root watched folder even if it happens to be empty.
-        var hasPlaylists = children.Any(c => c.NodeType == LibraryNodeType.Playlist);
-        if (!isRoot && totalTracks == 0 && children.Count == 0 && !hasPlaylists)
-            return (null, 0);
-
-        return (new LibraryNode(name, meta, path, children), totalTracks);
+        var node = new LibraryNode(treeNode.Name, metaParts.ToString(), treeNode.Path, childNodes);
+        return (node, totalTracks);
     }
 
-    private static int CountPlaylists(LibraryNode node)
+    private sealed class FolderTreeNode
     {
-        var count = 0;
-        foreach (var child in node.Children)
-            count += child.NodeType == LibraryNodeType.Playlist ? 1 : CountPlaylists(child);
-        return count;
+        public string Path { get; }
+        public string Name { get; }
+        public int DirectTrackCount { get; set; }
+        public Dictionary<string, FolderTreeNode> Children { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        public FolderTreeNode(string path)
+        {
+            Path = LibraryPathNormalizer.NormalizeFolderPath(path);
+            var name = System.IO.Path.GetFileName(Path);
+            Name = string.IsNullOrWhiteSpace(name) ? Path : name;
+        }
     }
 
     private void RefreshDisplayedTracks()
     {
+        if (IsSearchActive)
+        {
+            _ = ApplySearchQueryAsync(_searchQuery);
+            return;
+        }
+
         if (_currentNode is null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLibraryEmpty)));
@@ -1830,6 +1869,73 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private static LibraryNode CreateRootNode() => new(RootNodePath, "", RootNodePath);
 
+    private async Task ApplySearchQueryAsync(string query)
+    {
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+
+        try
+        {
+            await Task.Delay(180, token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        var trimmed = query?.Trim() ?? string.Empty;
+        if (trimmed.Length == 0)
+        {
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (!IsSearchActive)
+                    return;
+
+                IsSearchActive = false;
+                _displayedTracks.Clear();
+
+                if (_searchNavigationSnapshot is null)
+                    ShowRootNodes();
+                else
+                    RestoreNavigationSnapshot(_searchNavigationSnapshot, _libraryRoots.ToList());
+
+                _searchNavigationSnapshot = null;
+            }).GetTask().ConfigureAwait(false);
+            return;
+        }
+
+        IReadOnlyList<LibraryTrack> results;
+        try
+        {
+            results = await _library.SearchAsync(trimmed, token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (token.IsCancellationRequested)
+            return;
+
+        var rows = results.Select(static t => new TrackRow(t)).ToList();
+
+        await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            if (!IsSearchActive)
+                _searchNavigationSnapshot = CaptureNavigationSnapshot();
+
+            IsSearchActive = true;
+            _displayedNodes.Clear();
+            _displayedTracks.Clear();
+            foreach (var row in rows)
+                _displayedTracks.Add(row);
+
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLibraryEmpty)));
+        }).GetTask().ConfigureAwait(false);
+    }
+
     // ── INotifyPropertyChanged helper ────────────────────────────────
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -1845,6 +1951,8 @@ public sealed class MobileViewModel : INotifyPropertyChanged, IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         SaveState();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
         _changeDebounceCts?.Cancel();
         _changeDebounceCts?.Dispose();
         _changeMonitor.Changed -= OnLibraryChanged;

@@ -145,7 +145,7 @@
       <!-- Library tab -->
       <Grid Grid.Row="1"
             IsVisible="{Binding IsLibraryTabActive}"
-            RowDefinitions="Auto,*">
+            RowDefinitions="Auto,Auto,*">
 
         <!-- Library header: breadcrumb or root controls -->
         <Border Grid.Row="0"
@@ -198,8 +198,41 @@
           </Grid>
         </Border>
 
+        <!-- Global search -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource PanelFill}"
+                BorderBrush="{DynamicResource PanelStroke}"
+                BorderThickness="0,0,0,1"
+                Padding="10,8">
+          <Grid ColumnDefinitions="Auto,*,Auto"
+                MinHeight="40">
+            <Image Grid.Column="0"
+                   Source="{Binding SearchIcon}"
+                   Width="16"
+                   Height="16"
+                   VerticalAlignment="Center"
+                   Margin="0,0,8,0" />
+            <TextBox Grid.Column="1"
+                     Text="{Binding SearchQuery, Mode=TwoWay}"
+                     Watermark="Search library"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     VerticalContentAlignment="Center"
+                     Padding="0" />
+            <Button x:Name="ClearSearchButton"
+                    Grid.Column="2"
+                    Background="Transparent"
+                    Padding="8,0"
+                    IsVisible="{Binding IsSearchActive}">
+              <TextBlock Text="Clear"
+                         FontSize="12"
+                         Foreground="{DynamicResource TextMuted}" />
+            </Button>
+          </Grid>
+        </Border>
+
         <!-- Folder children + tracks -->
-        <ScrollViewer Grid.Row="1">
+        <ScrollViewer Grid.Row="2">
           <StackPanel>
 
             <!-- Sub-folder and playlist nodes -->

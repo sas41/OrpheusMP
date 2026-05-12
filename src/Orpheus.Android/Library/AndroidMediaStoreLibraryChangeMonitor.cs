@@ -55,10 +55,18 @@ internal sealed class AndroidMediaStoreLibraryChangeMonitor : Java.Lang.Object, 
             return;
 
         var resolver = _context.ContentResolver;
+        if (resolver is null)
+            return;
+
         if (shouldRegister)
         {
-            resolver.RegisterContentObserver(MediaStore.Audio.Media.ExternalContentUri, true, _observer);
-            resolver.RegisterContentObserver(MediaStore.Files.GetContentUri("external"), true, _observer);
+            var audioUri = MediaStore.Audio.Media.ExternalContentUri;
+            var filesUri = MediaStore.Files.GetContentUri("external");
+            if (audioUri is null || filesUri is null)
+                return;
+
+            resolver.RegisterContentObserver(audioUri, true, _observer);
+            resolver.RegisterContentObserver(filesUri, true, _observer);
             _isRegistered = true;
             return;
         }
@@ -101,7 +109,7 @@ internal sealed class AndroidMediaStoreLibraryChangeMonitor : Java.Lang.Object, 
         try
         {
             string[] projection;
-            if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
+            if (OperatingSystem.IsAndroidVersionAtLeast(29))
             {
                 projection =
                 [
@@ -114,11 +122,15 @@ internal sealed class AndroidMediaStoreLibraryChangeMonitor : Java.Lang.Object, 
                 projection = [MediaStore.IMediaColumns.Data];
             }
 
-            using var cursor = _context.ContentResolver.Query(uri, projection, null, null, null);
+            var resolver = _context.ContentResolver;
+            if (resolver is null)
+                return null;
+
+            using var cursor = resolver.Query(uri, projection, null, null, null);
             if (cursor is null || !cursor.MoveToFirst())
                 return null;
 
-            if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
+            if (OperatingSystem.IsAndroidVersionAtLeast(29))
             {
                 var relativePath = GetString(cursor, MediaStore.IMediaColumns.RelativePath);
                 var displayName = GetString(cursor, MediaStore.IMediaColumns.DisplayName);

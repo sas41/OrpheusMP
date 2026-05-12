@@ -29,6 +29,8 @@ public partial class App : Application
     private NativeMenuItem? _showMenuItem;
     private NativeMenuItem? _quitMenuItem;
     private bool _isQuitting;
+    private bool _isSystemShutdownRequested;
+    private bool _isExitPrepared;
     private CancellationTokenSource? _ipcCts;
 
     /// <summary>
@@ -80,6 +82,9 @@ public partial class App : Application
                 CreateTrayIcon();
 
             UpdateShutdownMode();
+
+            desktop.ShutdownRequested += OnDesktopShutdownRequested;
+            desktop.Exit += OnDesktopExit;
 
             // Start the IPC listener so secondary instances can forward file
             // paths to this (primary) instance instead of opening a new window.
@@ -161,7 +166,7 @@ public partial class App : Application
         // Always save window geometry when closing / hiding
         SaveWindowGeometry(window);
 
-        if (_isQuitting || !IsTrayIconActive)
+        if (_isQuitting || _isSystemShutdownRequested || !IsTrayIconActive)
         {
             // Actually shutting down — let the close proceed
             return;
@@ -171,7 +176,7 @@ public partial class App : Application
         // to close the application instead of hiding it to the tray.
         if (e.CloseReason == WindowCloseReason.OSShutdown)
         {
-            QuitApplication();
+            PrepareForExit(systemInitiated: true);
             return;
         }
 
@@ -315,17 +320,50 @@ public partial class App : Application
 
     private void QuitApplication()
     {
-        _isQuitting = true;
+        PrepareForExit(systemInitiated: false);
+
         _ipcCts?.Cancel();
-        _ipcCts?.Dispose();
-        _ipcCts = null;
-        _trayIcon?.Dispose();
-        _trayIcon = null;
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.Shutdown();
         }
+    }
+
+    private void OnDesktopShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
+    {
+        PrepareForExit(systemInitiated: true);
+    }
+
+    private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
+    {
+        PrepareForExit(systemInitiated: true);
+
+        if (sender is IClassicDesktopStyleApplicationLifetime desktop)
+        {
+            desktop.ShutdownRequested -= OnDesktopShutdownRequested;
+            desktop.Exit -= OnDesktopExit;
+        }
+    }
+
+    private void PrepareForExit(bool systemInitiated)
+    {
+        if (_isExitPrepared)
+            return;
+
+        _isExitPrepared = true;
+        _isQuitting = true;
+        if (systemInitiated)
+            _isSystemShutdownRequested = true;
+
+        _ipcCts?.Cancel();
+        _ipcCts?.Dispose();
+        _ipcCts = null;
+
+        _trayIcon?.Dispose();
+        _trayIcon = null;
+        _showMenuItem = null;
+        _quitMenuItem = null;
     }
 
     private void UpdateShutdownMode()

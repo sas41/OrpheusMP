@@ -30,6 +30,7 @@ namespace Orpheus.Desktop;
 public partial class MainWindow : Window
 {
     private GlobalMediaKeyService? _mediaKeyService;
+    private bool _viewModelDisposed;
 #if LINUX
     private MprisService? _mprisService;
 #endif
@@ -254,11 +255,17 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        if (!_viewModelDisposed && DataContext is MainWindowViewModel vm)
+        {
+            _viewModelDisposed = true;
+            vm.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        }
+
         _mediaKeyService?.Dispose();
         _mediaKeyService = null;
 #if LINUX
-        if (DataContext is MainWindowViewModel vm)
-            vm.PropertyChanged -= OnViewModelPropertyChangedForMpris;
+        if (DataContext is MainWindowViewModel mprisVm)
+            mprisVm.PropertyChanged -= OnViewModelPropertyChangedForMpris;
 #pragma warning disable CA1416
         _mprisService?.Dispose();
 #pragma warning restore CA1416

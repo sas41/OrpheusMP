@@ -71,7 +71,8 @@ public class PlaybackService : Service
         _session.SetMediaButtonReceiver(
             PendingIntent.GetBroadcast(
                 this, 0,
-                new Intent(Intent.ActionMediaButton, null, this, typeof(MediaButtonReceiver)),
+                new Intent(this, typeof(MediaButtonReceiver))
+                    .SetAction(Intent.ActionMediaButton),
                 PendingIntentFlags.Immutable | PendingIntentFlags.UpdateCurrent));
 
         _session.Active = true;
@@ -244,14 +245,21 @@ public class PlaybackService : Service
             AndroidPlaybackState.ActionStop          |
             AndroidPlaybackState.ActionSeekTo;
 
-        var psb = new AndroidPlaybackState.Builder()
-            .SetActions(actions)
-            .SetState(stateCode,
-                (long)(_vm.PlaybackPosition * 1000),
-                1.0f)
-            .Build();
+        var stateBuilder = new AndroidPlaybackState.Builder();
+        if (stateBuilder is null)
+            return;
 
-        _session!.SetPlaybackState(psb);
+        stateBuilder.SetActions(actions);
+        stateBuilder.SetState(
+            stateCode,
+            (long)(_vm.PlaybackPosition * 1000),
+            1.0f);
+
+        var psb = stateBuilder.Build();
+        if (psb is null)
+            return;
+
+        _session.SetPlaybackState(psb);
     }
 
     private void UpdateSessionMetadata()
@@ -336,11 +344,14 @@ public class PlaybackService : Service
     {
         if (_vm is null || _session is null) return;
 
-        var builder = new MediaMetadata.Builder()
-            .PutString(MediaMetadata.MetadataKeyTitle,  _vm.NowPlayingTitle)
-            .PutString(MediaMetadata.MetadataKeyArtist, _vm.NowPlayingArtist)
-            .PutString(MediaMetadata.MetadataKeyAlbum,  _vm.NowPlayingAlbum)
-            .PutLong(MediaMetadata.MetadataKeyDuration, durationMs);
+        var builder = new MediaMetadata.Builder();
+        if (builder is null)
+            return;
+
+        builder.PutString(MediaMetadata.MetadataKeyTitle, _vm.NowPlayingTitle);
+        builder.PutString(MediaMetadata.MetadataKeyArtist, _vm.NowPlayingArtist);
+        builder.PutString(MediaMetadata.MetadataKeyAlbum, _vm.NowPlayingAlbum);
+        builder.PutLong(MediaMetadata.MetadataKeyDuration, durationMs);
 
         if (art is not null)
             builder.PutBitmap(MediaMetadata.MetadataKeyAlbumArt, art);
@@ -390,7 +401,7 @@ public class PlaybackService : Service
 
         if (!_isForeground)
         {
-            if (Build.VERSION.SdkInt >= BuildVersionCodes.Q)
+            if (OperatingSystem.IsAndroidVersionAtLeast(29))
             {
                 StartForeground(NotificationId, notification,
                     global::Android.Content.PM.ForegroundService.TypeMediaPlayback);
