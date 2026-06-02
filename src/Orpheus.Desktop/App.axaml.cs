@@ -33,6 +33,8 @@ public partial class App : Application
     private bool _isQuitting;
     private bool _isSystemShutdownRequested;
     private bool _isExitPrepared;
+    private bool _isShutdownPosted;
+    private bool _hasDesktopExited;
     private CancellationTokenSource? _ipcCts;
 
     /// <summary>
@@ -189,6 +191,7 @@ public partial class App : Application
         if (e.CloseReason == WindowCloseReason.OSShutdown)
         {
             PrepareForExit(systemInitiated: true);
+            FinalizeExitCleanup();
             KillCurrentProcessTree();
             return;
         }
@@ -196,6 +199,7 @@ public partial class App : Application
         if (OperatingSystem.IsLinux() && e.CloseReason == WindowCloseReason.WindowClosing && !window.IsActive)
         {
             PrepareForExit(systemInitiated: true);
+            FinalizeExitCleanup();
             KillCurrentProcessTree();
             return;
         }
@@ -340,12 +344,65 @@ public partial class App : Application
 
     private void QuitApplication()
     {
-        PrepareForExit(systemInitiated: false);
+        RequestQuit(systemInitiated: false);
+    }
 
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+    private void RequestQuit(bool systemInitiated)
+    {
+        PrepareForExit(systemInitiated);
+
+        if (_isShutdownPosted)
+            return;
+
+        if (ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime)
+            return;
+
+        _isShutdownPosted = true;
+
+        if (OperatingSystem.IsLinux() && !systemInitiated)
+            StartQuitWatchdog();
+
+        // On Linux, initiating lifetime shutdown directly from the tray callback
+        // can leave the main window in a non-interactive half-closed state.
+        // Post shutdown to the UI loop so the native menu callback can unwind first.
+        Dispatcher.UIThread.Post(() =>
         {
+            if (ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
+                return;
+
+            try
+            {
+                desktop.MainWindow?.Close();
+            }
+            catch
+            {
+            }
+
             desktop.Shutdown();
-        }
+        }, DispatcherPriority.Background);
+    }
+
+    private void StartQuitWatchdog()
+    {
+        Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(2000).ConfigureAwait(false);
+            }
+            catch
+            {
+                return;
+            }
+
+            if (_hasDesktopExited)
+                return;
+
+            // If UI/lifetime shutdown is wedged, UI thread posting may never run.
+            // Force-kill directly from the watchdog thread.
+            FinalizeExitCleanup();
+            KillCurrentProcessTree();
+        });
     }
 
     private void OnDesktopShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
@@ -353,6 +410,7 @@ public partial class App : Application
         if (ShouldForceKillOnShutdownRequested())
         {
             PrepareForExit(systemInitiated: true);
+            FinalizeExitCleanup();
             KillCurrentProcessTree();
             return;
         }
@@ -362,7 +420,9 @@ public partial class App : Application
 
     private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
+        _hasDesktopExited = true;
         PrepareForExit(systemInitiated: _isSystemShutdownRequested);
+        FinalizeExitCleanup();
 
         if (sender is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -384,11 +444,15 @@ public partial class App : Application
         _ipcCts?.Cancel();
         _ipcCts?.Dispose();
         _ipcCts = null;
+    }
 
+    private void FinalizeExitCleanup()
+    {
         _trayIcon?.Dispose();
         _trayIcon = null;
         _showMenuItem = null;
         _quitMenuItem = null;
+        LanguageChanged -= OnLanguageChangedTray;
     }
 
     private static void KillCurrentProcessTree()

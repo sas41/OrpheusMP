@@ -258,7 +258,7 @@ public partial class MainWindow : Window
         if (!_viewModelDisposed && DataContext is MainWindowViewModel vm)
         {
             _viewModelDisposed = true;
-            vm.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _ = vm.DisposeAsync().AsTask();
         }
 
         _mediaKeyService?.Dispose();
